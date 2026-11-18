@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0614">
+<title>Neon Bay</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./lib/three/build/three.module.js", "three/addons/": "./lib/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="game"></div>
+
+<!-- START SCREEN -->
+<div id="start">
+  <div class="sun"></div>
+  <div class="grid"></div>
+  <div class="startInner">
+    <div class="logo">NEON<span>BAY</span></div>
+    <div class="tag">AÇIK DÜNYA · ŞEHİR · KAOS</div>
+    <button id="playBtn">OYNA</button>
+    <div class="quality">
+      <span>Grafik:</span>
+      <button data-q="low">Düşük</button>
+      <button data-q="medium">Orta</button>
+      <button data-q="high">Ultra</button>
+    </div>
+    <div class="help">
+      <b>Mobil:</b> Sol taraf = hareket joystick · Sağ taraf kaydır = kamera · Butonlar = ateş / zıpla / araca bin<br>
+      <b>PC:</b> WASD hareket · Fare kamera · Sol tık ateş · F araca bin/in · Space zıpla/el freni · Shift koş
+    </div>
+    <div id="rotateHint">📱 Telefonu yatay çevir</div>
+  </div>
+  <div id="loading">Şehir inşa ediliyor...</div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="mapWrap"><canvas id="minimap" width="300" height="300"></canvas><div class="mapN">N</div></div>
+  <div id="bars"><div id="hpBar"><i></i></div><div id="armBar"><i></i></div></div>
+  <div id="stats">
+    <div id="clock">18:00</div>
+    <div id="money">$00000000</div>
+    <div id="stars"><i>★</i><i>★</i><i>★</i><i>★</i><i>★</i></div>
+  </div>
+  <div id="mission"></div>
+  <div id="bigMsg"></div>
+  <div id="prompt"></div>
+  <div id="speedo"><b id="spd">0</b><small>KM/S</small></div>
+  <div id="cross"></div>
+  <div id="fade"></div>
+</div>
+
+<!-- TOUCH CONTROLS -->
+<div id="touch">
+  <div id="joyHint"></div>
+  <div id="joy"><div id="knob"></div></div>
+  <div class="btn" id="bFire">ATEŞ</div>
+  <div class="btn" id="bEnter">🚗</div>
+  <div class="btn foot" id="bJump">ZIPLA</div>
+  <div class="btn car" id="bGas">GAZ</div>
+  <div class="btn car" id="bBrake">FREN</div>
+  <div class="btn car" id="bHand">EL<br>FRENİ</div>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

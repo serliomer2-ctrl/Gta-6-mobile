@@ -1,0 +1,2 @@
+{ "name": "Neon Bay", "short_name": "Neon Bay", "start_url": "./index.html", "display": "fullscreen", "orientation": "landscape",
+  "background_color": "#0b0614", "theme_color": "#0b0614", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
