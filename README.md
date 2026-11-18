@@ -9,7 +9,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **Araçlar**: sedan, spor, SUV, taksi, polis — drift (el freni), rampa atlayışları, hasar, duman ve patlama
 - **Trafik ve yayalar**: kavşaklarda dönen yapay zekâ trafik, kaldırımda yürüyen ve panikleyip kaçan yayalar
 - **Aranma sistemi (1–5 yıldız)**: polis arabaları seni yol ağında takip eder, ateş eder, yakalayabilir
-- **Görevler**: zamana karşı işarete ulaş, para kazan · Yerdeki paraları topla
+- **Silahlar**: tabanca, Uzi, pompalı, roketatar · Şehre dağılmış silah / can / zırh kutuları
+- **Motosiklet**: virajda yatan, hızlı motorlar (sert çarpışmada uçarsın!)
+- **Görevler**: işarete ulaş, 5 noktalı yarış, taksi yolcusu taşıma, hedef aracı yok etme · Yerdeki paraları topla
+- **Hava durumu**: yağmur, ıslak yansıyan yollar, gece şimşek
+- **Araba radyosu**: NEON FM 88.6 — anlık üretilen synthwave müzik (R / 📻)
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
 
 ## Kontroller
@@ -21,6 +25,8 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 | Araca bin / in | 🚗 | F |
 | Zıpla / el freni | ZIPLA / EL FRENİ | Space |
 | Koş | Joystick'i sonuna kadar it | Shift |
+| Silah değiştir | Silah butonu | 1-4 / X / fare tekerleği |
+| Radyo aç/kapa | 📻 | R |
 
 ## Nasıl oynanır
 **Telefonda:** Repo ayarlarından *Settings → Pages → Branch* seçip GitHub Pages'i aç, verilen linki telefonda aç,
