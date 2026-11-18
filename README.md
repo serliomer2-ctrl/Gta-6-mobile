@@ -1,19 +1,23 @@
-# 🌴 NEON BAY — Açık Dünya Mobil Oyun
+# 🌴 VISTA BAY — Açık Dünya Mobil Oyun
 
-Gün batımında neon ışıklı bir sahil şehrinde geçen, tarayıcıda çalışan 3D açık dünya oyunu (Three.js).
+Güneşli bir sahil şehrinde geçen, tarayıcıda çalışan gerçekçi 3D açık dünya oyunu (Three.js).
 Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 
 ## Özellikler
-- **8x8 bloklu dev şehir**: cam gökdelenler, pastel sahil otelleri, neon tabelalar, parklar, palmiyeler
-- **Gerçekçi grafik**: dinamik gökyüzü, gün/gece döngüsü (10 dk), yumuşak gölgeler, bloom, yansımalı cam ve araba boyası, dalgalı okyanus shader'ı, yıldızlar, sokak lambası ışık havuzları
-- **Araçlar**: sedan, spor, SUV, taksi, polis — drift (el freni), rampa atlayışları, hasar, duman ve patlama
+- **8x8 bloklu, bölgelere ayrılmış şehir**: cam gökdelenli merkez, tuğla apartmanlar (balkonlu), art deco sahil otelleri,
+  kiremit çatılı evler + bahçe + havuzlu banliyö, depo ve konteynerli sanayi bölgesi, parklar
+- **Sokak detayları**: çalışan trafik ışıkları (trafik kırmızıda durur), dükkan tabelaları, banklar, çöp kutuları, yangın muslukları, ağaçlar ve palmiyeler
+- **Dükkanlar**: 🔫 Silah dükkanı (silah, mermi, zırh, can) ve 🚗 VISTA MOTORS galerisi (7 araç) — sahip olduğun araçlar haritada mavi
+- **Kayıt sistemi**: para, silahlar ve araçların otomatik kaydedilir
+- **Gerçekçi grafik**: hareketli bulutlu gökyüzü, gün/gece döngüsü (16 dk), yumuşak gölgeler, sinematik renk düzenleme, zemin gölgelendirmesi, yansımalı cam ve araba boyası, okyanus shader'ı, sokak lambaları
+- **Araçlar**: sedan, spor, süper araba, SUV, pikap, minibüs, taksi, polis, motosiklet — drift (el freni), rampa atlayışları, hasar, duman ve patlama
 - **Trafik ve yayalar**: kavşaklarda dönen yapay zekâ trafik, kaldırımda yürüyen ve panikleyip kaçan yayalar
 - **Aranma sistemi (1–5 yıldız)**: polis arabaları seni yol ağında takip eder, ateş eder, yakalayabilir
-- **Silahlar**: tabanca, Uzi, pompalı, roketatar · Şehre dağılmış silah / can / zırh kutuları
+- **Silahlar**: tabanca, Uzi, saldırı tüfeği, pompalı, roketatar · Şehre dağılmış silah / can / zırh kutuları
 - **Motosiklet**: virajda yatan, hızlı motorlar (sert çarpışmada uçarsın!)
 - **Görevler**: işarete ulaş, 5 noktalı yarış, taksi yolcusu taşıma, hedef aracı yok etme · Yerdeki paraları topla
 - **Hava durumu**: yağmur, ıslak yansıyan yollar, gece şimşek
-- **Araba radyosu**: NEON FM 88.6 — anlık üretilen synthwave müzik (R / 📻)
+- **Araba radyosu**: VISTA FM 101.4 — anlık üretilen synthwave müzik (R / 📻)
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
 
 ## Kontroller
@@ -25,7 +29,7 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 | Araca bin / in | 🚗 | F |
 | Zıpla / el freni | ZIPLA / EL FRENİ | Space |
 | Koş | Joystick'i sonuna kadar it | Shift |
-| Silah değiştir | Silah butonu | 1-4 / X / fare tekerleği |
+| Silah değiştir | Silah butonu | 1-5 / X / fare tekerleği |
 | Radyo aç/kapa | 📻 | R |
 
 ## Nasıl oynanır

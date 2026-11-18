@@ -6,12 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0b0614">
-<title>Neon Bay</title>
+<meta name="theme-color" content="#10141a">
+<title>Vista Bay</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@500;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": { "three": "./lib/three/build/three.module.js", "three/addons/": "./lib/three/examples/jsm/" } }
@@ -22,11 +22,15 @@
 
 <!-- START SCREEN -->
 <div id="start">
-  <div class="sun"></div>
-  <div class="grid"></div>
+  <svg class="skyline" viewBox="0 0 1600 400" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <path fill="#1a1c24" d="M0 400V250h60v-40h40v60h50V170h70v100h40v-60h30V120h80v150h40v-90h60v90h30V60h90v210h40V150h50v120h60v-80h40v80h50V100h70v170h40v-70h60v70h50V200h40v70h60v-120h70v120h40v-60h50v60h60v130z"/>
+    <path fill="#1a1c24" d="M1280 400V250h60v-70h50v90h60v-130h70v100h40v-40h40V400z"/>
+    <g fill="#0d0f14"><path d="M180 400c4-60 10-120 30-170l6 2c-18 50-24 110-26 168z"/><path d="M213 232c-30-6-60 6-80 26 24-10 50-14 76-10-26 4-48 18-62 38 22-16 46-22 70-22-14 12-22 30-24 46 12-16 26-28 40-32 4 18 4 36 0 54 10-18 14-40 10-58 16 4 34 16 46 32-6-20-22-38-42-46 22-4 46 0 66 12-18-18-44-26-70-24 18-10 40-14 62-12-24-10-52-8-74 6z"/>
+    <path d="M1380 400c6-70 4-140 -14-200l6-2c20 60 22 130 16 202z"/><path d="M1368 202c-28-12-62-6-86 10 26-4 52-2 76 8-26 0-50 10-66 28 24-12 50-14 74-10-16 10-28 26-32 42 14-14 30-24 46-26 2 18-2 36-8 52 14-16 20-36 20-56 16 6 30 20 40 36-4-22-18-40-36-50 22-2 44 6 62 20-14-20-38-32-64-34 18-8 40-10 62-6-22-12-50-14-74-4z"/></g>
+  </svg>
   <div class="startInner">
-    <div class="logo">NEON<span>BAY</span></div>
-    <div class="tag">AÇIK DÜNYA · ŞEHİR · KAOS</div>
+    <div class="logo">VISTA BAY</div>
+    <div class="tag">AÇIK DÜNYA · SAHİL ŞEHRİ · SUÇ</div>
     <button id="playBtn">OYNA</button>
     <div class="quality">
       <span>Grafik:</span>
@@ -36,7 +40,7 @@
     </div>
     <div class="help">
       <b>Mobil:</b> Sol taraf = hareket joystick · Sağ taraf kaydır = kamera · Butonlar = ateş / silah değiştir / zıpla / araca-motora bin / 📻 radyo<br>
-      <b>PC:</b> WASD hareket · Fare kamera · Sol tık ateş · F araca bin/in · Space zıpla/el freni · Shift koş · 1-4 / X / tekerlek silah · R radyo
+      <b>PC:</b> WASD hareket · Fare kamera · Sol tık ateş · F araca bin/in · Space zıpla/el freni · Shift koş · 1-5 / X / tekerlek silah · R radyo
     </div>
     <div id="rotateHint">📱 Telefonu yatay çevir</div>
   </div>
@@ -60,6 +64,12 @@
   <div id="cross"></div>
   <div id="fade"></div>
 </div>
+
+<!-- SHOP -->
+<div id="shop"><div class="shopBox">
+  <div class="shopHead"><b id="shopTitle"></b><span id="shopMoney"></span><button id="shopClose">✕</button></div>
+  <div id="shopItems"></div>
+</div></div>
 
 <!-- TOUCH CONTROLS -->
 <div id="touch">
