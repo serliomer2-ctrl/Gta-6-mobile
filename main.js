@@ -72,7 +72,7 @@ const state = {
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
   weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
   props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
-  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, story: 0, look: null, dialog: null, photo: null, hidden: false, noSave: false, emote: null, interior: null, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
+  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0, racesWon: 0, heists: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, story: 0, look: null, dialog: null, photo: null, hidden: false, noSave: false, emote: null, interior: null, passenger: null, mpRace: null, raceInv: null, incoming: null, heist: null, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
 };
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
@@ -275,8 +275,8 @@ const merge = list => mergeGeometries(list.map(g => g.index ? g.toNonIndexed() :
 
 // ============================================================ INIT
 function init() {
-  renderer = new THREE.WebGLRenderer({ antialias: QUALITY === 'low', powerPreference: 'high-performance' });
-  const dpr = Math.min(devicePixelRatio, QUALITY === 'high' ? 2 : QUALITY === 'medium' ? 1.3 : 1);
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
+  const dpr = Math.min(devicePixelRatio, QUALITY === 'high' ? 2 : QUALITY === 'medium' ? 1.25 : 0.8);
   renderer.setPixelRatio(dpr);
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -362,6 +362,7 @@ function init() {
   buildClothesShop();
   buildInteriors();
   initOnlineUI();
+  initStage2UI();
   updateSky(0);
   addEventListener('resize', onResize);
 }
@@ -611,12 +612,12 @@ function buildCity() {
   const add = (gb, mat, cast = true, recv = true) => { if (!gb.p.length) return; const m = new THREE.Mesh(gb.geometry(), mat); m.castShadow = sh && cast; m.receiveShadow = sh && recv; scene.add(m); return m; };
   add(sideGB, M.sidewalk, false); add(grassGB, M.grass, false); add(hedgeGB, M.hedge); add(poolGB, M.pool, false);
   const ao = add(aoGB, M.ao, false, false); if (ao) ao.renderOrder = 1;
-  for (const k in chunks) for (const m in chunks[k].o) add(chunks[k].o[m], M.fac[m] || M[m], m !== 'sign' && m !== 'rail', m !== 'rail');
+  for (const k in chunks) for (const m in chunks[k].o) CHUNK_MESHES.push(add(chunks[k].o[m], M.fac[m] || M[m], m !== 'sign' && m !== 'rail', m !== 'rail'));
 }
 
 // ============================================================ OCEAN
 function buildOcean() {
-  const geo = new THREE.PlaneGeometry(3200, 6000, 160, 160); geo.rotateX(-Math.PI / 2); geo.translate(SHORE_X - 10 + 1600, -0.25, 0);
+  const seg = QUALITY === 'low' ? 60 : 160, geo = new THREE.PlaneGeometry(3200, 6000, seg, seg); geo.rotateX(-Math.PI / 2); geo.translate(SHORE_X - 10 + 1600, -0.25, 0);
   ocean = new THREE.Mesh(geo, new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(1, 0.2, 0) }, uSunCol: { value: new THREE.Color(1, 0.8, 0.6) },
@@ -1086,7 +1087,9 @@ function spawnPlayer() {
   createCar('bike', '#00c8e0', nodeP(4) + 10, nodeP(4) + 4, Math.PI * 0.5, 'free');
 }
 function enterCar() {
+  if (state.passenger) { exitPassenger(); return; }
   if (state.inCar) { exitCar(false); return; }
+  if (MP.on && !state.interior) { const rv = nearRemoteVehicle(4.5); if (rv) { let nl = 1e9; for (const c of cars) if (c.active && !c.dead) nl = Math.min(nl, Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z)); if (Math.hypot(rv.x - player.pos.x, rv.z - player.pos.z) < nl) { enterAsPassenger(rv); return; } } }
   let best = null, bd = 5;
   for (const c of cars) { if (!c.active || c.dead) continue; const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d < bd) { bd = d; best = c; } }
   if (!best) return;
@@ -1287,6 +1290,7 @@ function killPed(p, byPlayer) {
   for (let k = 0; k < 10; k++) FX.norm.spawn(p.x, 0.9, p.z, MR(-2, 2), MR(1, 4), MR(-2, 2), 0.5, 0.35, 0.2, 0.55, 0.02, 0.02, 0.9, 12);
   spawnCash(p.x + MR(-0.5, 0.5), p.z + MR(-0.5, 0.5), Math.round(MR(10, 90)));
   if (p.npc === 'gang') { gangAggro(); p.respawnT = 60; }
+  if (p.heistIdx >= 0) heistGuardKilledLocally(p);
   if (byPlayer) { if (p.npc !== 'turf') addHeat(p.npc === 'gang' ? 0.3 : p.cop ? 1.5 : 0.7); state.stats.kills++; }
 }
 function addHeat(v) { state.heat = clamp(Math.max(state.heat, 1) + (state.heat >= 1 ? v : 0), 0, 5.99); state.crimeTimer = 0; }
@@ -1493,7 +1497,7 @@ function updatePeds(dt) {
     }
     const d2p = dist2(p);
     if (d2p > 170 * 170 && !p.free) { placePed(p, false); }
-    h.g.visible = d2p < 180 * 180;
+    h.g.visible = d2p < (QUALITY === 'low' ? 75 * 75 : QUALITY === 'medium' ? 130 * 130 : 180 * 180);
     let speed = p.speed, ox = p.x, oz = p.z;
     if (p.panic > 0) p.panic -= dt;
     if (p.free || p.panic > 0) {
@@ -1942,7 +1946,7 @@ function updateSky(dt) {
   u.uDeep.value.setHex(0x0b4a6e).multiplyScalar(0.15 + 0.85 * day); u.uShallow.value.setHex(0x2ab8b0).multiplyScalar(0.12 + 0.88 * day);
   u.uFogColor.value.copy(fog); u.uFogNear.value = scene.fog.near; u.uFogFar.value = scene.fog.far; u.uDay.value = day;
   envTimer += dt;
-  if (envTimer > 3) { envTimer = 0; if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.02); scene.environment = envRT.texture; }
+  if (envTimer > (QUALITY === 'low' ? 25 : QUALITY === 'medium' ? 6 : 3)) { envTimer = 0; if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.02); scene.environment = envRT.texture; }
   const hh = Math.floor(state.time), mm = Math.floor((state.time - hh) * 60);
   $('clock').textContent = (WEATHERS[state.weather] ? WEATHERS[state.weather].icon + ' ' : '') + String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
@@ -1959,7 +1963,7 @@ function updateCamera(dt) {
   camYaw -= input.lookDX * settings.sens; camPitch = clamp(camPitch + input.lookDY * settings.sens, -0.35, 1.25);
   if (input.lookDX || input.lookDY) state.lastLookInput = state.now;
   input.lookDX = input.lookDY = 0;
-  let dist = state.interior ? 3 : 4.6;
+  let dist = state.interior ? 3 : state.passenger ? 8.5 : 4.6;
   if (c) {
     const sp = carSpeed(c);
     dist = (c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
@@ -2136,6 +2140,8 @@ function drawMinimap() {
   if (state.truck && state.truck.active && !state.truck.looted) { let [px, py] = toMap(state.truck.group.position.x, state.truck.group.position.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '18px sans-serif'; g.fillText('💰', px, py + 1); }
   if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
   for (const rp of MP.remotes.values()) dot(rp.x, rp.z, rp.info.color, 8, true);
+  if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
+  if (state.heist) { let [px, py] = toMap(state.heist.x, state.heist.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '17px sans-serif'; g.fillText('💼', px, py + 1); }
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
   // player arrow
@@ -2146,9 +2152,8 @@ function drawMinimap() {
 function updateHUD(dt) {
   state.shownMoney += (state.money - state.shownMoney) * Math.min(1, dt * 6);
   if (Math.abs(state.money - state.shownMoney) < 1) state.shownMoney = state.money;
-  $('money').textContent = '$' + String(Math.round(state.shownMoney)).padStart(8, '0');
-  $('hpBar').firstChild.style.width = clamp(state.health, 0, 100) + '%';
-  $('armBar').firstChild.style.width = clamp(state.armor, 0, 100) + '%';
+  const hk = Math.round(state.shownMoney) + '|' + Math.round(state.health) + '|' + Math.round(state.armor);
+  if (hk !== updateHUD.hk) { updateHUD.hk = hk; $('money').textContent = '$' + String(Math.round(state.shownMoney)).padStart(8, '0'); $('hpBar').firstChild.style.width = clamp(state.health, 0, 100) + '%'; $('armBar').firstChild.style.width = clamp(state.armor, 0, 100) + '%'; }
   const w = WEAPONS[state.weapon], am = state.ammo[state.weapon], wk = w.name + am;
   if (wk !== updateHUD.wk) { updateHUD.wk = wk; $('wName').textContent = w.icon + ' ' + w.name; $('wAmmo').textContent = am === Infinity ? '∞' : am; $('bWeapon').textContent = w.icon; }
   if (state.wanted !== lastStars) { lastStars = state.wanted; document.querySelectorAll('#stars i').forEach((s, i) => s.classList.toggle('on', i < state.wanted)); }
@@ -2167,13 +2172,13 @@ function updateHUD(dt) {
   else if (ia && isTouch && !ia.fn) { pr.style.display = 'block'; pr.textContent = ia.label; }
   else if (near && !isTouch) { pr.style.display = 'block'; pr.textContent = 'F — Araca bin'; } else pr.style.display = 'none';
   const nav = $('navArrow');
-  const navT = state.mission ? missionPos() : state.waypoint ? [state.waypoint.x, state.waypoint.z] : null;
+  const navT = state.mission ? missionPos() : state.mpRace ? [state.mpRace.x, state.mpRace.z] : state.heist && !state.heist.opened ? [state.heist.x, state.heist.z] : state.waypoint ? [state.waypoint.x, state.waypoint.z] : null;
   nav.style.color = state.mission ? '#ffc020' : '#c060ff';
   if (navT) {
     const [mx, mz] = navT, dx = mx - player.pos.x, dz = mz - player.pos.z, s = Math.sin(camYaw), c = Math.cos(camYaw);
     nav.style.display = 'block'; nav.style.transform = `translateX(-50%) rotate(${Math.atan2(dx * c - dz * s, -dx * s - dz * c)}rad)`;
   } else nav.style.display = 'none';
-  drawMinimap();
+  if (QUALITY !== 'low' || (frame & 1)) drawMinimap();
 }
 
 // ============================================================ DEATH / BUSTED
@@ -2254,7 +2259,7 @@ function buildTreesAndStreet() {
   const sh = QUALITY !== 'low', m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   // ---- broadleaf trees
   const blobs = [[0, 6.2, 0, 2.5], [1.4, 5.6, 0.7, 1.9], [-1.2, 5.8, -0.8, 1.9], [0.3, 7.4, -0.3, 1.7], [-0.6, 5.4, 1.2, 1.6]];
-  const canopy = merge(blobs.map(([x, y, z, r]) => { const g = new THREE.IcosahedronGeometry(r, 2); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const f = 1 + (Math.sin(p.getX(i) * 3.1 + p.getY(i) * 2.3) * 0.12); p.setXYZ(i, p.getX(i) * f, p.getY(i) * f * 0.85, p.getZ(i) * f); } return g.translate(x, y, z); }));
+  const canopy = merge(blobs.map(([x, y, z, r]) => { const g = new THREE.IcosahedronGeometry(r, QUALITY === 'low' ? 1 : 2); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const f = 1 + (Math.sin(p.getX(i) * 3.1 + p.getY(i) * 2.3) * 0.12); p.setXYZ(i, p.getX(i) * f, p.getY(i) * f * 0.85, p.getZ(i) * f); } return g.translate(x, y, z); }));
   canopy.computeVertexNormals();
   const trunk = merge([new THREE.CylinderGeometry(0.17, 0.3, 5.2, 7).translate(0, 2.6, 0), new THREE.CylinderGeometry(0.08, 0.12, 2, 5).rotateZ(0.7).translate(0.7, 4.6, 0)]);
   const leafMat = new THREE.MeshStandardMaterial({ map: noiseTex('#5a8a3a', ['#4a7a2e', '#6a9a46', '#3e6a26', '#7aa850'], 128, 3000, 1, 4), roughness: 0.9 });
@@ -2340,7 +2345,7 @@ function buildClouds() {
       }`,
     transparent: true, depthWrite: false, side: THREE.BackSide, fog: false
   }));
-  clouds.renderOrder = -1; scene.add(clouds);
+  clouds.renderOrder = -1; scene.add(clouds); if (QUALITY === 'low') clouds.visible = false;
 }
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uSat: { value: 1.06 }, uCon: { value: 1.07 }, uVig: { value: 0.32 }, uTint: { value: new THREE.Vector3(1.02, 1.0, 0.97) } },
@@ -2568,7 +2573,7 @@ function placeStart(s) {
   s.g.position.set(s.x, 0, s.z); s.sp.material.map = startTex[s.type]; s.sp.material.needsUpdate = true;
 }
 function updateStarts(dt) {
-  const hide = !!state.mission || state.missionCooldown > 0;
+  const hide = !!state.mission || state.missionCooldown > 0 || !!state.mpRace;
   if (state.missionCooldown > 0) state.missionCooldown -= dt;
   for (const s of STARTS) {
     s.g.visible = !hide;
@@ -2809,7 +2814,7 @@ function renderPhone(app) {
   } else if (app === 'bank') {
     const st = S(), m = Math.floor(st.play / 60);
     const stats = [['Toplam kazanç', '$' + st.earned.toLocaleString('tr-TR')], ['Harcanan', '$' + st.spent.toLocaleString('tr-TR')], ['Saatlik mülk geliri', '+$' + propIncome()], ['Etkisiz hale getirilen', st.kills],
-      ['Tamamlanan görev', st.missions], ['Başarısız görev', st.fails], ['Kontratlar', st.contracts], ['Çalınan araç', st.jacked], ['Gidilen yol', (st.dist / 1000).toFixed(1) + ' km'], ['En yüksek hız', Math.round(st.topSpeed) + ' km/s'], ['En yüksek aranma', '★'.repeat(st.maxWanted) || '—'], ['Hikaye', state.story + '/' + STORY.length], ['Bölgeler', turfCount() + '/' + TURFS.length], ['Gizli paket', packagesFound() + '/' + PACKAGE_COUNT], ['Stunt', st.stunts], ['Soygun', st.robberies], ['Oyun süresi', `${Math.floor(m / 60)} sa ${m % 60} dk`]];
+      ['Tamamlanan görev', st.missions], ['Başarısız görev', st.fails], ['Kontratlar', st.contracts], ['Çalınan araç', st.jacked], ['Gidilen yol', (st.dist / 1000).toFixed(1) + ' km'], ['En yüksek hız', Math.round(st.topSpeed) + ' km/s'], ['En yüksek aranma', '★'.repeat(st.maxWanted) || '—'], ['Hikaye', state.story + '/' + STORY.length], ['Bölgeler', turfCount() + '/' + TURFS.length], ['Kazanılan yarış', st.racesWon], ['Soygun (online)', st.heists], ['Gizli paket', packagesFound() + '/' + PACKAGE_COUNT], ['Stunt', st.stunts], ['Soygun', st.robberies], ['Oyun süresi', `${Math.floor(m / 60)} sa ${m % 60} dk`]];
     const done = ACHIEVEMENTS.filter(a => state.ach[a.id]).length;
     h = head('🏦 Banka', '#1a9a50') + `<div class="phBody"><div class="phBal"><small>Hesap bakiyesi</small><b>${money}</b></div>
       <div class="phSec">Son işlemler</div>${state.ledger.length ? state.ledger.map(l => `<div class="phLed"><span>${l.t}</span><span>${l.label}</span><b class="${l.amt < 0 ? 'neg' : ''}">${l.amt < 0 ? '-' : '+'}$${Math.abs(l.amt).toLocaleString('tr-TR')}</b></div>`).join('') : '<div class="phEmpty">Henüz işlem yok</div>'}
@@ -3331,14 +3336,14 @@ function updatePerf(rdt) {
   if (perf.t < 2) return;
   perf.fps = perf.frames / perf.t; perf.t = 0; perf.frames = 0;
   const el = $('fps'); el.style.display = settings.fps ? 'block' : 'none';
-  if (settings.fps) el.textContent = `${Math.round(perf.fps)} FPS · ${perf.pr.toFixed(2)}x`;
+  if (settings.fps) el.textContent = `${Math.round(perf.fps)} FPS · ${perf.pr.toFixed(2)}x · ${renderer.info.render.calls} çizim`;
   if (!settings.autoRes || state.shopOpen || state.phoneOpen || state.dialog) return;
   if (perf.cool > 0) { perf.cool--; return; }
   if (perf.fps < 42 && perf.pr > perf.prMin + 0.01) { applyPixelRatio(Math.max(perf.prMin, perf.pr - 0.12)); perf.cool = 1; }
   else if (perf.fps > 57 && perf.pr < perf.prMax - 0.01) { applyPixelRatio(Math.min(perf.prMax, perf.pr + 0.08)); perf.cool = 2; }
 }
 function initPerf() {
-  perf.pr = perf.prMax = renderer.getPixelRatio(); perf.prMin = Math.max(0.55, perf.prMax * 0.55);
+  perf.pr = renderer.getPixelRatio(); perf.prMax = QUALITY === 'low' ? Math.min(devicePixelRatio, 1) : perf.pr; perf.prMin = QUALITY === 'low' ? 0.5 : Math.max(0.55, perf.prMax * 0.55);
   if (QUALITY !== 'high' && renderer.shadowMap.enabled) renderer.shadowMap.autoUpdate = false; // shadows at half rate
   document.addEventListener('visibilitychange', () => {
     state.hidden = document.hidden;
@@ -3736,7 +3741,7 @@ function updateInteriors(dt) {
 // ============================================================ MULTIPLAYER (PeerJS / WebRTC, host-relay star topology)
 // Host peer id = 'vistabay-<code>'. Clients connect only to the host; the host relays every packet to the others.
 // Messages: hello/welcome/join/leave (lobby), st (20 Hz state), shot/fx (combat FX), chat/emote, world (time + weather).
-const MP = { on: false, host: false, peer: null, conns: new Map(), hostConn: null, myId: null, code: null, pub: false, nextId: 0, remotes: new Map(), acc: 0, worldT: 0, chatT: -99, name: '', color: '#e8443a', costume: 0 };
+const MP = { on: false, host: false, peer: null, conns: new Map(), fast: new Map(), peerPid: new Map(), fastConn: null, heistT: 210, hostConn: null, myId: null, code: null, pub: false, nextId: 0, remotes: new Map(), acc: 0, worldT: 0, chatT: -99, name: '', color: '#e8443a', costume: 0 };
 const MP_PREFIX = 'vistabay-', MP_MAX = 8, MP_TICK = 0.05, MP_DELAY = 0.12, MP_PUB = 5;
 const MP_COLORS = ['#e8443a', '#2e86de', '#20bf6b', '#f7b731', '#8854d0', '#fd79a8', '#00cec9', '#f0f0f0'];
 const MP_COSTUMES = [{ name: 'Sokak', cap: null, glasses: true, shorts: false }, { name: 'Sahil', cap: null, glasses: true, shorts: true }, { name: 'Şapkalı', cap: '#1a1a1e', glasses: false, shorts: false }, { name: 'Patron', cap: '#d4a017', glasses: true, shorts: false }];
@@ -3781,10 +3786,18 @@ async function mpHost(fixedId, pub) {
   peer.on('error', e => console.warn('peer', e.type));
 }
 function onHostConn(conn) {
+  if (conn.label === 'fast') { // unreliable side-channel (position packets) of an already joined player
+    const pidOf = () => MP.peerPid.get(conn.peer);
+    conn.on('open', () => { const pid = pidOf(); if (pid) MP.fast.set(pid, conn); });
+    conn.on('data', d => { const pid = pidOf(); if (pid) hostRecv(pid, d); });
+    conn.on('close', () => { const pid = pidOf(); if (pid && MP.fast.get(pid) === conn) MP.fast.delete(pid); });
+    conn.on('error', () => { });
+    return;
+  }
   const id = 'p' + (++MP.nextId);
   conn.on('open', () => {
     if (MP.conns.size >= MP_MAX - 1) { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 400); return; }
-    conn.pid = id; MP.conns.set(id, conn);
+    conn.pid = id; MP.conns.set(id, conn); MP.peerPid.set(conn.peer, id);
   });
   conn.on('data', d => { if (conn.pid) hostRecv(id, d); });
   conn.on('close', () => dropPlayer(id));
@@ -3801,17 +3814,24 @@ function hostRecv(id, d) {
     return;
   }
   d.id = id;
+  if (d.to) { if (d.to === 'h') applyPacket(d); else mpSendTo(d.to, d); return; }   // private message, routed by the host
   applyPacket(d);
-  if (d.t === 'st' || d.t === 'shot' || d.t === 'chat' || d.t === 'emote' || d.t === 'fx') mpBroadcast(d, id);
+  mpBroadcast(d, id);
 }
 function dropPlayer(id) {
   if (!MP.conns.has(id) && !MP.remotes.has(id)) return;
-  MP.conns.delete(id);
+  const c = MP.conns.get(id); MP.conns.delete(id);
+  const f = MP.fast.get(id); MP.fast.delete(id); try { f && f.close(); } catch (e) { }
+  if (c) MP.peerPid.delete(c.peer);
   const r = MP.remotes.get(id); if (r) mpFeed(`🔴 ${r.info.name} ayrıldı`);
   removeRemote(id);
   if (MP.host) mpBroadcast({ t: 'leave', id });
 }
-function mpBroadcast(msg, except) { for (const [id, c] of MP.conns) if (id !== except && c.open) { try { c.send(msg); } catch (e) { } } }
+function mpBroadcast(msg, except) { for (const [id, c] of MP.conns) if (id !== except) mpSendTo(id, msg); }
+function mpSendTo(id, msg) {
+  const f = MP.fast.get(id), c = msg.t === 'st' && f && f.open ? f : MP.conns.get(id);
+  if (c && c.open) { try { c.send(msg); } catch (e) { } }
+}
 // ---------------- joining
 function connectTo(peer, targetId, timeout = 12000) {
   return new Promise((res, rej) => {
@@ -3835,6 +3855,8 @@ function attachClient(conn, code) {
   conn.on('data', clientRecv);
   conn.on('close', () => mpLost('Oda sahibi ayrıldı'));
   conn.on('error', () => mpLost('Bağlantı hatası'));   // 'hello' is sent from mpAfterStart() once the world is built
+  // second, unreliable/unordered data channel for 20 Hz state packets (no head-of-line blocking on packet loss)
+  try { const f = MP.peer.connect(MP_PREFIX + code, { label: 'fast', reliable: false, serialization: 'json' }); f.on('open', () => { MP.fastConn = f; }); f.on('data', clientRecv); f.on('close', () => { if (MP.fastConn === f) MP.fastConn = null; }); f.on('error', () => { }); } catch (e) { }
 }
 async function mpQuickJoin(status) {
   const peer = await newPeer(); MP.peer = peer;
@@ -3867,7 +3889,13 @@ function applyWorld(d) {
 }
 function mpSend(msg) {
   if (!MP.on) return;
-  if (MP.host) mpBroadcast(msg); else if (MP.hostConn && MP.hostConn.open) { try { MP.hostConn.send(msg); } catch (e) { } }
+  if (MP.host) {
+    if (!msg.id) msg.id = 'h';            // FIX: host's own packets must carry its id, otherwise clients drop them
+    if (msg.to) mpSendTo(msg.to, msg); else mpBroadcast(msg);
+    return;
+  }
+  const c = msg.t === 'st' && MP.fastConn && MP.fastConn.open ? MP.fastConn : MP.hostConn;
+  if (c && c.open) { try { c.send(msg); } catch (e) { } }
 }
 function mpLost(reason) {
   if (!MP.on) return;
@@ -3877,7 +3905,8 @@ function mpLost(reason) {
 function mpLeave(silent) {
   for (const id of [...MP.remotes.keys()]) removeRemote(id);
   for (const c of MP.conns.values()) { try { c.close(); } catch (e) { } }
-  MP.conns.clear();
+  MP.conns.clear(); for (const f of MP.fast.values()) { try { f.close(); } catch (e) { } } MP.fast.clear(); MP.peerPid.clear();
+  try { MP.fastConn && MP.fastConn.close(); } catch (e) { } MP.fastConn = null;
   try { MP.hostConn && MP.hostConn.close(); } catch (e) { }
   try { MP.peer && MP.peer.destroy(); } catch (e) { }
   Object.assign(MP, { on: false, host: false, peer: null, hostConn: null, myId: null, code: null });
@@ -3886,6 +3915,7 @@ function mpLeave(silent) {
 }
 // ---------------- packets
 function applyPacket(d) {
+  if (handleStage2(d)) return;
   const r = MP.remotes.get(d.id); if (!r) return;
   if (d.t === 'st') { d.rt = mpNow(); r.snaps.push(d); if (r.snaps.length > 30) r.snaps.shift(); return; }
   const dist = Math.hypot(r.x - player.pos.x, r.z - player.pos.z), vol = clamp(1 - dist / 120, 0, 1);
@@ -3952,9 +3982,12 @@ function sampleRemote(r) {
   const rt = mpNow() - MP_DELAY;
   while (S.length > 2 && S[1].rt <= rt) S.shift();
   const a = S[0], b = S[1];
-  if (!b || rt <= a.rt) return { ...a, k: 0 };
-  const k = clamp((rt - a.rt) / Math.max(0.001, b.rt - a.rt), 0, 1);
-  return { ...b, x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: lerp(a.z, b.z, k), r: a.r + wrapA(b.r - a.r) * k, px: lerp(a.px || 0, b.px || 0, k), rz: lerp(a.rz || 0, b.rz || 0, k) };
+  if (!b || rt <= a.rt) return { ...a };
+  const span = Math.max(0.02, b.rt - a.rt);
+  let k = (rt - a.rt) / span;
+  if (k > 1) k = Math.min(k, 1 + 0.25 / span);                       // buffer starved: extrapolate up to 250 ms
+  if (Math.hypot(b.x - a.x, b.z - a.z) > 40) k = 1;                     // teleport: snap
+  return { ...b, x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: lerp(a.z, b.z, k), r: a.r + wrapA(b.r - a.r) * Math.min(k, 1.5), px: lerp(a.px || 0, b.px || 0, Math.min(k, 1)), rz: lerp(a.rz || 0, b.rz || 0, Math.min(k, 1)) };
 }
 function updateRemotes(dt) {
   for (const r of MP.remotes.values()) {
@@ -3977,7 +4010,7 @@ function updateRemotes(dt) {
       else h.g.visible = false;
     } else {
       if (h.g.parent !== scene) scene.add(h.g);
-      h.g.visible = !far; h.g.position.set(r.x, r.y, r.z); h.g.rotation.set(s.dead ? -Math.PI / 2 : 0, r.r, 0);
+      h.g.visible = !far && !s.pas; h.g.position.set(r.x, r.y, r.z); h.g.rotation.set(s.dead ? -Math.PI / 2 : 0, r.r, 0);
       if (!s.dead && h.g.visible) {
         r.aimT -= dt; animHuman(h, Math.min(mv, 8), dt, r.aimT > 0 || s.aim);
         if (r.emote) { r.emoteT += dt; applyEmote(h, r.emote, r.emoteT); if (r.emoteT > 3.5 || mv > 1) r.emote = null; }
@@ -3985,7 +4018,7 @@ function updateRemotes(dt) {
     }
     if (r.bubbleT > 0) r.bubbleT -= dt;
     drawTag(r);
-    r.tag.visible = !far; r.tag.position.set(r.x, r.y + (r.veh ? (r.veh.spec.heli ? 4 : r.veh.spec.bike ? 2.6 : 3) : 2.35), r.z);
+    r.tag.visible = !far; r.tag.position.set(r.x, r.y + (s.pas ? 3.4 : 0) + (r.veh ? (r.veh.spec.heli ? 4 : r.veh.spec.bike ? 2.6 : 3) : 2.35), r.z);
   }
 }
 function applyEmote(h, e, t) {
@@ -4002,6 +4035,7 @@ function applyEmote(h, e, t) {
 function myState() {
   const c = state.inCar, p = c ? c.group.position : player.pos, f2 = v => Math.round(v * 100) / 100;
   const o = { t: 'st', x: f2(p.x), y: f2(c ? c.y : player.pos.y), z: f2(p.z), r: Math.round((c ? c.h : player.yaw) * 1000) / 1000, sp: f2(c ? carFwd(c) : player.speed), hp: Math.max(0, Math.round(state.health)), wn: state.wanted, w: state.weapon, aim: player.aimT > 0 ? 1 : 0, dead: state.dead ? 1 : 0 };
+  if (state.passenger) o.pas = state.passenger;
   if (c) { o.v = c.kind; o.vc = '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace); o.px = f2(c.group.rotation.x); o.rz = f2(c.group.rotation.z); o.st = f2(c.steer); }
   return o;
 }
@@ -4081,6 +4115,239 @@ function mpAfterStart() {
   if (MP.host) showBig(MP.pub ? '🌐 GENEL ODA AÇILDI' : `🌐 ODA KODU: ${MP.code}`, '#7dff9a', 5, MP.pub ? 'Hızlı Katıl ile gelen oyuncular buraya düşer' : 'Arkadaşların bu kodla katılabilir · 👥 düğmesinden kopyala');
 }
 
+// ============================================================ MP STAGE 2: passenger seat, street races, co-op heist
+// ---------------- passenger seat (+ drive-by)
+function nearRemoteVehicle(maxD = 4.5) {
+  let best = null, bd = maxD;
+  for (const r of MP.remotes.values()) { if (!r.veh) continue; const d = Math.hypot(r.x - player.pos.x, r.z - player.pos.z); if (d < bd) { bd = d; best = r; } }
+  return best;
+}
+function enterAsPassenger(r) {
+  if (state.inCar || state.passenger) return;
+  state.passenger = r.id; player.human.g.visible = false; document.body.classList.add('passenger');
+  mpSend({ t: 'pas', to: r.id, on: 1 }); AudioSys.door();
+  floatText(`🚗 ${r.info.name} aracında yolcusun · ATEŞ ile camdan ateş et`);
+}
+function exitPassenger(reason) {
+  const r = MP.remotes.get(state.passenger), h = r ? r.r : player.yaw;
+  if (r) mpSend({ t: 'pas', to: r.id, on: 0 });
+  state.passenger = null; document.body.classList.remove('passenger');
+  let x = player.pos.x + Math.cos(h) * 2.4, z = player.pos.z - Math.sin(h) * 2.4;
+  const c = state.interior ? interiorCollide(x, z, 0.4) : collide(x, z, 0.4, 0.5); x = c.x; z = c.z;
+  player.pos.set(x, groundY(x, z), z); player.vy = 0; player.human.g.visible = true;
+  if (reason) floatText(reason); AudioSys.door();
+}
+function updatePassenger(dt) {
+  const r = MP.remotes.get(state.passenger);
+  if (!r || !r.veh) { exitPassenger('Sürücü araçtan indi'); return; }
+  player.pos.set(r.x, r.y, r.z); player.yaw = r.r; player.human.g.visible = false;
+  if (player.aimT > 0) player.aimT -= dt;
+}
+
+// ---------------- impromptu street race (inviter is the authority)
+const RACE_BETS = [0, 500, 2000, 5000];
+let raceMarker = null;
+function buildRaceMarker() {
+  raceMarker = new THREE.Group();
+  raceMarker.add(new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 90, 24, 1, true).translate(0, 45, 0), new THREE.MeshBasicMaterial({ map: beamTex(), color: 0x2a7aff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })));
+  raceMarker.add(new THREE.Mesh(new THREE.RingGeometry(6, 7.2, 40).rotateX(-Math.PI / 2).translate(0, 0.1, 0), new THREE.MeshBasicMaterial({ color: 0x40a0ff, transparent: true, opacity: 0.9, depthWrite: false })));
+  raceMarker.visible = false; scene.add(raceMarker);
+}
+function openRacePanel(r) {
+  const p = $('racePanel');
+  p.innerHTML = `<b>🏁 ${esc(r.info.name)} ile yarış</b><small>Bahis seç · kazanan ikisini de alır</small><div>${RACE_BETS.map(b => `<button data-bet="${b}" ${state.money < b ? 'disabled' : ''}>${b ? '$' + b : 'Bahissiz'}</button>`).join('')}</div><button data-bet="x" class="gray">İptal</button>`;
+  p.dataset.to = r.id; p.style.display = 'block';
+}
+function sendRaceInvite(to, bet) {
+  $('racePanel').style.display = 'none';
+  if (!MP.remotes.has(to)) return;
+  state.raceInv = { to, bet, t: 15 }; mpSend({ t: 'race_inv', to, bet });
+  floatText(`🏁 Yarış teklifi gönderildi · $${bet}`);
+}
+function showInvite(from, bet) {
+  const r = MP.remotes.get(from); if (!r || state.mpRace) return;
+  const el = $('invite'); state.incoming = { from, bet, t: 15 };
+  el.innerHTML = `<b>🏁 ${esc(r.info.name)} sana yarış teklif ediyor</b><small>Bahis: ${bet ? '$' + bet : 'yok'} · bitiş haritada mavi fişekle gösterilir</small><div><button data-inv="1" ${state.money < bet ? 'disabled' : ''}>KABUL</button><button data-inv="0" class="red">RET</button></div>`;
+  el.style.display = 'block'; AudioSys.tone(660, 0.15, 0.2, 'square'); AudioSys.tone(990, 0.2, 0.2, 'square', 1, 0.15); haptic([40, 40, 40]);
+}
+function answerInvite(ok) {
+  const inc = state.incoming; $('invite').style.display = 'none'; state.incoming = null;
+  if (!inc) return;
+  if (ok && state.money >= inc.bet && !state.mission && !state.mpRace) mpSend({ t: 'race_acc', to: inc.from, bet: inc.bet });
+  else mpSend({ t: 'race_dec', to: inc.from });
+}
+function startMpRace(o) {
+  state.mpRace = { ...o, stage: 'count', t: 3.5, lastN: 4 };
+  if (o.bet) { state.money -= o.bet; S().spent += o.bet; ledger('🏁 Yarış bahsi', -o.bet); }
+  raceMarker.position.set(o.x, groundY(o.x, o.z), o.z); raceMarker.visible = true;
+  state.waypoint = null;
+}
+function finishMpRace(winner) {
+  const rc = state.mpRace; if (!rc) return;
+  const opp = MP.remotes.get(rc.opp), oname = opp ? opp.info.name : 'Rakip';
+  if (winner === MP.myId) { if (rc.bet) earn(rc.bet * 2, '🏁 Yarış kazancı'); S().racesWon++; showBig('YARIŞI KAZANDIN!', '#7dff9a', 3.5, rc.bet ? `+$${rc.bet * 2}` : `${oname} geride kaldı`); AudioSys.success(); AudioSys.cash(); haptic([50, 40, 90]); }
+  else if (winner === 'void') { if (rc.bet) { state.money += rc.bet; ledger('🏁 Bahis iadesi', rc.bet); } showBig('YARIŞ İPTAL', '#ffd23a', 2.5, 'Bahis iade edildi'); }
+  else { showBig('YARIŞI KAYBETTİN', '#ff5050', 3, `${oname} önce vardı`); AudioSys.fail(); }
+  state.mpRace = null; raceMarker.visible = false; saveGame();
+}
+function raceAuthorityFinish(from) {
+  const rc = state.mpRace; if (!rc || rc.auth !== MP.myId || rc.done) return;
+  rc.done = true; mpSend({ t: 'race_res', to: rc.opp, rid: rc.rid, winner: from }); finishMpRace(from);
+}
+function updateMpRace(dt) {
+  const el = $('mission');
+  if (state.raceInv) { state.raceInv.t -= dt; if (state.raceInv.t <= 0) { state.raceInv = null; floatText('🏁 Teklif yanıtsız kaldı'); } }
+  if (state.incoming) { state.incoming.t -= dt; if (state.incoming.t <= 0) answerInvite(false); }
+  const rc = state.mpRace; if (!rc) return;
+  if (!MP.remotes.has(rc.opp)) { finishMpRace('void'); return; }
+  raceMarker.children[0].material.opacity = 0.75 + Math.sin(state.now * 5) * 0.25;
+  if (Math.random() < 0.6) FX.add.spawn(rc.x + MR(-1, 1), raceMarker.position.y + 1, rc.z + MR(-1, 1), MR(-1, 1), MR(8, 14), MR(-1, 1), 1.2, 0.7, 0.5, 0.4, 0.9, 3, 1, 2);
+  const d = Math.hypot(player.pos.x - rc.x, player.pos.z - rc.z);
+  el.style.display = 'block'; el.style.borderLeftColor = '#2a7aff';
+  if (rc.stage === 'count') {
+    rc.t -= dt; const n = Math.ceil(rc.t);
+    if (n !== rc.lastN && n > 0) { rc.lastN = n; showBig(String(n), '#40a0ff', 0.8, 'Yarış başlıyor…'); AudioSys.tone(520, 0.15, 0.25, 'square'); }
+    if (rc.t <= 0) { rc.stage = 'go'; rc.el = 0; showBig('BAŞLA!', '#7dff9a', 1.2, 'Mavi fişeğe ilk ulaşan kazanır'); AudioSys.tone(1040, 0.35, 0.3, 'square'); haptic(80); }
+    el.textContent = `🏁 Sokak yarışı · ${Math.max(0, Math.ceil(rc.t))} · Bahis $${rc.bet}`;
+    return;
+  }
+  rc.el += dt;
+  const opp = MP.remotes.get(rc.opp), od = opp ? Math.hypot(opp.x - rc.x, opp.z - rc.z) : 0;
+  el.textContent = `🏁 Yarış · sen ${Math.round(d)} m · ${opp ? esc(opp.info.name) : 'rakip'} ${Math.round(od)} m · ${Math.floor(rc.el)} sn · 💵 $${rc.bet * 2}`;
+  if (d < 9 && !rc.sentFin) { rc.sentFin = true; if (rc.auth === MP.myId) raceAuthorityFinish(MP.myId); else mpSend({ t: 'race_fin', to: rc.auth, rid: rc.rid }); }
+  if (rc.el > 300) { if (rc.auth === MP.myId) { mpSend({ t: 'race_res', to: rc.opp, rid: rc.rid, winner: 'void' }); } finishMpRace('void'); }
+}
+
+// ---------------- co-op heist (host schedules; kills / loot are shared)
+const heistNpcs = [];
+let heistBagGeo = null, heistBagMat = null;
+function startHeist(h) {
+  endHeist(true);
+  const van = vehVisual('armored', '#2c3a2c'); van.group.position.set(h.x, groundY(h.x, h.z), h.z); van.group.rotation.y = h.r;
+  while (heistNpcs.length < 5) { const p = npcPed({ skin: pick(SKIN), shirt: '#26303a', pants: '#1a1e24', hair: '#101010', shoes: '#101010', cap: '#1a2a4a', glasses: true, gun: true }, 0, 0); p.npc = 'guard'; heistNpcs.push(p); }
+  const guards = heistNpcs.slice(0, h.n);
+  guards.forEach((p, i) => { const a = i / h.n * Math.PI * 2, r = collide(h.x + Math.cos(a) * 4.5, h.z + Math.sin(a) * 4.5, 0.4, 0.5); Object.assign(p, { x: r.x, z: r.z, dead: false, hp: 3, shootT: MR(0.8, 2), yaw: a, heistIdx: i }); p.h.g.rotation.set(0, a, 0); p.h.g.visible = true; });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 60, 20, 1, true).translate(0, 30, 0), new THREE.MeshBasicMaterial({ map: beamTex(), color: 0xffc020, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  beam.position.set(h.x, 0, h.z); scene.add(beam);
+  state.heist = { ...h, van, guards, beam, opened: false, bags: [], alert: false, t: 0 };
+  showBig('💼 ORTAK SOYGUN', '#ffc020', 3.5, 'Zırhlı konvoy haritada · korumaları temizle, kasayı aç!'); AudioSys.thunder(); haptic([60, 40, 60]);
+}
+function endHeist(silent) {
+  const H = state.heist; if (!H) return;
+  scene.remove(H.van.group); scene.remove(H.beam); H.beam.geometry.dispose(); H.beam.material.dispose();
+  for (const b of H.bags) if (b.m) scene.remove(b.m);
+  for (const p of H.guards) { p.dead = true; p.h.g.visible = false; p.h.g.rotation.x = 0; p.heistIdx = -1; }
+  state.heist = null; if (!silent) floatText('💼 Soygun etkinliği sona erdi');
+}
+function heistLoot(bags) {
+  const H = state.heist; if (!H) return;
+  H.opened = true;
+  if (!heistBagGeo) { heistBagGeo = merge([colorize(new THREE.SphereGeometry(0.32, 12, 10).scale(1, 1.15, 0.9), '#6a5a3a'), colorize(new THREE.CylinderGeometry(0.07, 0.12, 0.14, 8).translate(0, 0.4, 0), '#4a3a24'), colorize(new THREE.BoxGeometry(0.3, 0.22, 0.02).translate(0, 0, 0.29), '#2fd060')]); heistBagMat = new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x204010, roughness: 0.8 }); }
+  H.bags = bags.map(([x, z, amt], i) => { const m = new THREE.Mesh(heistBagGeo, heistBagMat); m.position.set(x, groundY(x, z) + 0.4, z); m.castShadow = true; scene.add(m); return { i, x, z, amt, m }; });
+  showBig('KASA AÇILDI!', '#7dff9a', 3, `${bags.length} para çantası saçıldı · ilk kapan alır`); AudioSys.boom();
+}
+function takeBag(i, mine) {
+  const H = state.heist; if (!H) return; const b = H.bags.find(q => q.i === i && q.m); if (!b) return;
+  scene.remove(b.m); b.m = null;
+  if (mine) { earn(b.amt, '💼 Soygun'); floatText(`💼 +$${b.amt}`); AudioSys.cash(); haptic(30); mpSend({ t: 'heist_bag', hid: H.id, i }); }
+  if (H.bags.every(q => !q.m)) { S().heists++; setTimeout(() => endHeist(true), 1500); }
+}
+function hostOpenHeist() {
+  const H = state.heist; if (!H || H.opened) return;
+  const bags = []; for (let k = 0; k < 9; k++) { const a = Math.random() * Math.PI * 2, r = MR(2, 7); bags.push([Math.round((H.x + Math.cos(a) * r) * 10) / 10, Math.round((H.z + Math.sin(a) * r) * 10) / 10, Math.round(MR(400, 1100) / 10) * 10]); }
+  mpSend({ t: 'heist_loot', hid: H.id, bags }); heistLoot(bags);
+}
+function updateHeist(dt) {
+  if (MP.on && MP.host) {
+    MP.heistT += dt;
+    if (MP.heistT >= 300 && !state.heist) {
+      MP.heistT = 0;
+      const [x, z] = randomSidewalk(), h = { t: 'heist', hid: Date.now() % 1e9, x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, r: Math.round(Math.random() * 62) / 10, n: 4 + Math.min(1, MP.remotes.size) };
+      h.id = h.hid; mpSend(h); startHeist(h);
+    }
+  }
+  const H = state.heist; if (!H) return;
+  H.t += dt; if (H.t > 240) { endHeist(false); return; }
+  H.beam.material.opacity = 0.6 + Math.sin(state.now * 4) * 0.3;
+  const dv = Math.hypot(player.pos.x - H.x, player.pos.z - H.z);
+  if (!H.alert && dv < 32) { H.alert = true; floatText('⚠ Konvoy korumaları alarm verdi!'); }
+  for (const p of H.guards) {
+    const h = p.h;
+    if (p.dead) { h.g.position.set(p.x, groundY(p.x, p.z) + 0.12, p.z); continue; }
+    if (p.hp < 3) H.alert = true;
+    const dx = player.pos.x - p.x, dz = player.pos.z - p.z, d = Math.hypot(dx, dz) || 1;
+    let spd = 0;
+    if (H.alert && !state.dead && d < 60) {
+      if (d > 12) { spd = 3.4; const r = collide(p.x + dx / d * spd * dt, p.z + dz / d * spd * dt, 0.35, 0.5); p.x = r.x; p.z = r.z; }
+      p.shootT -= dt;
+      if (d < 42 && p.shootT <= 0 && los(p.x, 1.4, p.z, player.pos.x, 1.3, player.pos.z)) {
+        p.shootT = MR(0.8, 1.6); const hit = Math.random() < 0.32;
+        FX.tracer(p.x, 1.45, p.z, player.pos.x + (hit ? 0 : MR(-2.5, 2.5)), player.pos.y + 1.2, player.pos.z + (hit ? 0 : MR(-2.5, 2.5)), true);
+        AudioSys.shot(0.45); if (hit) { if (state.inCar) { damageCar(state.inCar, 4); state.health -= 1; } else applyDamage(5); }
+      }
+      p.yaw = wrapA(p.yaw + wrapA(Math.atan2(dx, dz) - p.yaw) * (1 - Math.exp(-6 * dt)));
+    }
+    h.g.position.set(p.x, groundY(p.x, p.z), p.z); h.g.rotation.y = p.yaw; animHuman(h, spd, dt, H.alert);
+  }
+  const allDown = H.guards.every(p => p.dead);
+  if (allDown && !H.opened && dv < 4.5 && !state.inCar && !state.dead) state.interact = { label: '💰 KASAYI AÇ', fn: () => { if (MP.host) hostOpenHeist(); else mpSend({ t: 'heist_open', to: 'h', hid: H.id }); } };
+  if (H.opened) for (const b of H.bags) if (b.m) { b.m.rotation.y += dt * 2; if (Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < (state.inCar ? 2.8 : 1.4)) takeBag(b.i, true); }
+  const el = $('mission');
+  if (!state.mission && !state.mpRace) { el.style.display = 'block'; el.style.borderLeftColor = '#ffc020'; el.textContent = H.opened ? `💼 Soygun · kalan çanta ${H.bags.filter(b => b.m).length}` : `💼 Ortak soygun · korumalar ${H.guards.filter(p => !p.dead).length}/${H.guards.length} · ${Math.round(dv)} m${allDown ? ' · KASAYI AÇ!' : ''}`; }
+}
+function heistGuardKilledLocally(p) { const H = state.heist; if (H && p.heistIdx >= 0 && !p.remoteKill) mpSend({ t: 'heist_kill', hid: H.id, i: p.heistIdx }); }
+
+// ---------------- packet handling for stage 2 (returns true if handled)
+function handleStage2(d) {
+  const r = MP.remotes.get(d.id), H = state.heist;
+  switch (d.t) {
+    case 'pas': if (r) floatText(d.on ? `🚗 ${r.info.name} aracına bindi` : `🚶 ${r.info.name} araçtan indi`); return true;
+    case 'race_inv': if (r) { if (state.mission || state.mpRace) mpSend({ t: 'race_dec', to: d.id, busy: 1 }); else showInvite(d.id, d.bet | 0); } return true;
+    case 'race_dec': if (state.raceInv && state.raceInv.to === d.id) { state.raceInv = null; floatText(`🏁 ${r ? r.info.name : 'Rakip'} teklifi reddetti`); } return true;
+    case 'race_acc': {
+      if (!state.raceInv || state.raceInv.to !== d.id || state.money < state.raceInv.bet) return true;
+      const bet = state.raceInv.bet; state.raceInv = null;
+      const mx = (player.pos.x + (r ? r.x : player.pos.x)) / 2, mz = (player.pos.z + (r ? r.z : player.pos.z)) / 2, [fx, fz] = farNode(380, 650, mx, mz);
+      const o = { rid: Date.now() % 1e9, x: fx, z: fz, bet, auth: MP.myId };
+      mpSend({ t: 'race_go', to: d.id, ...o }); startMpRace({ ...o, opp: d.id });
+      return true;
+    }
+    case 'race_go': startMpRace({ rid: d.rid, x: d.x, z: d.z, bet: d.bet | 0, auth: d.auth, opp: d.id }); return true;
+    case 'race_fin': if (state.mpRace && state.mpRace.rid === d.rid) raceAuthorityFinish(d.id); return true;
+    case 'race_res': if (state.mpRace && state.mpRace.rid === d.rid) finishMpRace(d.winner); return true;
+    case 'heist': startHeist(d); return true;
+    case 'heist_kill': if (H && H.id === d.hid) { const p = H.guards[d.i]; if (p && !p.dead) { p.remoteKill = true; killPed(p, false); p.remoteKill = false; } } return true;
+    case 'heist_open': if (MP.host && H && H.id === d.hid) hostOpenHeist(); return true;
+    case 'heist_loot': if (H && H.id === d.hid && !H.opened) heistLoot(d.bags); return true;
+    case 'heist_bag': if (H && H.id === d.hid) takeBag(d.i, false); return true;
+  }
+  return false;
+}
+function updateStage2(dt) {
+  if (!MP.on) { if (state.passenger) exitPassenger(); if (state.mpRace) finishMpRace('void'); if (state.heist) endHeist(true); return; }
+  updateMpRace(dt); updateHeist(dt);
+  if (state.dead || state.inCar || state.passenger || state.interior) return;
+  const rv = nearRemoteVehicle(4.5);
+  if (rv) { state.interact = { label: `🚗 ${rv.info.name} ARACINA BİN`, fn: () => enterAsPassenger(rv) }; return; }
+  if (state.mission || state.mpRace || state.raceInv) return;
+  for (const r of MP.remotes.values()) if (Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 14) { state.interact = { label: `🏁 ${r.info.name} İLE YARIŞ`, fn: () => openRacePanel(r) }; return; }
+}
+function initStage2UI() {
+  buildRaceMarker();
+  const tap = (el, fn) => { el.addEventListener('click', e => { e.stopPropagation(); fn(e); }); el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); fn(e); }, { passive: false }); };
+  tap($('racePanel'), e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.bet === 'x') $('racePanel').style.display = 'none'; else sendRaceInvite($('racePanel').dataset.to, +b.dataset.bet); });
+  tap($('invite'), e => { const b = e.target.closest('button'); if (!b || b.disabled) return; answerInvite(b.dataset.inv === '1'); });
+}
+
+// ---------------- performance helpers (chunk culling)
+const CHUNK_MESHES = [];
+let cullT = 0;
+function cullChunks(dt) {
+  cullT += dt; if (cullT < 0.3 || !CHUNK_MESHES.length) return; cullT = 0;
+  const far = (state.interior ? 1e9 : scene.fog.far) * 1.05, cx = camera.position.x, cz = camera.position.z;
+  for (const m of CHUNK_MESHES) { if (!m) continue; const s = m.geometry.boundingSphere; m.visible = state.interior ? false : Math.hypot(s.center.x - cx, s.center.z - cz) - s.radius < far; }
+}
+
 // ============================================================ RADIO (procedural synthwave)
 const Radio = {
   timer: null, step: 0, next: 0, gain: null, on: false,
@@ -4150,7 +4417,7 @@ function loop(now) {
   updateSky(dt);
   if (state.dead) { state.deadTimer -= dt; if (state.deadTimer <= 0) respawn(); }
   else {
-    if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
+    if (state.passenger) updatePassenger(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
     if (input.fire) fire();
   }
   if (state.fireCd > 0) state.fireCd -= dt;
@@ -4163,7 +4430,7 @@ function loop(now) {
       else if (c.spec.heli) { if (c.power > 0.01 || c.dead || c.y > heliFloor(c) + 0.05) heliPhysics(c, dt, 0, 0, 0); }
       else if (carSpeed(c) > 0.05 || c.air) carPhysics(c, dt, 0, 0, c.mode === 'dead');
     }
-    c.group.visible = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < 320;
+    c.group.visible = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < (QUALITY === 'low' ? 170 : QUALITY === 'medium' ? 240 : 320);
   }
   const pd = updatePolice(dt);
   carCollisions();
@@ -4177,6 +4444,8 @@ function loop(now) {
   updateTurfs(dt);
   updateStoryGiver(dt);
   updateInteriors(dt);
+  updateStage2(dt);
+  cullChunks(dt);
   updateEvents(dt);
   updatePackages(dt);
   recyclePopulation(dt);

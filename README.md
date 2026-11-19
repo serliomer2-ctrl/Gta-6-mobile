@@ -37,7 +37,7 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **📷 Fotoğraf modu** (telefon → Foto): oyunu durdurur, kamerayı serbestçe döndür, JPG olarak kaydet
 - **⚙️ Ayarlar** (telefon): FPS göstergesi, otomatik çözünürlük, titreşim, kamera hassasiyeti, grafik kalitesi, kaydı sıfırla
 - **Daha yumuşak grafik**: dizli/dirsekli, yüzlü yeni karakterler; yuvarlatılmış araç gövdeleri ve jantlı tekerlekler; daha yuvarlak ağaçlar; bina saçakları; Orta kalitede FXAA kenar yumuşatma
-- **Performans**: FPS düşünce çözünürlük otomatik ayarlanır, Orta/Düşük'te gölgeler yarı hızda güncellenir, sekme arka plandayken oyun durur
+- **Performans**: Düşük kalitede %45 daha az çizim çağrısı (uzak bina blokları, yaya ve araçlar gizlenir, bulut/ortam yansıması kapalı), FPS düşünce çözünürlük otomatik ayarlanır, Orta/Düşük'te gölgeler yarı hızda güncellenir, sekme arka plandayken oyun durur
 - **Canlı şehir**: silah sesinde trafik paniğe kapılır; araç ve yayalar oyuncunun etrafında (~150-230 m) sürekli yeniden konumlanır
 - **Araba radyosu**: VISTA FM 101.4 — anlık üretilen synthwave müzik (R / 📻)
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
@@ -50,6 +50,10 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - Kafada isim etiketi, can barı ve aranma yıldızı; mini haritada renkli noktalar
 - 💬 Hızlı sohbet (8 hazır mesaj) ve ifadeler: el sallama, dans, sevinme, korna (PC: T)
 - Sunucu gerekmez: PeerJS (WebRTC) ile eşler arası; para ve envanter tek oyunculudan gelir
+- Konum paketleri ayrı, hızlı (güvenilmez/sırasız) kanaldan gider; paket kaybında 250 ms'e kadar tahmin (extrapolation)
+- **🚗 Yolcu koltuğu**: başka oyuncunun aracına yaklaş → "ARACINA BİN" (F); yolcuyken ATEŞ ile camdan ateş et
+- **🏁 Sokak yarışı**: bir oyuncunun yanında "İLE YARIŞ" → bahis seç → kabul edilince haritada mavi fişek; ilk varan bahsi alır
+- **💼 Ortak soygun**: her 5 dakikada zırhlı konvoy tüm oyuncuların haritasında belirir; korumaları temizle, kasayı aç, saçılan para çantalarını kap
 
 Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
 

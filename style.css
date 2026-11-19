@@ -210,3 +210,12 @@ body.online.playing #mpPill{display:block}body.online.playing #bChat{display:fle
 #chatFeed div{background:#0007;border-radius:8px;padding:3px 8px;margin-top:4px;transition:opacity .5s}
 body.photo #mpPill,body.photo #bChat,body.talking #bChat,body.photo #chatFeed{display:none!important}
 @media (max-height:500px){#bChat{bottom:auto;top:calc(252px + env(safe-area-inset-top,0px));width:44px;height:44px;font-size:21px}#chatPanel{bottom:auto;top:20px}#mpPill{bottom:84px}#lobby{padding:8px 12px}.lbRow{margin-bottom:5px}}
+
+/* ---------- MP STAGE 2 ---------- */
+#racePanel,#invite{display:none;position:fixed;z-index:57;left:50%;transform:translateX(-50%);top:18%;width:min(420px,92vw);background:rgba(14,16,20,.95);border:1px solid #2a7aff88;border-radius:14px;padding:12px 14px;color:#fff;font-family:'Rajdhani',sans-serif;text-align:center;box-shadow:0 10px 40px #000a}
+#racePanel b,#invite b{display:block;font-size:19px}#racePanel small,#invite small{display:block;color:#ffffffaa;margin:2px 0 10px}
+#racePanel div,#invite div{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#racePanel button,#invite button{min-width:84px;min-height:46px;border:0;border-radius:10px;background:#1e6ad8;color:#fff;font:700 16px 'Rajdhani',sans-serif;cursor:pointer}
+#racePanel button:disabled,#invite button:disabled{opacity:.4}
+#racePanel button.gray{margin-top:8px;background:#3a3f47}#invite button.red{background:#c8283a}
+body.passenger .btn.foot{display:none}
