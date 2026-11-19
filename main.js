@@ -49,8 +49,7 @@ $('playBtn').addEventListener('click', async () => {
     $('start').style.display = 'none';
     $('hud').style.display = 'block';
     if (isTouch) $('touch').style.display = 'block'; else $('cross').style.display = 'block';
-    showBig('VISTA BAY', '#ffffff', 2.5, 'Şehir senin. Silah dükkanı 🔫 ve galeri 🚗 haritada.');
-    setTimeout(newMission, 3000);
+    showBig('VISTA BAY', '#ffffff', 3, 'Sarı halkalar = görev · 🔫 Silah · 🔧 Garaj · 🚗 Galeri haritada');
     lastT = performance.now();
     requestAnimationFrame(loop);
   }, 30);
@@ -65,7 +64,7 @@ const state = {
   money: 0, shownMoney: 0, health: 100, armor: 0, heat: 0, wanted: 0, time: 16.4, inCar: null,
   mission: null, missionCooldown: 0, dead: false, deadTimer: 0, fireCd: 0, lastLookInput: 0,
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
-  weapon: 0, ammo: [Infinity, 150, 0, 0, 0], shopOpen: null, saveT: 0, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true
+  weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true
 };
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
@@ -331,6 +330,8 @@ function init() {
   spawnPlayer();
   spawnTraffic();
   buildShops(save);
+  buildStarts();
+  if (AudioSys.master) AudioSys.master.gain.value = state.soundMode === 2 ? 0 : 0.55;
   spawnPeds();
   spawnPickups();
   initInput();
@@ -818,7 +819,8 @@ CAR_SPECS.pickup = { W: 2.0, wr: 0.44, wx: 1.6, max: 38, acc: 14, co: 1.4, cr: 1
 CAR_SPECS.van = { W: 2.0, wr: 0.4, wx: 1.55, max: 33, acc: 11, co: 1.35, cr: 1.1, body: [[-2.5, 0.4], [2.4, 0.4], [2.5, 0.9], [2.35, 1.2], [1.6, 1.33], [0, 1.35], [-2.5, 1.35], [-2.56, 0.9]], cab: [[1.55, 1.3], [0.9, 2.15], [-2.42, 2.2], [-2.48, 1.3]] };
 CAR_SPECS.super = { W: 2.02, wr: 0.36, wx: 1.45, max: 74, acc: 32, body: [[-2.3, 0.26], [2.35, 0.26], [2.45, 0.42], [2.3, 0.56], [0.7, 0.8], [-1.6, 0.9], [-2.3, 0.86], [-2.36, 0.5]], cab: [[0.75, 0.78], [-0.15, 1.12], [-0.95, 1.13], [-1.7, 0.86]] };
 CAR_SPECS.bike = { W: 0.7, wr: 0.34, wx: 0.78, max: 64, acc: 30, bike: true, cr: 0.55, co: 0.62 };
-CAR_SPECS.taxi = CAR_SPECS.sedan; CAR_SPECS.police = { ...CAR_SPECS.sedan, max: 50, acc: 20 };
+CAR_SPECS.taxi = CAR_SPECS.sedan;
+CAR_SPECS.armored = { ...CAR_SPECS.suv, max: 36, acc: 13, armored: true }; CAR_SPECS.police = { ...CAR_SPECS.sedan, max: 50, acc: 20 };
 const carGeoCache = {};
 function carGeos(kind) {
   if (carGeoCache[kind]) return carGeoCache[kind];
@@ -843,6 +845,7 @@ function carGeos(kind) {
   const c0 = s.cab[0];
   trimL.push(colorize(new THREE.BoxGeometry(0.03, 0.12, 0.34).translate(fx + 0.03, s.body[0][1] + 0.12, 0), '#f2f2ea'), colorize(new THREE.BoxGeometry(0.03, 0.12, 0.34).translate(rx - 0.03, ly - 0.1, 0), '#f2f2ea'));
   for (const sz of [1, -1]) trimL.push(colorize(new THREE.BoxGeometry(0.14, 0.12, 0.2).translate(c0[0] - 0.2, c0[1] + 0.08, sz * (W / 2 + 0.06)), '#1a1a1c'));
+  if (kind === 'armored') trimL.push(colorize(new THREE.BoxGeometry(0.12, 0.5, W - 0.2).translate(fx + 0.12, s.body[0][1] + 0.3, 0), '#2a2a2a'), colorize(new THREE.BoxGeometry(2.6, 0.08, W + 0.06).translate(-0.2, s.body[4][1] - 0.1, 0), '#3a3c40'));
   if (kind === 'pickup') trimL.push(colorize(new THREE.BoxGeometry(1.7, 0.04, W - 0.3).translate(-1.65, 1.3, 0), '#141414'));
   if (kind === 'taxi') trimL.push(colorize(new THREE.BoxGeometry(0.5, 0.2, 0.25).translate((p1[0] + p2[0]) / 2, Math.max(p1[1], p2[1]) + 0.2, 0), '#ffe36e'));
   const trim = merge(trimL);
@@ -885,7 +888,7 @@ function createBike(color, x, z, h, mode) {
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.6).rotateX(-Math.PI / 2), M.blob); blob.position.y = 0.04; group.add(blob);
   group.position.set(x, groundY(x, z), z); group.rotation.y = h; scene.add(group);
   const car = { group, inner, paint, paintM, spinners, fronts, siren: null, kind: 'bike', spec: s, h, vx: 0, vz: 0, y: group.position.y, vy: 0, air: false, steer: 0, spin: 0, mode, health: 70, driver: false, active: true, ai: null, stuck: 0, reverseT: 0, smokeT: 0, police: false, pathT: 0, path: null, shootT: 2, idleT: 0, dead: false, honk: 0 };
-  cars.push(car); return car;
+  cars.push(initCar(car)); return car;
 }
 function createCar(kind, color, x, z, h, mode) {
   if (kind === 'bike') return createBike(color, x, z, h, mode);
@@ -913,27 +916,28 @@ function createCar(kind, color, x, z, h, mode) {
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(s.W + 0.7, 5.4).rotateX(-Math.PI / 2), M.blob); blob.position.y = 0.04; group.add(blob);
   group.position.set(x, groundY(x, z), z); group.rotation.y = h; scene.add(group);
   const car = { group, inner, paint, paintM, spinners, fronts, siren, kind, spec: s, h, vx: 0, vz: 0, y: group.position.y, vy: 0, air: false, steer: 0, spin: 0, mode, health: 100, driver: mode !== 'free', active: true, ai: null, stuck: 0, reverseT: 0, smokeT: 0, police: kind === 'police', pathT: 0, path: null, shootT: 2, idleT: 0, dead: false, honk: 0 };
-  cars.push(car); return car;
+  cars.push(initCar(car)); return car;
 }
 const carSpeed = c => Math.hypot(c.vx, c.vz);
 const carFwd = c => c.vx * Math.sin(c.h) + c.vz * Math.cos(c.h);
 
 function carPhysics(c, dt, throttle, steerIn, hand) {
-  const s = c.spec, sin = Math.sin(c.h), cos = Math.cos(c.h);
+  const s = c.spec, sin = Math.sin(c.h), cos = Math.cos(c.h), up = c.up || { engine: 0, grip: 0 };
+  const sMax = s.max * (1 + 0.2 * up.engine), sAcc = s.acc * (1 + 0.15 * up.engine), brk = 1 + 0.2 * up.grip;
   let vF = c.vx * sin + c.vz * cos, vL = c.vx * -cos + c.vz * sin;
   const grounded = !c.air;
   if (grounded) {
-    if (throttle > 0) { vF += (vF < -0.5 ? 30 : s.acc * (1 - Math.max(0, vF) / s.max * 0.85)) * throttle * dt; }
-    else if (throttle < 0) { vF += (vF > 0.5 ? -32 : -9 * (vF > -12 ? 1 : 0)) * -throttle * dt; }
+    if (throttle > 0) { vF += (vF < -0.5 ? 30 * brk : sAcc * (1 - Math.max(0, vF) / sMax * 0.85)) * throttle * dt; }
+    else if (throttle < 0) { vF += (vF > 0.5 ? -32 * brk : -9 * (vF > -12 ? 1 : 0)) * -throttle * dt; }
     else vF -= Math.sign(vF) * Math.min(Math.abs(vF), (c.mode === 'player' ? 2.5 : 7) * dt);
     vF -= vF * Math.abs(vF) * 0.0011 * dt * 60 * 0.06;
     if (hand) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 9 * dt);
-    vF = clamp(vF, -14, s.max);
+    vF = clamp(vF, -14, sMax);
     const maxSteer = (s.bike ? 0.7 : 0.62) / (1 + Math.abs(vF) / (s.bike ? 20 : 16));
     c.steer = damp(c.steer, steerIn * maxSteer, 8, dt);
     const yawRate = -vF / 2.7 * Math.tan(c.steer) * (hand ? 1.35 : 1);
     c.h += yawRate * dt;
-    const grip = (hand ? 1.6 : (c.mode === 'player' ? (s.bike ? 9 : 6.5) : 10)) * (1 - 0.35 * state.rain);
+    const grip = (hand ? 1.6 : (c.mode === 'player' ? (s.bike ? 9 : 6.5) * brk : 10)) * (1 - 0.35 * state.rain);
     vL *= Math.exp(-grip * dt);
     c.drift = Math.abs(vL);
   } else { c.steer = damp(c.steer, 0, 2, dt); c.drift = 0; }
@@ -980,6 +984,7 @@ function bikeCrash(c, impact) {
 }
 function damageCar(c, amt, fromCrash) {
   if (c.dead) return;
+  if (c.up && c.up.armor) amt *= 0.5;
   c.health -= amt;
   if (c.mode === 'player' && fromCrash) state.health -= amt * 0.12;
   if (c.health <= 0) explodeCar(c);
@@ -993,8 +998,8 @@ function explodeCar(c) {
   if (c.police) addHeat(1.2);
   if (state.inCar === c) { exitCar(true); state.health -= 45; }
   setTimeout(() => {
-    if (!c.dead || c.police || c.display) return;
-    if (c.owned) { const [x, z] = dealerSpot(cars.filter(o => o.owned).indexOf(c)); c.dead = false; c.health = 100; c.paint.material = c.paintM; c.mode = 'free'; c.vx = c.vz = 0; c.air = false; c.group.position.set(x, 0, z); c.y = 0; c.h = Math.PI / 2; c.group.rotation.set(0, c.h, 0); floatText('Sigorta: aracın galeride'); }
+    if (!c.dead || c.police || c.display || c.delivery) return;
+    if (c.owned) { const [x, z] = dealerSpot(cars.filter(o => o.owned).indexOf(c)); c.dead = false; c.health = c.maxHealth; c.paint.material = c.paintM; c.mode = 'free'; c.vx = c.vz = 0; c.air = false; c.group.position.set(x, 0, z); c.y = 0; c.h = Math.PI / 2; c.group.rotation.set(0, c.h, 0); floatText('Sigorta: aracın galeride'); }
     else respawnTrafficCar(c);
   }, 25000);
 }
@@ -1024,7 +1029,7 @@ function enterCar() {
   best.mode = 'player'; best.driver = true; state.inCar = best;
   if (best.spec.bike) { best.group.add(player.human.g); player.human.g.position.set(0, 0.45, -0.28); player.human.g.rotation.set(0.32, 0, 0); }
   else player.human.g.visible = false;
-  if (state.radioOn) floatText('📻 VISTA FM 101.4');
+  if (state.soundMode === 0) floatText('📻 VISTA FM 101.4');
   document.body.classList.add('incar');
   AudioSys.door();
 }
@@ -1112,13 +1117,14 @@ const WEAPONS = [
   { name: 'ROKETATAR', icon: '🚀', cd: 1.3, range: 140, cone: 0.25, rocket: true, vol: 1 },
 ];
 function nextWeapon(dir = 1) {
-  const L = WEAPONS.length; for (let k = 1; k <= L; k++) { const i = (state.weapon + dir * k + L * 2) % L; if (state.ammo[i] > 0) { state.weapon = i; break; } }
+  const L = WEAPONS.length; for (let k = 1; k <= L; k++) { const i = (state.weapon + dir * k + L * 2) % L; if (state.ownedW[i] && state.ammo[i] > 0) { state.weapon = i; break; } }
   AudioSys.tone(700, 0.05, 0.12, 'square');
 }
-function selectWeapon(i) { if (state.ammo[i] > 0) { state.weapon = i; AudioSys.tone(700, 0.05, 0.12, 'square'); } }
+function selectWeapon(i) { if (state.ownedW[i] && state.ammo[i] > 0) { state.weapon = i; AudioSys.tone(700, 0.05, 0.12, 'square'); } }
 function fire() {
   if (state.fireCd > 0 || state.dead) return;
-  if (state.ammo[state.weapon] <= 0) { nextWeapon(); return; }
+  if (!state.ownedW[state.weapon] || state.ammo[state.weapon] <= 0) { nextWeapon(); return; }
+  haptic(20);
   const w = WEAPONS[state.weapon];
   state.fireCd = w.cd;
   if (state.ammo[state.weapon] !== Infinity) state.ammo[state.weapon]--;
@@ -1163,10 +1169,12 @@ function fire() {
   if (state.wanted < 1) for (const p of peds) if (!p.dead && dist2(p) < 900) { addHeat(1); break; }
   for (const p of peds) if (!p.dead && dist2(p) < 1600) { p.panic = 8; p.fleeX = p.x - ox; p.fleeZ = p.z - oz; }
 }
-const rockets = []; let rocketGeo = null, rocketMat = null;
+const rockets = [], rocketPool = []; let rocketGeo = null, rocketMat = null;
 function launchRocket(x, y, z, dx, dy, dz) {
   if (!rocketGeo) { rocketGeo = merge([colorize(new THREE.CylinderGeometry(0.07, 0.09, 0.7, 8).rotateX(Math.PI / 2), '#6a6f58'), colorize(new THREE.ConeGeometry(0.09, 0.25, 8).rotateX(Math.PI / 2).translate(0, 0, 0.47), '#c03020')]); rocketMat = new THREE.MeshStandardMaterial({ vertexColors: true }); }
-  const m = new THREE.Mesh(rocketGeo, rocketMat); m.position.set(x, y, z); m.lookAt(x + dx, y + dy, z + dz); scene.add(m);
+  if (rockets.length >= 8) return;
+  const m = rocketPool.pop() || (() => { const n = new THREE.Mesh(rocketGeo, rocketMat); scene.add(n); return n; })();
+  m.visible = true; m.position.set(x, y, z); m.lookAt(x + dx, y + dy, z + dz);
   rockets.push({ m, vx: dx * 65, vy: dy * 65, vz: dz * 65, t: 2.6 });
 }
 function updateRockets(dt) {
@@ -1181,7 +1189,7 @@ function updateRockets(dt) {
     }
     FX.norm.spawn(p.x, p.y, p.z, MR(-0.3, 0.3), MR(-0.3, 0.3), MR(-0.3, 0.3), 1.3, 0.4, 1.8, 0.75, 0.75, 0.78, 0.5, -0.3);
     FX.add.spawn(p.x, p.y, p.z, 0, 0, 0, 0.08, 0.55, 0, 3, 1.5, 0.4, 1, 0);
-    if (hit || r.t <= 0) { explosion(p.x, p.y, p.z, true); scene.remove(r.m); rockets.splice(i, 1); }
+    if (hit || r.t <= 0) { explosion(p.x, p.y, p.z, true); r.m.visible = false; rocketPool.push(r.m); rockets.splice(i, 1); haptic(60); }
   }
 }
 function killPed(p, byPlayer) {
@@ -1230,7 +1238,7 @@ function placeOnRoad(c, anywhere) {
   c.mode = 'ai'; c.driver = true;
 }
 function respawnTrafficCar(c) {
-  c.dead = false; c.health = 100; c.paint.material = c.paintM; c.vx = c.vz = 0; c.air = false; c.vy = 0;
+  c.dead = false; c.health = c.maxHealth || 100; c.paint.material = c.paintM; c.vx = c.vz = 0; c.air = false; c.vy = 0;
   c.group.rotation.set(0, 0, 0); placeOnRoad(c, false);
 }
 function aiTarget(a) {
@@ -1300,12 +1308,13 @@ function updatePolice(dt) {
       }
     }
   }
-  let nearest = 1e9;
+  let nearest = 1e9, see = false;
   for (const c of pc) {
     if (!c.active) continue;
     const p = c.group.position, d = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
     if (c.mode !== 'police') { if (c.mode === 'dead' || c.mode === 'free') { if (d > 160) { c.active = false; c.group.visible = false; } } continue; }
     nearest = Math.min(nearest, d);
+    if (!see && d < 75 && state.wanted > 0 && los(p.x, 1.5, p.z, player.pos.x, 1.5, player.pos.z)) see = true;
     if (state.wanted === 0) { c.idleT += dt; carPhysics(c, dt, 0, 0, false); if (c.idleT > 6 || d > 140) { c.active = false; c.group.visible = false; } continue; }
     // targeting
     let tx = player.pos.x, tz = player.pos.z;
@@ -1340,6 +1349,7 @@ function updatePolice(dt) {
     // bust: on foot, police very close and stopped
     if (!state.inCar && d < 4.5 && carSpeed(c) < 3 && state.wanted <= 2) { c.bustT = (c.bustT || 0) + dt; if (c.bustT > 2.5) busted(); } else c.bustT = 0;
   }
+  state.policeSee = see;
   return nearest;
 }
 function applyDamage(a) { if (state.armor > 0) { const t = Math.min(state.armor, a * 0.7); state.armor -= t; a -= t; } state.health -= a; state.shake = Math.max(state.shake, 0.25); }
@@ -1451,11 +1461,11 @@ function updatePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i]; p.t += dt;
     if (Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < (state.inCar ? 2.8 : 1.4)) {
-      AudioSys.pickup();
+      if (p.kind === 'cash') AudioSys.cash(); else AudioSys.pickup(); haptic(25);
       if (p.kind === 'cash') { state.money += p.amt; floatText('+$' + p.amt); }
       else {
         floatText(CRATES[p.kind][1]);
-        if (p.kind === 'w1') state.ammo[1] += 120; else if (p.kind === 'w2') state.ammo[3] += 16; else if (p.kind === 'w3') state.ammo[4] += 4;
+        const wi = { w1: 1, w2: 3, w3: 4 }[p.kind]; if (wi) { state.ownedW[wi] = true; state.ammo[wi] += [0, 120, 0, 16, 4][wi]; }
         else if (p.kind === 'hp') state.health = 100; else state.armor = 100;
         if (p.kind[0] === 'w' && state.weapon === 0) state.weapon = { w1: 1, w2: 3, w3: 4 }[p.kind];
       }
@@ -1474,7 +1484,7 @@ function updatePickups(dt) {
   cashMesh.count = n; cashMesh.instanceMatrix.needsUpdate = true;
   crateMesh.count = nc; crateMesh.instanceMatrix.needsUpdate = true; if (crateMesh.instanceColor) crateMesh.instanceColor.needsUpdate = true;
 }
-const MCOL = { reach: 0xffc020, race: 0x20e0ff, taxi: 0x40ff80, hit: 0xff3040 };
+const MCOL = { reach: 0xffc020, race: 0x20e0ff, taxi: 0x40ff80, hit: 0xff3040, delivery: 0xff9a20 };
 function setMarker(x, z, type) {
   markerGroup.position.set(x, 0, z); markerGroup.visible = true;
   markerGroup.children[0].material.color.setHex(MCOL[type]); markerGroup.children[1].material.color.setHex(MCOL[type]);
@@ -1484,8 +1494,24 @@ function farNode(d0, d1, fx = player.pos.x, fz = player.pos.z) {
   for (let t = 0; t < 80; t++) { const i = RI(0, N), j = RI(0, N), x = nodeP(i), z = nodeP(j), d = Math.hypot(x - fx, z - fz); if (d > d0 && d < d1) return [x, z, d]; if (!bestN || Math.abs(d - d0) < Math.abs(bestN[2] - d0)) bestN = [x, z, d]; }
   return bestN;
 }
-function newMission() {
-  const type = pick(['reach', 'race', 'race', 'taxi', 'taxi', 'hit']);
+function retireDeliveryCar() {
+  const old = state.dcar; if (!old || old === state.inCar) return;
+  old.active = false; old.group.visible = false; old.dead = true; state.dcar = null;
+}
+function newMission(type = pick(['reach', 'race', 'race', 'taxi', 'taxi', 'hit']), sx = player.pos.x, sz = player.pos.z) {
+  haptic(40);
+  if (type === 'delivery') {
+    // a special car appears next to the start ring; bring it to the garage
+    retireDeliveryCar();
+    const c = createCar(pick(['super', 'sport']), pick(['#d4a017', '#c0c4ca', '#8a1018', '#101014']), sx + 6, sz, Math.PI / 2, 'free');
+    c.driver = false; c.delivery = true; state.dcar = c;
+    const g = SHOPS.find(o => o.type === 'garage'), d = Math.hypot(g.x - sx, g.z - sz);
+    const reward = Math.round((1800 + d * 2.5) / 10) * 10;
+    state.mission = { type, stage: 0, car: c, x: sx, z: sz, time: 45, reward, base: reward };
+    setMarker(sx, sz, type);
+    showBig('ARAÇ TESLİMATI', '#ff9a20', 3, `Lüks aracı al, polislerden kaç ve garaja hasarsız getir · $${reward}`);
+    return;
+  }
   if (type === 'race') {
     const cps = []; let fx = player.pos.x, fz = player.pos.z, total = 25;
     for (let k = 0; k < 5; k++) { const n = farNode(110, 230, fx, fz); cps.push(n); total += n[2] / 16 + 4; fx = n[0]; fz = n[1]; }
@@ -1503,7 +1529,7 @@ function newMission() {
     showBig('TAKSİ', '#7dff9a', 2.5, 'Yolcuyu al ve gideceği yere götür');
   } else if (type === 'hit') {
     const cand = cars.filter(c => c.active && c.mode === 'ai' && !c.dead && Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) > 120);
-    if (!cand.length) return newMission();
+    if (!cand.length) return newMission('race', sx, sz);
     const c = pick(cand); c.health = 140;
     state.mission = { type, target: c, x: 0, z: 0, time: 120, reward: 1500 };
     setMarker(c.group.position.x, c.group.position.z, type);
@@ -1516,17 +1542,17 @@ function newMission() {
     showBig('GÖREV', '#ffd23a', 2, `İşarete ${time} saniyede ulaş · Ödül $${reward}`);
   }
 }
-function missionPos() { const m = state.mission; return m.type === 'hit' ? [m.target.group.position.x, m.target.group.position.z] : [m.x, m.z]; }
+function missionPos() { const m = state.mission; return m.type === 'hit' ? [m.target.group.position.x, m.target.group.position.z] : m.type === 'delivery' && m.stage === 0 ? [m.car.group.position.x, m.car.group.position.z] : [m.x, m.z]; }
 function missionEnd(ok, sub) {
   const m = state.mission;
-  if (ok) { state.money += m.reward; showBig('GÖREV TAMAMLANDI', '#7dff9a', 3, `+$${m.reward}` + (sub ? ' · ' + sub : '')); AudioSys.success(); state.armor = Math.min(100, state.armor + 25); state.ammo[1] += 60; }
-  else { showBig('GÖREV BAŞARISIZ', '#ff3b3b', 2.5, sub); AudioSys.fail(); }
+  if (ok) { state.money += m.reward; showBig('GÖREV TAMAMLANDI', '#7dff9a', 3, `+$${m.reward}` + (sub ? ' · ' + sub : '')); AudioSys.success(); AudioSys.cash(); haptic([40, 40, 90]); state.armor = Math.min(100, state.armor + 25); state.ammo[1] += 60; saveGame(); }
+  else { showBig('GÖREV BAŞARISIZ', '#ff3b3b', 2.5, sub); AudioSys.fail(); haptic(120); }
   if (passenger) passenger.g.visible = false;
   state.mission = null; markerGroup.visible = false; state.missionCooldown = 4;
 }
 function updateMission(dt) {
   const m = state.mission, el = $('mission');
-  if (!m) { el.style.display = 'none'; if (state.missionCooldown > 0) { state.missionCooldown -= dt; if (state.missionCooldown <= 0) newMission(); } return; }
+  if (!m) { el.style.display = 'none'; return; }
   m.time -= dt;
   const [tx, tz] = missionPos(), d = Math.hypot(tx - player.pos.x, tz - player.pos.z), t = Math.max(0, Math.ceil(m.time));
   const c = state.inCar, sp = c ? carSpeed(c) : 0;
@@ -1534,13 +1560,35 @@ function updateMission(dt) {
   el.style.borderLeftColor = m.time < 10 ? '#ff3b3b' : '#' + MCOL[m.type].toString(16).padStart(6, '0');
   markerGroup.children[0].material.opacity = 0.7 + Math.sin(state.now * 4) * 0.3;
   markerGroup.children[1].scale.setScalar(1 + Math.sin(state.now * 3) * 0.1);
-  if (m.type === 'reach') {
-    el.textContent = `🎯 İşarete ulaş · ${t} sn · ${Math.round(d)} m`;
+  const rw = ` · 💵 $${m.reward}`;
+  if (m.type === 'delivery') {
+    const dc = m.car, hp = Math.max(0, Math.round(dc.health / dc.maxHealth * 100));
+    if (dc.dead) return missionEnd(false, 'Teslimat aracı yok oldu');
+    if (m.stage === 0) {
+      markerGroup.position.set(tx, dc.y, tz);
+      el.textContent = `📦 Lüks araca bin · ${t} sn · ${Math.round(d)} m` + rw;
+      if (c === dc) {
+        const g = SHOPS.find(o => o.type === 'garage'), dd = Math.hypot(g.x - player.pos.x, g.z - player.pos.z);
+        m.stage = 1; m.x = g.x; m.z = g.z; m.time = Math.round(dd / 11 + 40); setMarker(g.x, g.z, 'delivery');
+        state.heat = Math.max(state.heat, 2.3); state.crimeTimer = 0;
+        showBig('POLİS PEŞİNDE!', '#ff4040', 2.5, 'Aracı garaja götür · hasar ödülü düşürür');
+      }
+    } else {
+      m.reward = Math.round(m.base * (0.3 + 0.7 * hp / 100) / 10) * 10;
+      el.textContent = `📦 Garaja teslim et · ${t} sn · ${Math.round(d)} m · Sağlam %${hp} · 💵 $${m.reward}`;
+      if (c === dc && d < 6) {
+        exitCar(true); dc.active = false; dc.group.visible = false; state.dcar = null;
+        return missionEnd(true, `Araç %${hp} sağlam teslim edildi`);
+      }
+      if (c !== dc && Math.hypot(dc.group.position.x - player.pos.x, dc.group.position.z - player.pos.z) > 60) return missionEnd(false, 'Aracı terk ettin');
+    }
+  } else if (m.type === 'reach') {
+    el.textContent = `🎯 İşarete ulaş · ${t} sn · ${Math.round(d)} m` + rw;
     if (d < 6) return missionEnd(true);
   } else if (m.type === 'race') {
-    el.textContent = `🏁 Yarış ${m.idx + 1}/${m.cps.length} · ${t} sn · ${Math.round(d)} m` + (c ? '' : ' · Araca bin!');
+    el.textContent = `🏁 Yarış ${m.idx + 1}/${m.cps.length} · ${t} sn · ${Math.round(d)} m` + rw + (c ? '' : ' · Araca bin!');
     if (d < 8 && c) {
-      m.idx++; AudioSys.pickup(); floatText(`✓ ${m.idx}/${m.cps.length}`);
+      m.idx++; AudioSys.pickup(); haptic(30); floatText(`✓ ${m.idx}/${m.cps.length}`);
       if (m.idx >= m.cps.length) return missionEnd(true, `${t} sn kaldı`);
       m.x = m.cps[m.idx][0]; m.z = m.cps[m.idx][1]; setMarker(m.x, m.z, 'race');
     }
@@ -1561,7 +1609,7 @@ function updateMission(dt) {
   } else if (m.type === 'hit') {
     const tc = m.target;
     markerGroup.position.set(tx, tc.y, tz);
-    el.textContent = `💀 Hedef aracı yok et · ${t} sn · ${Math.round(d)} m`;
+    el.textContent = `💀 Hedef aracı yok et · ${t} sn · ${Math.round(d)} m` + rw;
     if (tc.dead) return missionEnd(true);
     if (!tc.active) return missionEnd(false, 'Hedef kayboldu');
     if (d < 40 && tc.ai) tc.ai.panic = 3;
@@ -1680,7 +1728,11 @@ function carCollisions() {
         if (A.mode !== 'ai') { A.vx -= nx * j; A.vz -= nz * j; } if (B.mode !== 'ai') { B.vx += nx * j; B.vz += nz * j; }
         if (impact > 8) { damageCar(A, impact * 1.2, true); damageCar(B, impact * 1.2, true); }
         if (impact > 9) { bikeCrash(A, impact); bikeCrash(B, impact); }
-        if ((A.mode === 'player' || B.mode === 'player') && impact > 3) { state.shake = Math.min(1, impact / 20); AudioSys.crash(impact / 25); if ((A.police || B.police) && impact > 6) addHeat(0.3); }
+        if ((A.mode === 'player' || B.mode === 'player') && impact > 3) {
+          state.shake = Math.min(1, impact / 20); AudioSys.crash(impact / 25);
+          const other = A.mode === 'player' ? B : A;
+          if (impact > 6 && (other.police || (other.driver && state.now > state.crashHeatT))) { addHeat(other.police ? 0.5 : 0.35); state.crashHeatT = state.now + 2.5; }
+        }
       }
     }
   }
@@ -1829,7 +1881,8 @@ const touchState = { joyId: null, jx: 0, jy: 0, jdx: 0, jdy: 0, lookId: null, lx
 function initInput() {
   addEventListener('keydown', e => {
     keys[e.code] = true;
-    if (e.code === 'KeyF' || e.code === 'KeyE' || e.code === 'Enter') enterCar();
+    if (e.code === 'KeyE' && !state.shopOpen) { if (!interact()) enterCar(); }
+    else if (e.code === 'KeyF' || e.code === 'Enter') enterCar();
     if (/^Digit[1-5]$/.test(e.code)) selectWeapon(+e.code[5] - 1);
     if (e.code === 'KeyX' || e.code === 'Tab') { e.preventDefault(); nextWeapon(); }
     if (e.code === 'KeyR') toggleRadio();
@@ -1852,6 +1905,7 @@ function initInput() {
     for (const t of e.changedTouches) {
       if (t.target.classList.contains('btn')) continue;
       if (t.clientX < innerWidth * 0.42 && touchState.joyId === null) {
+        $('joyHint').style.display = 'none';
         touchState.joyId = t.identifier; touchState.jx = t.clientX; touchState.jy = t.clientY; touchState.jdx = touchState.jdy = 0;
         joy.style.display = 'block'; joy.style.left = t.clientX + 'px'; joy.style.top = t.clientY + 'px'; knob.style.transform = '';
       } else if (touchState.lookId === null) { touchState.lookId = t.identifier; touchState.lx = t.clientX; touchState.ly = t.clientY; }
@@ -1885,7 +1939,8 @@ function initInput() {
   };
   btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand');
   btn('bEnter', 'TEnter', enterCar);
-  btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio);
+  btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact);
+  $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
 }
 function readInput() {
   const k = keys;
@@ -1948,7 +2003,8 @@ function drawMinimap() {
   for (const c of cars) if (c.active && c.police && c.mode === 'police') dot(c.group.position.x, c.group.position.z, Math.sin(state.now * 12) > 0 ? '#ff2040' : '#2060ff', 8, true);
   for (const c of cars) if (c.owned && !c.dead && c !== state.inCar) dot(c.group.position.x, c.group.position.z, '#40a0ff', 6, false);
   g.font = '22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  for (const s of SHOPS) { let [px, py] = toMap(s.x, s.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000a'; g.beginPath(); g.arc(px, py, 14, 0, 7); g.fill(); g.fillText(s.icon, px, py + 1); }
+  for (const s of SHOPS) { let [px, py] = toMap(s.x, s.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 15, 0, 7); g.fill(); g.strokeStyle = s.mapCol; g.lineWidth = 3; g.stroke(); g.fillText(s.icon, px, py + 1); }
+  if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
   // player arrow
   g.save(); g.translate(r, r); g.rotate(camYaw); g.rotate(Math.PI - (state.inCar ? state.inCar.h : player.yaw));
@@ -1972,7 +2028,17 @@ function updateHUD(dt) {
   if (!state.inCar) for (const c of cars) if (c.active && !c.dead && Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < 5) { near = true; break; }
   $('bEnter').classList.toggle('hot', near || !!state.inCar);
   const pr = $('prompt');
-  if (near && !isTouch) { pr.style.display = 'block'; pr.textContent = 'F — Araca bin'; } else pr.style.display = 'none';
+  const ia = state.interact, act = $('bAct');
+  if (ia) { act.style.display = ia.fn ? 'flex' : 'none'; act.textContent = ia.label; }
+  else act.style.display = 'none';
+  if (ia && !isTouch) { pr.style.display = 'block'; pr.textContent = ia.fn ? 'E — ' + ia.label : ia.label; }
+  else if (ia && isTouch && !ia.fn) { pr.style.display = 'block'; pr.textContent = ia.label; }
+  else if (near && !isTouch) { pr.style.display = 'block'; pr.textContent = 'F — Araca bin'; } else pr.style.display = 'none';
+  const nav = $('navArrow');
+  if (state.mission) {
+    const [mx, mz] = missionPos(), dx = mx - player.pos.x, dz = mz - player.pos.z, s = Math.sin(camYaw), c = Math.cos(camYaw);
+    nav.style.display = 'block'; nav.style.transform = `translateX(-50%) rotate(${Math.atan2(dx * c - dz * s, -dx * s - dz * c)}rad)`;
+  } else nav.style.display = 'none';
   drawMinimap();
 }
 
@@ -2027,9 +2093,10 @@ const AudioSys = {
   thunder() { this.burst(3, 140, 1.4); this.burst(1.2, 500, 0.5); },
   shot(v = 1) { this.burst(0.18, 1800, 0.6 * v); this.tone(160, 0.12, 0.35 * v, 'square', 0.3); },
   boom() { this.burst(1.6, 300, 1.2); this.tone(70, 1.2, 0.8, 'sine', 0.3); },
-  crash(v) { if (this.ctx && (this._ct || 0) < this.ctx.currentTime) { this._ct = this.ctx.currentTime + 0.25; this.burst(0.35, 900, clamp(v, 0.1, 1) * 0.8, 'bandpass', 0.7); } },
+  crash(v) { haptic(50); if (this.ctx && (this._ct || 0) < this.ctx.currentTime) { this._ct = this.ctx.currentTime + 0.25; this.burst(0.35, 900, clamp(v, 0.1, 1) * 0.8, 'bandpass', 0.7); } },
   thud() { this.tone(90, 0.25, 0.6, 'sine', 0.5); },
   door() { this.tone(220, 0.08, 0.2, 'square', 0.5); this.burst(0.1, 600, 0.3); },
+  cash() { this.tone(1568, 0.07, 0.22, 'square', 1, 0); this.tone(2093, 0.35, 0.22, 'triangle', 1, 0.06); this.tone(2637, 0.3, 0.12, 'sine', 1, 0.1); this.burst(0.12, 6000, 0.25, 'highpass'); },
   pickup() { this.tone(880, 0.12, 0.25, 'sine', 1.5); this.tone(1320, 0.15, 0.2, 'sine', 1.3, 0.08); },
   success() { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.35, 0.25, 'triangle', 1, i * 0.12)); },
   fail() { [392, 330, 262].forEach((f, i) => this.tone(f, 0.4, 0.25, 'triangle', 1, i * 0.15)); },
@@ -2041,7 +2108,7 @@ const AudioSys = {
     this.sg.gain.setTargetAtTime(sv, t, 0.2); this.so.frequency.setTargetAtTime(650 + Math.sin(state.now * 3.5) * 220, t, 0.03);
     this.ag.gain.setTargetAtTime(0.015 + clamp((player.pos.x - BEACH_X0) / 100, 0, 1) * 0.08 + state.rain * 0.16, t, 0.5);
     this.af.frequency.setTargetAtTime(400 + state.rain * 2600, t, 0.5);
-    Radio.update(!!c && state.radioOn && !state.dead);
+    Radio.update(!!c && state.soundMode === 0 && !state.dead);
   }
 };
 
@@ -2150,85 +2217,218 @@ const GradeShader = {
       gl_FragColor = vec4(clamp(col,0.0,1.0), c.a); }`
 };
 
-// ============================================================ SHOPS / SAVE
+// ============================================================ HAPTICS
+function haptic(p) {
+  if (!isTouch || !navigator.vibrate || state.soundMode === 2) return;
+  const t = performance.now(); if (t - (haptic.last || 0) < 70) return; haptic.last = t;
+  try { navigator.vibrate(p); } catch (e) { }
+}
+
+// ============================================================ ZONES (shops / garage) + SAVE
+// SHOPS: physical interaction zones. type: 'gun' | 'car' | 'garage'. needCar: interaction only from inside a vehicle.
 const SHOPS = [];
-const GUN_ITEMS = [
-  { name: 'UZI', desc: '+120 mermi · seri atış', price: 250, buy: () => { state.ammo[1] += 120; state.weapon = 1; } },
-  { name: 'SALDIRI TÜFEĞİ', desc: '+90 mermi · uzun menzil', price: 650, buy: () => { state.ammo[2] += 90; state.weapon = 2; } },
-  { name: 'POMPALI', desc: '+16 fişek · yakın mesafe', price: 450, buy: () => { state.ammo[3] += 16; state.weapon = 3; } },
-  { name: 'ROKETATAR', desc: '+4 roket · araç patlatır', price: 1500, buy: () => { state.ammo[4] += 4; state.weapon = 4; } },
-  { name: 'ÇELİK YELEK', desc: 'Zırh %100', price: 200, buy: () => { state.armor = 100; } },
-  { name: 'İLK YARDIM', desc: 'Can %100', price: 100, buy: () => { state.health = 100; } },
+const GARAGE_BLOCK = [2, 1];
+const WEAPON_SHOP = [
+  { w: 3, name: 'POMPALI TÜFEK', desc: 'Yakın mesafe, çok yüksek hasar · +16 fişek', price: 900, ammo: 16, packPrice: 200 },
+  { w: 2, name: 'TARAMALI TÜFEK', desc: 'Seri ateş, uzun menzil · +90 mermi', price: 1200, ammo: 90, packPrice: 250 },
+  { w: 4, name: 'ROKETATAR', desc: 'Alan hasarı, araç patlatır · +4 roket', price: 2500, ammo: 4, packPrice: 800 },
+  { w: 1, name: 'UZI', desc: 'Hafif makineli · +120 mermi', price: 400, ammo: 120, packPrice: 150 },
 ];
 const CAR_ITEMS = [['bike', 'Motosiklet', 1200], ['sedan', 'Sedan', 2500], ['van', 'Minibüs', 3200], ['pickup', 'Pikap', 3800], ['suv', 'SUV', 4500], ['sport', 'Spor Coupe', 9000], ['super', 'Süper Araba', 18000]];
+const PAINTS = [['Kırmızı', '#c8141e'], ['Turuncu', '#f06a10'], ['Sarı', '#f2c21a'], ['Yeşil', '#1e9a46'], ['Turkuaz', '#10a8b8'], ['Mavi', '#1e48c8'], ['Mor', '#6a28b0'], ['Siyah', '#101014'], ['Beyaz', '#f0f0f0']];
+const MAX_UP = 3;
 function dealerSpot(k) { const b = blocks[DEALER[0]][DEALER[1]]; return [b.cx - 30 + (k % 9) * 7, nodeP(DEALER[1] + 1) - (ROAD / 2 - 1.3)]; }
+function garageSpot(k) { const b = blocks[GARAGE_BLOCK[0]][GARAGE_BLOCK[1]]; return [b.cx - 20 + (k % 5) * 7, nodeP(GARAGE_BLOCK[1] + 1) - (ROAD / 2 - 1.3)]; }
+function initCar(c) { c.up = { engine: 0, grip: 0, armor: 0 }; c.maxHealth = c.spec.armored ? 320 : c.health; c.health = c.maxHealth; return c; }
 function buildShops(save) {
-  const mk = (type, x, z, title, icon, bg, fg) => {
-    const tex = canvasTex(512, 128, g => { g.fillStyle = bg; g.fillRect(0, 0, 512, 128); g.strokeStyle = fg; g.lineWidth = 5; g.strokeRect(10, 10, 492, 108); g.fillStyle = fg; g.font = 'bold 58px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(title, 256, 68); });
-    const face = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.15 }), dark = new THREE.MeshStandardMaterial({ color: 0x222222 });
-    const board = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.6, 0.16), [dark, dark, dark, dark, face, face]); board.position.set(x, 4.2, z);
-    const poles = new THREE.Mesh(merge([new THREE.CylinderGeometry(0.08, 0.08, 4, 6).translate(-2.6, 2, 0), new THREE.CylinderGeometry(0.08, 0.08, 4, 6).translate(2.6, 2, 0)]), dark); poles.position.set(x, 0.25, z - 0.1);
-    board.castShadow = true; scene.add(board, poles);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1.4, 1.8, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: type === 'gun' ? 0xff8030 : 0x40a0ff, transparent: true, opacity: 0.85, depthWrite: false }));
-    ring.position.set(x, 0.28, z + 1.8); scene.add(ring);
+  const mk = (type, x, z, title, icon, bg, fg, ringCol, o = {}) => {
+    const tex = canvasTex(512, 128, g => {
+      g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
+      g.shadowColor = fg; g.shadowBlur = o.glow ? 18 : 0;
+      g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(12, 12, 488, 104);
+      g.fillStyle = fg; g.font = 'bold 56px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(title, 256, 68);
+    });
+    const face = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: o.glow ? 0.9 : 0.15 }), dark = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const board = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.6, 0.16), [dark, dark, dark, dark, face, face]); board.position.set(x, o.signY ?? 4.2, z);
+    board.castShadow = true; scene.add(board);
+    if (!o.canopy) { const poles = new THREE.Mesh(merge([new THREE.CylinderGeometry(0.08, 0.08, 4, 6).translate(-2.6, 2, 0), new THREE.CylinderGeometry(0.08, 0.08, 4, 6).translate(2.6, 2, 0)]), dark); poles.position.set(x, 0.25, z - 0.1); scene.add(poles); }
+    const rr = o.ringR ?? 1.8, rz = z + (o.ringOff ?? 1.8);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(rr - 0.4, rr, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: ringCol, transparent: true, opacity: 0.85, depthWrite: false }));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(rr - 0.4, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: ringCol, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ring.position.set(x, 0.29, rz); disc.position.set(x, 0.285, rz); scene.add(ring, disc);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(128, 128, g => { g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.arc(64, 64, 60, 0, 7); g.fill(); g.font = '72px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(icon, 64, 70); }), depthTest: true }));
-    sp.scale.set(1.4, 1.4, 1); sp.position.set(x, 2, z + 1.8); scene.add(sp);
-    SHOPS.push({ type, x, z: z + 1.8, ring, sp, icon, inside: false, face });
+    sp.scale.set(1.4, 1.4, 1); sp.position.set(x, 2, rz); scene.add(sp);
+    SHOPS.push({ type, x, z: rz, r: rr, ring, disc, sp, icon, face, glow: !!o.glow, needCar: !!o.needCar, label: o.label, mapCol: '#' + new THREE.Color(ringCol).getHexString() });
   };
-  const gb = blocks[GUNSHOP[0]][GUNSHOP[1]], db = blocks[DEALER[0]][DEALER[1]];
-  mk('gun', gb.cx, gb.cz + BLOCK / 2 - 4, 'SİLAH DÜKKANI', '🔫', '#1c1c1c', '#ffc233');
-  mk('car', db.cx + 22, db.cz + BLOCK / 2 - 4, 'VISTA MOTORS', '🚗', '#0d2c54', '#ffffff');
-  // showroom display cars
+  const gb = blocks[GUNSHOP[0]][GUNSHOP[1]], db = blocks[DEALER[0]][DEALER[1]], gg = blocks[GARAGE_BLOCK[0]][GARAGE_BLOCK[1]];
+  mk('gun', gb.cx, gb.cz + BLOCK / 2 - 4, 'SİLAH & EKİPMAN', '🔫', '#140304', '#ff2a2a', 0xff2a2a, { glow: true, label: 'MAĞAZAYI AÇ' });
+  mk('car', db.cx + 22, db.cz + BLOCK / 2 - 4, 'VISTA MOTORS', '🚗', '#0d2c54', '#ffffff', 0x40e080, { label: 'GALERİYİ AÇ' });
+  // garage: canopy service bay on the sidewalk + big ring cars can drive into
+  {
+    const x = gg.cx, z = gg.cz + BLOCK / 2 - 2.6, dark = new THREE.MeshStandardMaterial({ color: 0x2a2e36, metalness: 0.5, roughness: 0.5 });
+    const canopy = new THREE.Mesh(merge([new THREE.BoxGeometry(10, 0.35, 7).translate(0, 4.6, 1),
+      ...[[-4.7, -2.2], [4.7, -2.2], [-4.7, 4.2], [4.7, 4.2]].map(([px, pz]) => new THREE.BoxGeometry(0.25, 4.6, 0.25).translate(px, 2.3, pz))]), dark);
+    canopy.position.set(x, 0.25, z); canopy.castShadow = true; scene.add(canopy);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(10.1, 0.12, 0.12), new THREE.MeshBasicMaterial({ color: 0x2a8cff })); strip.position.set(x, 4.65, z + 4.5); scene.add(strip); M.garageStrip = strip.material;
+    mk('garage', x, z - 2.4, 'GARAJ & BOYA', '🔧', '#040a1c', '#3aa8ff', 0x2a8cff, { glow: true, canopy: true, signY: 5.7, ringR: 3.6, ringOff: 5.4, needCar: true, label: 'GARAJA GİR' });
+  }
   CAR_ITEMS.forEach(([kind], k) => { const c = createCar(kind, pick(CAR_COLORS), db.cx - 27 + k * 8.5, db.cz + 6 + (k % 2) * 6, Math.PI + 0.4, 'free'); c.display = true; c.driver = false; });
-  if (save && save.owned) save.owned.forEach(([kind, hex], k) => { const [x, z] = dealerSpot(k); const c = createCar(kind, '#' + hex, x, z, Math.PI / 2, 'free'); c.owned = true; c.driver = false; });
+  if (save && save.owned) save.owned.forEach(([kind, hex, up], k) => {
+    if (!CAR_SPECS[kind]) return;
+    const [x, z] = dealerSpot(k); const c = createCar(kind, '#' + hex, x, z, Math.PI / 2, 'free'); c.owned = true; c.driver = false;
+    if (up) Object.assign(c.up, up);
+  });
 }
+// interaction: state.interact = { label, fn } (shown as touch button / "E" prompt)
 function updateShops(dt) {
+  state.interact = null;
+  if (M.garageStrip) M.garageStrip.color.setRGB(0.16, 0.55, 1).multiplyScalar(1 + nightF * 3);
   for (const s of SHOPS) {
-    s.sp.position.y = 2 + Math.sin(state.now * 2.5) * 0.15; s.ring.material.opacity = 0.6 + Math.sin(state.now * 4) * 0.25;
-    s.face.emissiveIntensity = 0.15 + nightF * 0.9;
+    s.sp.position.y = 2 + Math.sin(state.now * 2.5) * 0.15;
+    s.ring.material.opacity = 0.6 + Math.sin(state.now * 4) * 0.25;
+    s.face.emissiveIntensity = (s.glow ? 0.7 : 0.15) + nightF * 1.2;
+    if (state.dead) continue;
     const d = Math.hypot(player.pos.x - s.x, player.pos.z - s.z);
-    if (!state.inCar && !state.dead && d < 2 && !s.inside) { s.inside = true; openShop(s.type); }
-    if (d > 4) s.inside = false;
+    if (d > s.r + 0.3) continue;
+    if (s.needCar !== !!state.inCar) { state.interact = { label: s.needCar ? 'Araçla gir' : 'Araçtan in', fn: null }; continue; }
+    if (s.needCar && state.mission && state.mission.type === 'delivery') continue;
+    state.interact = { label: s.label, fn: () => openShop(s.type) };
   }
 }
+function interact() { if (state.interact && state.interact.fn) { state.interact.fn(); return true; } return false; }
 function openShop(type) {
+  if (type === 'garage' && state.inCar) { const c = state.inCar; c.vx = c.vz = 0; }
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
-  $('shopTitle').textContent = type === 'gun' ? '🔫 SİLAH DÜKKANI' : '🚗 VISTA MOTORS';
+  touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
+  $('shopTitle').textContent = { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
+function shopItems(type) {
+  const own = i => state.ownedW[i];
+  if (type === 'gun') {
+    const it = [
+      { sec: 'Sağlık' },
+      { name: 'CAN + ZIRH YENİLEME', desc: 'Can ve zırhı anında %100 yapar', price: 300, dis: state.health >= 100 && state.armor >= 100 ? 'DOLU' : null, buy: () => { state.health = 100; state.armor = 100; } },
+      { name: 'İLK YARDIM', desc: 'Can %100', price: 100, dis: state.health >= 100 ? 'DOLU' : null, buy: () => { state.health = 100; } },
+      { name: 'ÇELİK YELEK', desc: 'Zırh %100', price: 200, dis: state.armor >= 100 ? 'DOLU' : null, buy: () => { state.armor = 100; } },
+      { sec: 'Silahlar' }];
+    for (const w of WEAPON_SHOP) it.push({ name: WEAPONS[w.w].icon + ' ' + w.name, desc: w.desc, price: w.price, dis: own(w.w) ? 'SAHİPSİN' : null, buy: () => { state.ownedW[w.w] = true; state.ammo[w.w] += w.ammo; state.weapon = w.w; } });
+    it.push({ sec: 'Mermi Paketleri' });
+    for (const w of WEAPON_SHOP) it.push({ name: WEAPONS[w.w].name + ' mermisi', desc: own(w.w) ? `+${w.ammo} · elindeki: ${state.ammo[w.w]}` : 'Önce silahı satın al', price: w.packPrice, dis: own(w.w) ? null : 'KİLİTLİ', buy: () => { state.ammo[w.w] += w.ammo; } });
+    return it;
+  }
+  if (type === 'car') return CAR_ITEMS.map(([kind, name, price]) => ({ name, price, desc: `Azami hız ${Math.round(CAR_SPECS[kind].max * 3.6)} km/s · Hızlanma ${'★'.repeat(Math.min(5, Math.round(CAR_SPECS[kind].acc / 6)))}`, buy: () => buyCar(kind, name, dealerSpot(cars.filter(c => c.owned).length), 'galerinin önünde'), close: true }));
+  // garage
+  const c = state.inCar; if (!c) return [];
+  const dmg = 1 - c.health / c.maxHealth, repair = Math.round((80 + dmg * 900 + state.wanted * 250) / 10) * 10;
+  const lvl = (n, k) => '■'.repeat(c.up[k]) + '□'.repeat(MAX_UP - c.up[k]);
+  const it = [
+    { sec: 'Servis' },
+    { name: '🛠 TAMİR ET & İZİ KAYBET', desc: `Hasar %${Math.round(dmg * 100)} · Aranma ${'★'.repeat(state.wanted) || 'yok'} → hepsi sıfırlanır`, price: repair, dis: dmg < 0.01 && state.wanted === 0 ? 'TEMİZ' : null, buy: () => repairCar(c) },
+    { sec: 'Performans' },
+    { name: `⚙ MOTOR ${lvl('Motor', 'engine')}`, desc: '+%20 azami hız ve hızlanma', price: 1500 * (c.up.engine + 1), dis: c.up.engine >= MAX_UP ? 'MAKS' : null, buy: () => { c.up.engine++; c.owned = true; } },
+    { name: `🛞 FREN & YOL TUTUŞU ${lvl('Fren', 'grip')}`, desc: '+%20 fren gücü ve tutuş', price: 1000 * (c.up.grip + 1), dis: c.up.grip >= MAX_UP ? 'MAKS' : null, buy: () => { c.up.grip++; c.owned = true; } },
+    { name: '🛡 GÖVDE ZIRHI', desc: 'Araç hasarı yarıya iner', price: 2000, dis: c.up.armor ? 'TAKILI' : c.spec.bike ? 'YOK' : null, buy: () => { c.up.armor = 1; c.owned = true; } },
+    { sec: 'Boya' }];
+  for (const [n, hex] of PAINTS) it.push({ name: `<i class="sw" style="background:${hex}"></i>${n}`, desc: 'Metalik boya', price: 250, buy: () => { c.paintM = paintMat(hex); if (!c.dead) c.paint.material = c.paintM; c.owned = true; } });
+  it.push({ sec: 'Garajdan Araç Çağır' });
+  it.push({ name: '🏎 HIZLI SPOR ARABA', desc: `Süper araba · ${Math.round(CAR_SPECS.super.max * 3.6)} km/s`, price: 16000, buy: () => buyCar('super', 'Spor araba', garageSpot(cars.filter(o => o.owned).length), 'garajın önünde'), close: true });
+  it.push({ name: '🛡 ZIRHLI ARAÇ', desc: 'Kurşun geçirmez SUV · 3x dayanıklılık', price: 12000, buy: () => buyCar('armored', 'Zırhlı araç', garageSpot(cars.filter(o => o.owned).length), 'garajın önünde'), close: true });
+  return it;
+}
 function renderShop() {
   const type = state.shopOpen, box = $('shopItems'); box.innerHTML = '';
   $('shopMoney').textContent = '$' + Math.round(state.money);
-  const items = type === 'gun' ? GUN_ITEMS : CAR_ITEMS.map(([kind, name, price]) => ({ name, price, desc: `Azami hız ${Math.round(CAR_SPECS[kind].max * 3.6)} km/s · Hızlanma ${'★'.repeat(Math.min(5, Math.round(CAR_SPECS[kind].acc / 6)))}`, buy: () => buyCar(kind, name) }));
-  for (const it of items) {
-    const el = document.createElement('div'); el.className = 'shopItem' + (state.money < it.price ? ' poor' : '');
-    el.innerHTML = `<div><b>${it.name}</b><small>${it.desc}</small></div><button>$${it.price}</button>`;
+  for (const it of shopItems(type)) {
+    const el = document.createElement('div');
+    if (it.sec) { el.className = 'shopSec'; el.textContent = it.sec; box.appendChild(el); continue; }
+    const poor = state.money < it.price;
+    el.className = 'shopItem' + (it.dis ? ' done' : poor ? ' poor' : '');
+    el.innerHTML = `<div><b>${it.name}</b><small>${it.desc}</small></div><button>${it.dis || '$' + it.price}</button>`;
     el.querySelector('button').onclick = () => {
-      if (state.money < it.price) { AudioSys.fail(); return; }
-      state.money -= it.price; state.shownMoney = state.money; it.buy(); AudioSys.pickup(); saveGame();
-      if (type === 'car') closeShop(); else renderShop();
+      if (it.dis) return;
+      if (poor) { AudioSys.fail(); haptic(60); return; }
+      state.money -= it.price; state.shownMoney = state.money; it.buy(); AudioSys.cash(); haptic(30); saveGame();
+      if (it.close) closeShop(); else renderShop();
     };
     box.appendChild(el);
   }
 }
-function buyCar(kind, name) {
-  const k = cars.filter(c => c.owned).length, [x, z] = dealerSpot(k);
-  const c = createCar(kind, pick(CAR_COLORS), x, z, Math.PI / 2, 'free'); c.owned = true; c.driver = false;
-  showBig('YENİ ARACIN HAZIR', '#7dff9a', 3, `${name} galerinin önünde seni bekliyor`);
+function repairCar(c) {
+  c.health = c.maxHealth; c.smokeT = 0; state.heat = 0; state.wanted = 0; state.crimeTimer = 99;
+  for (const p of cars) if (p.police && p.active && p.mode === 'police') p.idleT = 0;
+  floatText('Araç yenilendi · Polis izini kaybetti');
+}
+function buyCar(kind, name, spot, where) {
+  const [x, z] = spot;
+  const c = createCar(kind, kind === 'armored' ? '#1a1d22' : pick(CAR_COLORS), x, z, Math.PI / 2, 'free'); c.owned = true; c.driver = false;
+  showBig('YENİ ARACIN HAZIR', '#7dff9a', 3, `${name} ${where} seni bekliyor`);
 }
 const SAVE_KEY = 'vistabay_save_v1';
 function saveGame() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), owned: cars.filter(c => c.owned && !c.dead).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace)]) })); } catch (e) { }
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
+      owned: cars.filter(c => c.owned && !c.dead && !c.delivery).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up]), soundMode: state.soundMode
+    }));
+  } catch (e) { }
 }
 function loadGame() {
   try {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY)); if (!d) return null;
     state.money = state.shownMoney = d.money || 0;
     state.ammo = (d.ammo || []).map(a => a < 0 ? Infinity : a); while (state.ammo.length < WEAPONS.length) state.ammo.push(0); state.ammo[0] = Infinity;
+    state.ownedW = WEAPONS.map((w, i) => i === 0 || (d.ownedW ? !!d.ownedW[i] : state.ammo[i] > 0));
+    if (d.soundMode != null) state.soundMode = d.soundMode;
     return d;
   } catch (e) { return null; }
+}
+
+// ============================================================ MISSION STARTS (yellow rings)
+const STARTS = [];
+const START_INFO = { race: ['🏁', 'ZAMANA KARŞI YARIŞ'], delivery: ['📦', 'ARAÇ TESLİMATI'], taxi: ['🚕', 'TAKSİ'], hit: ['💀', 'SUİKAST'], reach: ['🎯', 'KURYE'] };
+const startTex = {};
+function buildStarts() {
+  const beamM = new THREE.MeshBasicMaterial({ map: beamTex(), color: 0xffc020, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  for (const t in START_INFO) startTex[t] = canvasTex(128, 128, g => { g.fillStyle = 'rgba(30,20,0,0.7)'; g.beginPath(); g.arc(64, 64, 60, 0, 7); g.fill(); g.strokeStyle = '#ffc020'; g.lineWidth = 6; g.stroke(); g.font = '70px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(START_INFO[t][0], 64, 70); });
+  for (let k = 0; k < 3; k++) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.RingGeometry(3, 3.6, 40).rotateX(-Math.PI / 2).translate(0, 0.08, 0), new THREE.MeshBasicMaterial({ color: 0xffc020, transparent: true, opacity: 0.9, depthWrite: false })));
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(3.3, 3.3, 7, 28, 1, true).translate(0, 3.5, 0), beamM));
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: startTex.race })); sp.scale.set(2, 2, 1); sp.position.y = 4.2; g.add(sp);
+    scene.add(g);
+    const s = { g, sp, type: null, x: 0, z: 0 }; STARTS.push(s); placeStart(s);
+  }
+}
+function placeStart(s) {
+  const r = Math.random();
+  s.type = r < 0.38 ? 'race' : r < 0.76 ? 'delivery' : pick(['taxi', 'hit', 'reach']);
+  for (let t = 0; t < 40; t++) {
+    const i = RI(0, N - 1), j = RI(0, N), x = nodeP(i) + CELL / 2, z = nodeP(j) + (Math.random() < 0.5 ? 1 : -1) * 4.5;
+    const d = Math.hypot(x - player.pos.x, z - player.pos.z);
+    if (d < 60 || d > 420) continue;
+    if (STARTS.some(o => o !== s && Math.hypot(o.x - x, o.z - z) < 120) || SHOPS.some(o => Math.hypot(o.x - x, o.z - z) < 40)) continue;
+    s.x = x; s.z = z; break;
+  }
+  s.g.position.set(s.x, 0, s.z); s.sp.material.map = startTex[s.type]; s.sp.material.needsUpdate = true;
+}
+function updateStarts(dt) {
+  const hide = !!state.mission || state.missionCooldown > 0;
+  if (state.missionCooldown > 0) state.missionCooldown -= dt;
+  for (const s of STARTS) {
+    s.g.visible = !hide;
+    if (hide) continue;
+    s.sp.position.y = 4.2 + Math.sin(state.now * 2 + s.x) * 0.25;
+    s.g.children[0].material.opacity = 0.65 + Math.sin(state.now * 4) * 0.25;
+    const d = Math.hypot(player.pos.x - s.x, player.pos.z - s.z);
+    if (d < 3.6 && !state.dead) {
+      if (s.type === 'race' && !state.inCar) { state.interact = { label: 'Yarış için araca bin', fn: null }; continue; }
+      if (s.type === 'taxi' && (!state.inCar || state.inCar.spec.bike)) { state.interact = { label: 'Taksi için araba gerekli', fn: null }; continue; }
+      newMission(s.type, s.x, s.z); placeStart(s); break;
+    }
+  }
 }
 
 // ============================================================ RADIO (procedural synthwave)
@@ -2276,7 +2476,12 @@ const Radio = {
     this.gain.gain.setTargetAtTime(active ? 0.2 : 0, AudioSys.ctx.currentTime, 0.3);
   }
 };
-function toggleRadio() { state.radioOn = !state.radioOn; floatText(state.radioOn ? '📻 VISTA FM 101.4' : '📻 Kapalı'); }
+function toggleRadio() {
+  state.soundMode = (state.soundMode + 1) % 3; state.radioOn = state.soundMode === 0;
+  if (AudioSys.master) AudioSys.master.gain.setTargetAtTime(state.soundMode === 2 ? 0 : 0.55, AudioSys.ctx.currentTime, 0.05);
+  $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
+  floatText(['📻 Radyo açık · VISTA FM', '🔈 Radyo kapalı · Efektler açık', '🔇 Tüm sesler kapalı'][state.soundMode]); saveGame();
+}
 
 // ============================================================ MAIN LOOP
 let frame = 0;
@@ -2307,11 +2512,12 @@ function loop(now) {
   updatePickups(dt);
   updateMission(dt);
   updateShops(dt);
+  updateStarts(dt);
   updateTrafficLights();
   // wanted level dynamics
   state.crimeTimer += dt;
   if (state.heat > 0 && state.crimeTimer > 6) {
-    const seen = pd < 55;
+    const seen = state.policeSee || pd < 20;
     if (!seen) state.heat = Math.max(0, state.heat - dt * 0.09);
     state.blink = !seen;
   } else state.blink = false;

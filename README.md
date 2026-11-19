@@ -8,7 +8,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
   kiremit çatılı evler + bahçe + havuzlu banliyö, depo ve konteynerli sanayi bölgesi, parklar
 - **Sokak detayları**: çalışan trafik ışıkları (trafik kırmızıda durur), dükkan tabelaları, banklar, çöp kutuları, yangın muslukları, ağaçlar ve palmiyeler
 - **Dükkanlar**: 🔫 Silah dükkanı (silah, mermi, zırh, can) ve 🚗 VISTA MOTORS galerisi (7 araç) — sahip olduğun araçlar haritada mavi
-- **Kayıt sistemi**: para, silahlar ve araçların otomatik kaydedilir
+- **🔧 Garaj & Boya**: araçla mavi halkaya gir → tamir (aranma yıldızlarını da siler), 9 renk boya, motor ve fren/tutuş yükseltmesi (3 seviye), gövde zırhı, spor araba / zırhlı araç çağırma
+- **🔫 Silah & Ekipman**: kırmızı halkada "MAĞAZAYI AÇ" (PC: E) → can/zırh, pompalı, taramalı tüfek, roketatar, mermi paketleri
+- **Görev halkaları (sarı)**: haritada 3 görev noktası — zamana karşı yarış, araç teslimatı (polisten kaç, garaja hasarsız getir), taksi, suikast, kurye · hedef oku ve ödül ekranda
+- **Mobil his**: titreşim (ateş, çarpışma, para, görev), yüzen joystick
+- **Kayıt sistemi**: para, sahip olunan silahlar, mermiler, araçlar, renkler ve yükseltmeler otomatik kaydedilir
 - **Gerçekçi grafik**: hareketli bulutlu gökyüzü, gün/gece döngüsü (16 dk), yumuşak gölgeler, sinematik renk düzenleme, zemin gölgelendirmesi, yansımalı cam ve araba boyası, okyanus shader'ı, sokak lambaları
 - **Araçlar**: sedan, spor, süper araba, SUV, pikap, minibüs, taksi, polis, motosiklet — drift (el freni), rampa atlayışları, hasar, duman ve patlama
 - **Trafik ve yayalar**: kavşaklarda dönen yapay zekâ trafik, kaldırımda yürüyen ve panikleyip kaçan yayalar
@@ -30,7 +34,8 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 | Zıpla / el freni | ZIPLA / EL FRENİ | Space |
 | Koş | Joystick'i sonuna kadar it | Shift |
 | Silah değiştir | Silah butonu | 1-5 / X / fare tekerleği |
-| Radyo aç/kapa | 📻 | R |
+| Mağaza / Garaj | Sarı buton | E |
+| Ses (radyo → efektler → sessiz) | 📻 | R |
 
 ## Nasıl oynanır
 **Telefonda:** Repo ayarlarından *Settings → Pages → Branch* seçip GitHub Pages'i aç, verilen linki telefonda aç,
