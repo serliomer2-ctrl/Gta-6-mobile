@@ -47,7 +47,7 @@ $('playBtn').addEventListener('click', async () => {
   setTimeout(() => {
     init();
     $('start').style.display = 'none';
-    $('hud').style.display = 'block';
+    $('hud').style.display = 'block'; document.body.classList.add('playing');
     if (isTouch) $('touch').style.display = 'block'; else $('cross').style.display = 'block';
     showBig('VISTA BAY', '#ffffff', 3, 'Sarı halkalar = görev · 🔫 Silah · 🔧 Garaj · 🚗 Galeri haritada');
     lastT = performance.now();
@@ -64,7 +64,9 @@ const state = {
   money: 0, shownMoney: 0, health: 100, armor: 0, heat: 0, wanted: 0, time: 16.4, inCar: null,
   mission: null, missionCooldown: 0, dead: false, deadTimer: 0, fireCd: 0, lastLookInput: 0,
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
-  weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true
+  weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
+  props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
+  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0 }, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true
 };
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
@@ -330,11 +332,14 @@ function init() {
   spawnPlayer();
   spawnTraffic();
   buildShops(save);
+  buildProperties();
+  if (state.spawnProp) { const [x, z] = spawnPoint(); player.pos.set(x, 0.25, z); }
   buildStarts();
   if (AudioSys.master) AudioSys.master.gain.value = state.soundMode === 2 ? 0 : 0.55;
   spawnPeds();
   spawnPickups();
   initInput();
+  initPhone();
   updateSky(0);
   addEventListener('resize', onResize);
 }
@@ -1021,6 +1026,7 @@ function enterCar() {
   if (!best) return;
   if (best.display) { floatText('Bu araç satılık — galeriden al!'); return; }
   if (best.driver) { // carjack!
+    state.stats.jacked++;
     const p = best.group.position;
     ejectDriver(p.x - Math.cos(best.h) * 1.6, p.z + Math.sin(best.h) * 1.6);
     addHeat(best.police ? 1.5 : 0.35);
@@ -1091,6 +1097,7 @@ function updatePlayerCar(dt) {
   carPhysics(c, dt, throttle, clamp(input.mx, -1, 1), input.hand);
   if (!state.inCar) return; // crashed off bike
   player.pos.copy(c.group.position);
+  { const v = carSpeed(c); state.stats.dist += v * dt; state.stats.topSpeed = Math.max(state.stats.topSpeed, Math.abs(carFwd(c)) * 3.6); }
   if (c.spec.bike) { const h = player.human; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.armL.rotation.x = h.armR.rotation.x = -1.15; h.legL.rotation.z = 0.25; h.legR.rotation.z = -0.25; }
   // tire smoke
   if (c.drift > 4 && !c.air) {
@@ -1102,7 +1109,7 @@ function updatePlayerCar(dt) {
 }
 function ejectDriver(x, z) {
   // find a ped to repurpose
-  let p = peds.find(q => q.dead) || peds.reduce((a, b) => (dist2(b) > dist2(a) ? b : a));
+  const civ = peds.filter(q => !q.npc); let p = civ.find(q => q.dead) || civ.reduce((a, b) => (dist2(b) > dist2(a) ? b : a));
   p.dead = false; p.deadT = 0; p.free = true; p.x = x; p.z = z; p.panic = 10; p.h.g.rotation.x = 0; p.h.g.visible = true;
   p.fleeX = x - player.pos.x; p.fleeZ = z - player.pos.z;
 }
@@ -1155,7 +1162,7 @@ function fire() {
   } else {
     if (best) {
       if (best.spec) { damageCar(best, w.carDmg); if (best.ai) best.ai.panic = 6; }
-      else killPed(best, true);
+      else hitPed(best);
       FX.add.spawn(tx, ty, tz, 0, 1, 0, 0.15, 0.6, 2, 3, 1.4, 0.4, 1, 0);
     } else if (d < w.range) for (let k = 0; k < 4; k++) FX.add.spawn(tx, ty, tz, MR(-3, 3), MR(0, 4), MR(-3, 3), 0.3, 0.25, 0, 2, 1.6, 0.6, 1, 15);
     for (let k = 0; k < w.pellets; k++) {
@@ -1167,7 +1174,7 @@ function fire() {
   }
   // shots fired near people -> heat
   if (state.wanted < 1) for (const p of peds) if (!p.dead && dist2(p) < 900) { addHeat(1); break; }
-  for (const p of peds) if (!p.dead && dist2(p) < 1600) { p.panic = 8; p.fleeX = p.x - ox; p.fleeZ = p.z - oz; }
+  for (const p of peds) if (!p.dead && dist2(p) < 1600) { p.panic = 8; p.fleeX = p.x - ox; p.fleeZ = p.z - oz; if (p.npc && state.mission && state.mission.type === 'bounty') state.mission.alert = true; }
 }
 const rockets = [], rocketPool = []; let rocketGeo = null, rocketMat = null;
 function launchRocket(x, y, z, dx, dy, dz) {
@@ -1198,7 +1205,7 @@ function killPed(p, byPlayer) {
   p.h.g.rotation.x = -Math.PI / 2;
   for (let k = 0; k < 10; k++) FX.norm.spawn(p.x, 0.9, p.z, MR(-2, 2), MR(1, 4), MR(-2, 2), 0.5, 0.35, 0.2, 0.55, 0.02, 0.02, 0.9, 12);
   spawnCash(p.x + MR(-0.5, 0.5), p.z + MR(-0.5, 0.5), Math.round(MR(10, 90)));
-  if (byPlayer) addHeat(p.cop ? 1.5 : 0.7);
+  if (byPlayer) { addHeat(p.cop ? 1.5 : 0.7); state.stats.kills++; }
 }
 function addHeat(v) { state.heat = clamp(Math.max(state.heat, 1) + (state.heat >= 1 ? v : 0), 0, 5.99); state.crimeTimer = 0; }
 
@@ -1394,6 +1401,7 @@ function randomSidewalk() {
 }
 function updatePeds(dt) {
   for (const p of peds) {
+    if (p.npc) continue;
     const h = p.h;
     if (p.dead) {
       p.deadT -= dt;
@@ -1462,7 +1470,7 @@ function updatePickups(dt) {
     const p = pickups[i]; p.t += dt;
     if (Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < (state.inCar ? 2.8 : 1.4)) {
       if (p.kind === 'cash') AudioSys.cash(); else AudioSys.pickup(); haptic(25);
-      if (p.kind === 'cash') { state.money += p.amt; floatText('+$' + p.amt); }
+      if (p.kind === 'cash') { earn(p.amt, '💵 Nakit'); floatText('+$' + p.amt); }
       else {
         floatText(CRATES[p.kind][1]);
         const wi = { w1: 1, w2: 3, w3: 4 }[p.kind]; if (wi) { state.ownedW[wi] = true; state.ammo[wi] += [0, 120, 0, 16, 4][wi]; }
@@ -1484,7 +1492,7 @@ function updatePickups(dt) {
   cashMesh.count = n; cashMesh.instanceMatrix.needsUpdate = true;
   crateMesh.count = nc; crateMesh.instanceMatrix.needsUpdate = true; if (crateMesh.instanceColor) crateMesh.instanceColor.needsUpdate = true;
 }
-const MCOL = { reach: 0xffc020, race: 0x20e0ff, taxi: 0x40ff80, hit: 0xff3040, delivery: 0xff9a20 };
+const MCOL = { reach: 0xffc020, race: 0x20e0ff, taxi: 0x40ff80, hit: 0xff3040, delivery: 0xff9a20, bounty: 0xff2050 };
 function setMarker(x, z, type) {
   markerGroup.position.set(x, 0, z); markerGroup.visible = true;
   markerGroup.children[0].material.color.setHex(MCOL[type]); markerGroup.children[1].material.color.setHex(MCOL[type]);
@@ -1542,10 +1550,12 @@ function newMission(type = pick(['reach', 'race', 'race', 'taxi', 'taxi', 'hit']
     showBig('GÖREV', '#ffd23a', 2, `İşarete ${time} saniyede ulaş · Ödül $${reward}`);
   }
 }
-function missionPos() { const m = state.mission; return m.type === 'hit' ? [m.target.group.position.x, m.target.group.position.z] : m.type === 'delivery' && m.stage === 0 ? [m.car.group.position.x, m.car.group.position.z] : [m.x, m.z]; }
+function missionPos() { const m = state.mission; if (m.type === 'bounty') return [m.boss.x, m.boss.z]; return m.type === 'hit' ? [m.target.group.position.x, m.target.group.position.z] : m.type === 'delivery' && m.stage === 0 ? [m.car.group.position.x, m.car.group.position.z] : [m.x, m.z]; }
 function missionEnd(ok, sub) {
   const m = state.mission;
-  if (ok) { state.money += m.reward; showBig('GÖREV TAMAMLANDI', '#7dff9a', 3, `+$${m.reward}` + (sub ? ' · ' + sub : '')); AudioSys.success(); AudioSys.cash(); haptic([40, 40, 90]); state.armor = Math.min(100, state.armor + 25); state.ammo[1] += 60; saveGame(); }
+  if (ok) S().missions++; else S().fails++;
+  if (m.type === 'bounty') setTimeout(() => { if (!state.mission || state.mission.type !== 'bounty') hideBounty(m); }, ok ? 9000 : 0);
+  if (ok) { earn(m.reward, '🎯 Görev'); showBig('GÖREV TAMAMLANDI', '#7dff9a', 3, `+$${m.reward}` + (sub ? ' · ' + sub : '')); AudioSys.success(); AudioSys.cash(); haptic([40, 40, 90]); state.armor = Math.min(100, state.armor + 25); state.ammo[1] += 60; saveGame(); }
   else { showBig('GÖREV BAŞARISIZ', '#ff3b3b', 2.5, sub); AudioSys.fail(); haptic(120); }
   if (passenger) passenger.g.visible = false;
   state.mission = null; markerGroup.visible = false; state.missionCooldown = 4;
@@ -1582,6 +1592,12 @@ function updateMission(dt) {
       }
       if (c !== dc && Math.hypot(dc.group.position.x - player.pos.x, dc.group.position.z - player.pos.z) > 60) return missionEnd(false, 'Aracı terk ettin');
     }
+  } else if (m.type === 'bounty') {
+    updateBounty(dt, m);
+    const alive = m.guards.filter(g => !g.dead).length;
+    markerGroup.position.set(tx, 0, tz);
+    el.textContent = `💀 Kontrat: ${m.name} · 🛡 ${alive}/${m.guards.length} · ${t} sn · ${Math.round(d)} m` + rw;
+    if (m.boss.dead) { const bonus = (m.guards.length - alive) * 150; m.reward += bonus; S().contracts++; return missionEnd(true, bonus ? `Koruma bonusu $${bonus}` : 'Temiz iş'); }
   } else if (m.type === 'reach') {
     el.textContent = `🎯 İşarete ulaş · ${t} sn · ${Math.round(d)} m` + rw;
     if (d < 6) return missionEnd(true);
@@ -1881,10 +1897,12 @@ const touchState = { joyId: null, jx: 0, jy: 0, jdx: 0, jdy: 0, lookId: null, lx
 function initInput() {
   addEventListener('keydown', e => {
     keys[e.code] = true;
+    if ((e.code === 'KeyP' || e.code === 'Tab') && !state.shopOpen) { e.preventDefault(); togglePhone(); return; }
+    if (state.phoneOpen) { if (e.code === 'Escape') closePhone(); return; }
     if (e.code === 'KeyE' && !state.shopOpen) { if (!interact()) enterCar(); }
     else if (e.code === 'KeyF' || e.code === 'Enter') enterCar();
     if (/^Digit[1-5]$/.test(e.code)) selectWeapon(+e.code[5] - 1);
-    if (e.code === 'KeyX' || e.code === 'Tab') { e.preventDefault(); nextWeapon(); }
+    if (e.code === 'KeyX') nextWeapon();
     if (e.code === 'KeyR') toggleRadio();
     if (e.code === 'Space') e.preventDefault();
   });
@@ -1892,7 +1910,7 @@ function initInput() {
   $('shopClose').addEventListener('click', closeShop);
   addEventListener('keydown', e => { if (e.code === 'Escape' && state.shopOpen) closeShop(); });
   const cv = renderer.domElement;
-  cv.addEventListener('click', () => { if (!isTouch && document.pointerLockElement !== cv) cv.requestPointerLock?.(); });
+  cv.addEventListener('click', () => { if (!isTouch && !state.phoneOpen && !state.shopOpen && document.pointerLockElement !== cv) cv.requestPointerLock?.(); });
   addEventListener('mousemove', e => { if (document.pointerLockElement === cv) { input.lookDX += e.movementX * 0.0025; input.lookDY += e.movementY * 0.002; } });
   addEventListener('mousedown', e => { if (e.button === 0 && document.pointerLockElement === cv) keys.Mouse0 = true; });
   addEventListener('mouseup', e => { if (e.button === 0) keys.Mouse0 = false; });
@@ -1944,6 +1962,7 @@ function initInput() {
 }
 function readInput() {
   const k = keys;
+  if (state.phoneOpen) { Object.assign(input, { mx: 0, my: 0, lookDX: 0, lookDY: 0, fire: false, jump: false, sprint: false, gas: false, brake: false, hand: false }); return; }
   let mx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
   let my = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0);
   if (touchState.joyId !== null) { mx += touchState.jdx; my -= touchState.jdy; }
@@ -2004,6 +2023,7 @@ function drawMinimap() {
   for (const c of cars) if (c.owned && !c.dead && c !== state.inCar) dot(c.group.position.x, c.group.position.z, '#40a0ff', 6, false);
   g.font = '22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const s of SHOPS) { let [px, py] = toMap(s.x, s.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 15, 0, 7); g.fill(); g.strokeStyle = s.mapCol; g.lineWidth = 3; g.stroke(); g.fillText(s.icon, px, py + 1); }
+  if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
   // player arrow
@@ -2035,8 +2055,10 @@ function updateHUD(dt) {
   else if (ia && isTouch && !ia.fn) { pr.style.display = 'block'; pr.textContent = ia.label; }
   else if (near && !isTouch) { pr.style.display = 'block'; pr.textContent = 'F — Araca bin'; } else pr.style.display = 'none';
   const nav = $('navArrow');
-  if (state.mission) {
-    const [mx, mz] = missionPos(), dx = mx - player.pos.x, dz = mz - player.pos.z, s = Math.sin(camYaw), c = Math.cos(camYaw);
+  const navT = state.mission ? missionPos() : state.waypoint ? [state.waypoint.x, state.waypoint.z] : null;
+  nav.style.color = state.mission ? '#ffc020' : '#c060ff';
+  if (navT) {
+    const [mx, mz] = navT, dx = mx - player.pos.x, dz = mz - player.pos.z, s = Math.sin(camYaw), c = Math.cos(camYaw);
     nav.style.display = 'block'; nav.style.transform = `translateX(-50%) rotate(${Math.atan2(dx * c - dz * s, -dx * s - dz * c)}rad)`;
   } else nav.style.display = 'none';
   drawMinimap();
@@ -2054,7 +2076,7 @@ function busted() { if (state.dead) return; const loss = Math.min(state.money, 2
 function respawn() {
   state.dead = false; state.health = 100; state.heat = 0; state.wanted = 0;
   const loss = 0; state.money -= loss;
-  const x = nodeP(RI(2, 6)) + ROAD / 2 + 3, z = nodeP(RI(2, 6)) + ROAD / 2 + 3;
+  const [x, z] = spawnPoint();
   player.pos.set(x, 0.25, z); player.human.g.rotation.x = 0; player.human.g.visible = true;
   $('fade').style.opacity = 0;
   for (const c of cars) if (c.police && c.active) { c.active = false; c.group.visible = false; }
@@ -2240,14 +2262,16 @@ const MAX_UP = 3;
 function dealerSpot(k) { const b = blocks[DEALER[0]][DEALER[1]]; return [b.cx - 30 + (k % 9) * 7, nodeP(DEALER[1] + 1) - (ROAD / 2 - 1.3)]; }
 function garageSpot(k) { const b = blocks[GARAGE_BLOCK[0]][GARAGE_BLOCK[1]]; return [b.cx - 20 + (k % 5) * 7, nodeP(GARAGE_BLOCK[1] + 1) - (ROAD / 2 - 1.3)]; }
 function initCar(c) { c.up = { engine: 0, grip: 0, armor: 0 }; c.maxHealth = c.spec.armored ? 320 : c.health; c.health = c.maxHealth; return c; }
-function buildShops(save) {
-  const mk = (type, x, z, title, icon, bg, fg, ringCol, o = {}) => {
-    const tex = canvasTex(512, 128, g => {
+function makeZone(type, x, z, title, icon, bg, fg, ringCol, o = {}) {
+    const signTex = (title, sub) => canvasTex(512, 128, g => {
       g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
       g.shadowColor = fg; g.shadowBlur = o.glow ? 18 : 0;
       g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(12, 12, 488, 104);
-      g.fillStyle = fg; g.font = 'bold 56px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(title, 256, 68);
+      g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `bold ${sub ? 46 : 56}px Arial, sans-serif`; g.fillText(title, 256, sub ? 52 : 68);
+      if (sub) { g.font = 'bold 28px Arial, sans-serif'; g.fillText(sub, 256, 95); }
     });
+    const tex = signTex(title, o.sub);
     const face = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: o.glow ? 0.9 : 0.15 }), dark = new THREE.MeshStandardMaterial({ color: 0x222222 });
     const board = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.6, 0.16), [dark, dark, dark, dark, face, face]); board.position.set(x, o.signY ?? 4.2, z);
     board.castShadow = true; scene.add(board);
@@ -2258,8 +2282,12 @@ function buildShops(save) {
     ring.position.set(x, 0.29, rz); disc.position.set(x, 0.285, rz); scene.add(ring, disc);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(128, 128, g => { g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.arc(64, 64, 60, 0, 7); g.fill(); g.font = '72px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(icon, 64, 70); }), depthTest: true }));
     sp.scale.set(1.4, 1.4, 1); sp.position.set(x, 2, rz); scene.add(sp);
-    SHOPS.push({ type, x, z: rz, r: rr, ring, disc, sp, icon, face, glow: !!o.glow, needCar: !!o.needCar, label: o.label, mapCol: '#' + new THREE.Color(ringCol).getHexString() });
-  };
+    const zone = { type, x, z: rz, r: rr, ring, disc, sp, icon, face, glow: !!o.glow, needCar: !!o.needCar, label: o.label, mapCol: '#' + new THREE.Color(ringCol).getHexString() };
+    zone.redraw = (t, sub) => { const nt = signTex(t, sub); face.map.dispose(); face.map = face.emissiveMap = nt; face.needsUpdate = true; };
+    SHOPS.push(zone); return zone;
+}
+function buildShops(save) {
+  const mk = makeZone;
   const gb = blocks[GUNSHOP[0]][GUNSHOP[1]], db = blocks[DEALER[0]][DEALER[1]], gg = blocks[GARAGE_BLOCK[0]][GARAGE_BLOCK[1]];
   mk('gun', gb.cx, gb.cz + BLOCK / 2 - 4, 'SİLAH & EKİPMAN', '🔫', '#140304', '#ff2a2a', 0xff2a2a, { glow: true, label: 'MAĞAZAYI AÇ' });
   mk('car', db.cx + 22, db.cz + BLOCK / 2 - 4, 'VISTA MOTORS', '🚗', '#0d2c54', '#ffffff', 0x40e080, { label: 'GALERİYİ AÇ' });
@@ -2273,10 +2301,11 @@ function buildShops(save) {
     mk('garage', x, z - 2.4, 'GARAJ & BOYA', '🔧', '#040a1c', '#3aa8ff', 0x2a8cff, { glow: true, canopy: true, signY: 5.7, ringR: 3.6, ringOff: 5.4, needCar: true, label: 'GARAJA GİR' });
   }
   CAR_ITEMS.forEach(([kind], k) => { const c = createCar(kind, pick(CAR_COLORS), db.cx - 27 + k * 8.5, db.cz + 6 + (k % 2) * 6, Math.PI + 0.4, 'free'); c.display = true; c.driver = false; });
-  if (save && save.owned) save.owned.forEach(([kind, hex, up], k) => {
+  if (save && save.owned) save.owned.forEach(([kind, hex, up, fav], k) => {
     if (!CAR_SPECS[kind]) return;
     const [x, z] = dealerSpot(k); const c = createCar(kind, '#' + hex, x, z, Math.PI / 2, 'free'); c.owned = true; c.driver = false;
     if (up) Object.assign(c.up, up);
+    if (fav) c.fav = true;
   });
 }
 // interaction: state.interact = { label, fn } (shown as touch button / "E" prompt)
@@ -2284,7 +2313,7 @@ function updateShops(dt) {
   state.interact = null;
   if (M.garageStrip) M.garageStrip.color.setRGB(0.16, 0.55, 1).multiplyScalar(1 + nightF * 3);
   for (const s of SHOPS) {
-    s.sp.position.y = 2 + Math.sin(state.now * 2.5) * 0.15;
+    s.sp.position.y = 3.3 + Math.sin(state.now * 2.5) * 0.15;
     s.ring.material.opacity = 0.6 + Math.sin(state.now * 4) * 0.25;
     s.face.emissiveIntensity = (s.glow ? 0.7 : 0.15) + nightF * 1.2;
     if (state.dead) continue;
@@ -2292,20 +2321,22 @@ function updateShops(dt) {
     if (d > s.r + 0.3) continue;
     if (s.needCar !== !!state.inCar) { state.interact = { label: s.needCar ? 'Araçla gir' : 'Araçtan in', fn: null }; continue; }
     if (s.needCar && state.mission && state.mission.type === 'delivery') continue;
-    state.interact = { label: s.label, fn: () => openShop(s.type) };
+    state.interact = { label: s.label, fn: () => openShop(s.type, s) };
   }
 }
 function interact() { if (state.interact && state.interact.fn) { state.interact.fn(); return true; } return false; }
-function openShop(type) {
+function openShop(type, zone = null) {
+  state.shopZone = zone;
   if (type === 'garage' && state.inCar) { const c = state.inCar; c.vx = c.vz = 0; }
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
 function shopItems(type) {
+  if (type === 'prop') return propItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2344,13 +2375,14 @@ function renderShop() {
   for (const it of shopItems(type)) {
     const el = document.createElement('div');
     if (it.sec) { el.className = 'shopSec'; el.textContent = it.sec; box.appendChild(el); continue; }
-    const poor = state.money < it.price;
+    const poor = it.price > 0 && state.money < it.price;
     el.className = 'shopItem' + (it.dis ? ' done' : poor ? ' poor' : '');
-    el.innerHTML = `<div><b>${it.name}</b><small>${it.desc}</small></div><button>${it.dis || '$' + it.price}</button>`;
+    el.innerHTML = `<div><b>${it.name}</b><small>${it.desc}</small></div><button>${it.dis || (it.price ? '$' + it.price : it.btn || 'TAMAM')}</button>`;
     el.querySelector('button').onclick = () => {
       if (it.dis) return;
       if (poor) { AudioSys.fail(); haptic(60); return; }
-      state.money -= it.price; state.shownMoney = state.money; it.buy(); AudioSys.cash(); haptic(30); saveGame();
+      state.money -= it.price; state.shownMoney = state.money; if (it.price) { S().spent += it.price; ledger('🛒 ' + it.name.replace(/<[^>]+>/g, '').trim(), -it.price); }
+      it.buy(); if (it.price) AudioSys.cash(); else AudioSys.pickup(); haptic(30); saveGame();
       if (it.close) closeShop(); else renderShop();
     };
     box.appendChild(el);
@@ -2371,7 +2403,8 @@ function saveGame() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
-      owned: cars.filter(c => c.owned && !c.dead && !c.delivery).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up]), soundMode: state.soundMode
+      owned: cars.filter(c => c.owned && !c.dead && !c.delivery).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach
     }));
   } catch (e) { }
 }
@@ -2382,6 +2415,7 @@ function loadGame() {
     state.ammo = (d.ammo || []).map(a => a < 0 ? Infinity : a); while (state.ammo.length < WEAPONS.length) state.ammo.push(0); state.ammo[0] = Infinity;
     state.ownedW = WEAPONS.map((w, i) => i === 0 || (d.ownedW ? !!d.ownedW[i] : state.ammo[i] > 0));
     if (d.soundMode != null) state.soundMode = d.soundMode;
+    state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     return d;
   } catch (e) { return null; }
 }
@@ -2429,6 +2463,261 @@ function updateStarts(dt) {
       newMission(s.type, s.x, s.z); placeStart(s); break;
     }
   }
+}
+
+// ============================================================ PROPERTIES (real estate + passive income + safehouse)
+const PROPERTIES = [
+  { id: 'carwash', name: 'Oto Yıkama', icon: '🧽', block: [5, 6], price: 15000, income: 350, desc: 'Köşe başında yoğun bir yıkamacı' },
+  { id: 'beach', name: 'Sahil Kulübü', icon: '🏖', block: [7, 4], price: 25000, income: 650, desc: 'Okyanus manzaralı plaj kulübü' },
+  { id: 'villa', name: 'Lüks Villa', icon: '🏡', block: [0, 3], price: 40000, income: 450, desc: 'Havuzlu villa · en güvenli ev' },
+  { id: 'club', name: 'Gece Kulübü', icon: '🎵', block: [4, 2], price: 50000, income: 1200, desc: 'Şehrin en popüler gece kulübü' },
+];
+const HOUR_SEC = 1 / TIME_SPEED; // real seconds per in-game hour
+function propIncome() { return PROPERTIES.reduce((a, p) => a + (state.props[p.id] ? p.income : 0), 0); }
+function ownedProps() { return PROPERTIES.filter(p => state.props[p.id]).length; }
+function propSignText(p) { return state.props[p.id] ? ['SAHİBİ: SEN', `+$${p.income} / saat`] : ['SATILIK', '$' + p.price.toLocaleString('tr-TR')]; }
+function buildProperties() {
+  for (const p of PROPERTIES) {
+    const b = blocks[p.block[0]][p.block[1]];
+    const [l1, l2] = propSignText(p);
+    p.zone = makeZone('prop', b.cx + 8, b.cz + BLOCK / 2 - 4, p.name.toUpperCase(), p.icon, '#06200f', '#6dff9c', 0x30d070, { glow: true, label: 'MÜLKÜ İNCELE', sub: l1 + '  ·  ' + l2 });
+    p.zone.prop = p;
+  }
+}
+function refreshPropSign(p) { const [l1, l2] = propSignText(p); p.zone.redraw(p.name.toUpperCase(), l1 + '  ·  ' + l2); }
+function buyProperty(p) {
+  state.props[p.id] = true; refreshPropSign(p);
+  if (!state.spawnProp) state.spawnProp = p.id;
+  showBig('MÜLK SATIN ALINDI', '#7dff9a', 3, `${p.name} · her saat +$${p.income}`);
+}
+function spawnPoint() {
+  const p = PROPERTIES.find(q => q.id === state.spawnProp && state.props[q.id]);
+  if (p) return [p.zone.x, p.zone.z - 1.5];
+  return [nodeP(RI(2, 6)) + ROAD / 2 + 3, nodeP(RI(2, 6)) + ROAD / 2 + 3];
+}
+function propItems() {
+  const p = state.shopZone.prop, own = state.props[p.id], it = [{ sec: 'Mülk' },
+    { name: `${p.icon} ${p.name}`, desc: `${p.desc} · Saatlik gelir +$${p.income}`, price: p.price, dis: own ? 'SENİN' : null, buy: () => buyProperty(p) }];
+  if (own) it.push({ sec: 'Güvenli Ev' },
+    { name: '💾 KAYDET & DİNLEN', desc: 'Oyunu kaydeder, canını %100 yapar', price: 0, btn: 'KAYDET', buy: () => { state.health = 100; floatText('💾 Oyun kaydedildi'); } },
+    { name: '🛏 DOĞUŞ NOKTASI YAP', desc: 'Oyun açılınca ve bayılınca burada başlarsın', price: 0, btn: 'SEÇ', dis: state.spawnProp === p.id ? 'AKTİF' : null, buy: () => { state.spawnProp = p.id; floatText('Doğuş noktası: ' + p.name); } });
+  it.push({ sec: 'Toplam' }, { name: `🏦 Mülklerin: ${ownedProps()}/${PROPERTIES.length}`, desc: `Saatlik toplam gelir +$${propIncome()}`, price: 0, dis: '—' });
+  return it;
+}
+
+// ============================================================ ECONOMY / STATS / ACHIEVEMENTS
+const S = () => state.stats;
+function earn(amt, label) { state.money += amt; S().earned += amt; ledger(label, amt); }
+function ledger(label, amt) { state.ledger.unshift({ t: clockStr(), label, amt }); if (state.ledger.length > 8) state.ledger.pop(); }
+function clockStr() { const h = Math.floor(state.time), m = Math.floor((state.time - h) * 60); return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
+const ownedCars = () => cars.filter(c => c.owned && !c.display && !c.delivery);
+const ACHIEVEMENTS = [
+  { id: 'm1', name: 'İlk İş', desc: '1 görev tamamla', reward: 250, test: () => S().missions >= 1 },
+  { id: 'm10', name: 'Profesyonel', desc: '10 görev tamamla', reward: 2500, test: () => S().missions >= 10 },
+  { id: 'spd', name: 'Hız Tutkunu', desc: '200 km/s hıza ulaş', reward: 500, test: () => S().topSpeed >= 200 },
+  { id: 'w4', name: 'Aranan Adam', desc: '4 yıldız aranma seviyesine çık', reward: 750, test: () => S().maxWanted >= 4 },
+  { id: 'p1', name: 'Mülk Sahibi', desc: 'İlk mülkünü satın al', reward: 1000, test: () => ownedProps() >= 1 },
+  { id: 'pAll', name: 'Emlak Kralı', desc: 'Tüm mülkleri satın al', reward: 15000, test: () => ownedProps() === PROPERTIES.length },
+  { id: 'c5', name: 'Koleksiyoner', desc: '5 araca sahip ol', reward: 3000, test: () => ownedCars().length >= 5 },
+  { id: 'b1', name: 'Kiralık Katil', desc: 'İlk kontratı tamamla', reward: 500, test: () => S().contracts >= 1 },
+  { id: 'b5', name: 'Efsane Tetikçi', desc: '5 kontrat tamamla', reward: 4000, test: () => S().contracts >= 5 },
+  { id: 'rich', name: 'Zengin', desc: 'Hesabında $100.000 biriktir', reward: 5000, test: () => state.money >= 100000 },
+  { id: 'km', name: 'Yol Canavarı', desc: '50 km araç kullan', reward: 1500, test: () => S().dist >= 50000 },
+  { id: 'guns', name: 'Cephanelik', desc: 'Tüm silahlara sahip ol', reward: 1000, test: () => state.ownedW.every(Boolean) },
+];
+let econT = 0;
+function updateEconomy(dt) {
+  const st = S(); st.play += dt; st.maxWanted = Math.max(st.maxWanted, state.wanted);
+  const h = Math.floor(state.time);
+  if (state.lastHour === null) state.lastHour = h;
+  if (h !== state.lastHour) {
+    state.lastHour = h;
+    const inc = propIncome();
+    if (inc > 0) { earn(inc, '🏦 Mülk geliri'); floatText(`🏦 +$${inc} mülk geliri`); AudioSys.cash(); haptic(25); }
+  }
+  if (state.waypoint && Math.hypot(state.waypoint.x - player.pos.x, state.waypoint.z - player.pos.z) < 10) { floatText('📍 Hedefe vardın'); state.waypoint = null; }
+  econT += dt; if (econT < 1) return; econT = 0;
+  for (const a of ACHIEVEMENTS) if (!state.ach[a.id] && a.test()) {
+    state.ach[a.id] = true; earn(a.reward, '🏆 ' + a.name);
+    showBig('🏆 BAŞARIM AÇILDI', '#ffd23a', 3, `${a.name} · +$${a.reward}`); AudioSys.success(); haptic([30, 30, 60]); saveGame(); break;
+  }
+}
+
+// ============================================================ VALET (call owned car to the nearest curb)
+function curbSpot() {
+  const x = player.pos.x, z = player.pos.z, off = ROAD / 2 - 1.6;
+  const i = clamp(Math.round((x - OFF) / CELL), 0, N), j = clamp(Math.round((z - OFF) / CELL), 0, N), rx = nodeP(i), rz = nodeP(j);
+  const away = (v) => { const k = clamp(Math.round((v - OFF) / CELL), 0, N), n = nodeP(k), dv = v - n; return Math.abs(dv) < ROAD / 2 + 7 ? n + (dv >= 0 ? 1 : -1) * (ROAD / 2 + 9) : v; };
+  if (Math.abs(x - rx) < Math.abs(z - rz)) { const side = x >= rx ? 1 : -1; return [rx + side * off, away(clamp(z, OFF + 12, -OFF - 12)), side > 0 ? Math.PI : 0]; }
+  const side = z >= rz ? 1 : -1; return [away(clamp(x, OFF + 12, -OFF - 12)), rz + side * off, side > 0 ? Math.PI / 2 : -Math.PI / 2];
+}
+function callCar(c) {
+  if (state.inCar === c) { floatText('Zaten bu araçtasın'); return false; }
+  if (state.money < 100) { floatText('Vale ücreti $100'); AudioSys.fail(); return false; }
+  state.money -= 100; S().spent += 100; ledger('🚗 Vale', -100);
+  const [x, z, h] = curbSpot();
+  c.active = true; c.group.visible = true; c.mode = 'free'; c.driver = false; c.ai = null;
+  c.vx = c.vz = 0; c.vy = 0; c.air = false; c.h = h; c.y = groundY(x, z); c.group.position.set(x, c.y, z); c.group.rotation.set(0, h, 0);
+  for (let k = 0; k < 14; k++) FX.norm.spawn(x + MR(-2, 2), 0.6, z + MR(-2, 2), MR(-1, 1), MR(0.5, 2), MR(-1, 1), 1.2, 1.2, 2, 0.8, 0.8, 0.82, 0.5, 0);
+  state.waypoint = { x, z, label: 'Aracın' };
+  floatText('🚗 Aracın yolun kenarında'); AudioSys.door(); saveGame();
+  return true;
+}
+
+// ============================================================ CONTRACTS (bounty: boss + bodyguards)
+const BOSS_NAMES = ['"Kobra" Vargas', 'Dimitri "Buz" Volkov', 'Marco "Çakal" Rossi', 'Lena "Gölge" Park', 'Tony "Balyoz" Moretti', 'Ray "Kasırga" Duarte', 'Viktor "Diş" Kral', 'Sal "Sessiz" Romano'];
+const AREA_NAMES = { downtown: 'Merkez', midtown: 'Midtown', mixed: 'Eski Şehir', beach: 'Sahil', residential: 'Banliyö', industrial: 'Sanayi', dealer: 'Galeri', park: 'Park' };
+const bountyNpcs = { boss: null, guards: [] };
+function makeContract() {
+  let spot = randomSidewalk();
+  for (let t = 0; t < 20; t++) { const s = randomSidewalk(), d = Math.hypot(s[0] - player.pos.x, s[1] - player.pos.z); if (d > 150 && d < 420) { spot = s; break; } }
+  const guards = RI(2, 4), b = blockAt(spot[0], spot[1]);
+  return { name: pick(BOSS_NAMES), area: AREA_NAMES[b ? b.dist : 'mixed'] || 'Şehir', x: spot[0], z: spot[1], guards, reward: Math.round((2000 + guards * 900 + MR(0, 800)) / 50) * 50 };
+}
+function npcPed(look, x, z) {
+  const h = makeHuman(look);
+  const p = { h, bi: 0, bj: 0, s: 0, dir: 1, speed: 0, dead: true, deadT: 0, panic: 0, free: false, x, z, fleeX: 0, fleeZ: 0, yaw: 0, npc: 'guard', hp: 2, shootT: 1 };
+  h.g.visible = false; peds.push(p); return p;
+}
+function startContract(k) {
+  if (state.mission) { floatText('Önce mevcut görevi bitir'); return; }
+  const o = state.contractOffers[k]; state.contractOffers[k] = makeContract();
+  if (!bountyNpcs.boss) {
+    bountyNpcs.boss = npcPed({ skin: '#e0ac80', shirt: '#f2f2f2', pants: '#1a1a1e', hair: '#1a1210', shoes: '#101010', glasses: true }, 0, 0);
+    for (let g = 0; g < 4; g++) bountyNpcs.guards.push(npcPed({ skin: pick(SKIN), shirt: '#16181c', pants: '#16181c', hair: '#101010', shoes: '#101010', glasses: true, gun: true }, 0, 0));
+  }
+  const place = (p, x, z, role, hp) => { const r = collide(x, z, 0.4, 0.5); p.x = r.x; p.z = r.z; p.dead = false; p.npc = role; p.hp = hp; p.shootT = MR(0.5, 1.5); p.yaw = Math.random() * 6; p.h.g.rotation.set(0, p.yaw, 0); p.h.g.visible = true; };
+  place(bountyNpcs.boss, o.x, o.z, 'boss', 4);
+  const guards = bountyNpcs.guards.slice(0, o.guards);
+  guards.forEach((g, i) => { const a = i / o.guards * Math.PI * 2; place(g, o.x + Math.cos(a) * 2.8, o.z + Math.sin(a) * 2.8, 'guard', 2); });
+  bountyNpcs.guards.slice(o.guards).forEach(g => { g.dead = true; g.h.g.visible = false; });
+  state.mission = { type: 'bounty', boss: bountyNpcs.boss, guards, name: o.name, x: o.x, z: o.z, time: 240, reward: o.reward, alert: false };
+  setMarker(o.x, o.z, 'bounty');
+  showBig('KONTRAT KABUL EDİLDİ', '#ff4060', 3, `Hedef: ${o.name} · ${o.area} · ${o.guards} koruma · $${o.reward}`);
+  haptic(40);
+}
+function hideBounty(m) { for (const p of [m.boss, ...m.guards]) { p.dead = true; p.h.g.visible = false; p.h.g.rotation.x = 0; } }
+function hitPed(p) {
+  if (p.npc && p.hp > 1) {
+    p.hp--; if (state.mission && state.mission.type === 'bounty') state.mission.alert = true;
+    for (let k = 0; k < 6; k++) FX.norm.spawn(p.x, 1.1, p.z, MR(-1.5, 1.5), MR(1, 3), MR(-1.5, 1.5), 0.4, 0.3, 0.2, 0.55, 0.02, 0.02, 0.9, 12);
+    return;
+  }
+  killPed(p, true);
+}
+function updateBounty(dt, m) {
+  const boss = m.boss;
+  if (!m.alert && Math.hypot(player.pos.x - boss.x, player.pos.z - boss.z) < 26) { m.alert = true; floatText('⚠ Korumalar seni fark etti!'); }
+  for (const p of [boss, ...m.guards]) {
+    const h = p.h;
+    if (p.dead) { h.g.position.set(p.x, groundY(p.x, p.z) + 0.12, p.z); continue; }
+    const dx = player.pos.x - p.x, dz = player.pos.z - p.z, d = Math.hypot(dx, dz) || 1;
+    let spd = 0, mx = 0, mz = 0;
+    if (m.alert && !state.dead) {
+      if (p.npc === 'boss') { spd = 4.3; mx = -dx / d; mz = -dz / d; }
+      else {
+        if (d > 13) { spd = 3.6; mx = dx / d; mz = dz / d; }
+        p.shootT -= dt;
+        if (d < 40 && p.shootT <= 0 && los(p.x, 1.4, p.z, player.pos.x, 1.3, player.pos.z)) {
+          p.shootT = MR(0.8, 1.6); const hit = Math.random() < 0.35;
+          FX.tracer(p.x, 1.45, p.z, player.pos.x + (hit ? 0 : MR(-2.5, 2.5)), player.pos.y + 1.2, player.pos.z + (hit ? 0 : MR(-2.5, 2.5)), true);
+          AudioSys.shot(0.4);
+          if (hit) { if (state.inCar) { damageCar(state.inCar, 4); state.health -= 1; } else applyDamage(5); }
+        }
+      }
+    }
+    if (spd) {
+      const r = collide(p.x + mx * spd * dt, p.z + mz * spd * dt, 0.35, 0.5);
+      if (r.hit && p.npc === 'boss') { const t = mx; mx = -mz; mz = t; }
+      p.x = r.x; p.z = r.z;
+    }
+    const want = m.alert && p.npc === 'guard' ? Math.atan2(dx, dz) : spd ? Math.atan2(mx, mz) : p.yaw + Math.sin(state.now * 0.7 + p.x) * 0.004;
+    p.yaw = wrapA(p.yaw + wrapA(want - p.yaw) * (1 - Math.exp(-8 * dt)));
+    const c = state.inCar;
+    if (c && carSpeed(c) > 6 && Math.hypot(c.group.position.x - p.x, c.group.position.z - p.z) < 1.7) { killPed(p, true); state.shake = 0.3; AudioSys.thud(); m.alert = true; continue; }
+    h.g.position.set(p.x, groundY(p.x, p.z), p.z); h.g.rotation.y = p.yaw;
+    animHuman(h, spd, dt, m.alert && p.npc === 'guard');
+  }
+}
+
+// ============================================================ SMARTPHONE UI
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10']];
+function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
+function openPhone() {
+  if (state.shopOpen || state.dead) return;
+  state.phoneOpen = true; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
+  for (const k in keys) keys[k] = false;
+  touchState.joyId = touchState.lookId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
+  $('touch').style.display = 'none';
+  if (!state.contractOffers.length) state.contractOffers = [makeContract(), makeContract(), makeContract()];
+  $('phone').classList.add('open'); renderPhone('home'); AudioSys.tone(1200, 0.05, 0.08, 'sine');
+}
+function closePhone() {
+  state.phoneOpen = false; $('phone').classList.remove('open');
+  if (isTouch) $('touch').style.display = 'block';
+  saveGame();
+}
+function renderPhone(app) {
+  state.phoneApp = app;
+  const sc = $('phScreen'), money = '$' + Math.round(state.money).toLocaleString('tr-TR');
+  $('phClock').textContent = clockStr();
+  const head = (title, col) => `<div class="phHead" style="background:${col}"><button class="phBack" data-app="home">‹</button><b>${title}</b><span>${money}</span></div>`;
+  let h = '';
+  if (app === 'home') {
+    h = `<div class="phWall"><div class="phTime">${clockStr()}</div><div class="phDate">VISTA BAY · ${money}</div>
+      <div class="phGrid">${APPS.map(([id, ic, n, col]) => `<button class="phApp" data-app="${id}"><i style="background:${col}">${ic}</i><span>${n}</span></button>`).join('')}</div></div>`;
+  } else if (app === 'valet') {
+    const list = ownedCars();
+    const fav = list.find(c => c.fav);
+    h = head('🚗 Vale', '#1e6ad8') + `<div class="phBody"><p class="phNote">Aracın en yakın yolun kenarına getirilir · Ücret $100</p>`;
+    if (!list.length) h += `<div class="phEmpty">Kayıtlı aracın yok.<br>VISTA MOTORS galerisinden al ya da 🔧 Garajda bir aracı boyat/yükselt.</div>`;
+    else {
+      if (fav) h += `<button class="phBig" data-call="${cars.indexOf(fav)}">★ Favoriyi çağır · ${carName(fav)}</button>`;
+      for (const c of list) {
+        const col = '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace), d = Math.round(Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z));
+        h += `<div class="phRow"><i class="sw" style="background:${col}"></i><div><b>${carName(c)}</b><small>Motor ${c.up.engine}/3 · Fren ${c.up.grip}/3${c.up.armor ? ' · Zırhlı' : ''} · ${c.dead ? 'Hurda' : d + ' m'}</small></div>
+          <button class="phStar ${c.fav ? 'on' : ''}" data-fav="${cars.indexOf(c)}">★</button><button class="phBtn" data-call="${cars.indexOf(c)}" ${c.dead || c === state.inCar ? 'disabled' : ''}>Çağır</button></div>`;
+      }
+    }
+    h += '</div>';
+  } else if (app === 'bank') {
+    const st = S(), m = Math.floor(st.play / 60);
+    const stats = [['Toplam kazanç', '$' + st.earned.toLocaleString('tr-TR')], ['Harcanan', '$' + st.spent.toLocaleString('tr-TR')], ['Saatlik mülk geliri', '+$' + propIncome()], ['Etkisiz hale getirilen', st.kills],
+      ['Tamamlanan görev', st.missions], ['Başarısız görev', st.fails], ['Kontratlar', st.contracts], ['Çalınan araç', st.jacked], ['Gidilen yol', (st.dist / 1000).toFixed(1) + ' km'], ['En yüksek hız', Math.round(st.topSpeed) + ' km/s'], ['En yüksek aranma', '★'.repeat(st.maxWanted) || '—'], ['Oyun süresi', `${Math.floor(m / 60)} sa ${m % 60} dk`]];
+    const done = ACHIEVEMENTS.filter(a => state.ach[a.id]).length;
+    h = head('🏦 Banka', '#1a9a50') + `<div class="phBody"><div class="phBal"><small>Hesap bakiyesi</small><b>${money}</b></div>
+      <div class="phSec">Son işlemler</div>${state.ledger.length ? state.ledger.map(l => `<div class="phLed"><span>${l.t}</span><span>${l.label}</span><b class="${l.amt < 0 ? 'neg' : ''}">${l.amt < 0 ? '-' : '+'}$${Math.abs(l.amt).toLocaleString('tr-TR')}</b></div>`).join('') : '<div class="phEmpty">Henüz işlem yok</div>'}
+      <div class="phSec">İstatistikler</div><div class="phStats">${stats.map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join('')}</div>
+      <div class="phSec">Başarımlar ${done}/${ACHIEVEMENTS.length}</div>${ACHIEVEMENTS.map(a => `<div class="phAch ${state.ach[a.id] ? 'on' : ''}"><i>${state.ach[a.id] ? '🏆' : '🔒'}</i><div><b>${a.name}</b><small>${a.desc}</small></div><span>+$${a.reward}</span></div>`).join('')}</div>`;
+  } else if (app === 'contracts') {
+    const busy = !!state.mission;
+    h = head('🎯 Kontratlar', '#c8283a') + `<div class="phBody"><p class="phNote">Korumalı hedefleri ortadan kaldır. Hedef kaçar, korumalar ateş eder.</p>${busy ? '<div class="phEmpty">Önce mevcut görevi bitir.</div>' : ''}
+      ${state.contractOffers.map((o, k) => `<div class="phCard"><div><b>${o.name}</b><small>📍 ${o.area} · ${Math.round(Math.hypot(o.x - player.pos.x, o.z - player.pos.z))} m · 🛡 ${o.guards} koruma</small></div><div class="phCardR"><span>$${o.reward.toLocaleString('tr-TR')}</span><button class="phBtn red" data-contract="${k}" ${busy ? 'disabled' : ''}>Kabul et</button></div></div>`).join('')}</div>`;
+  } else if (app === 'props') {
+    const next = Math.ceil((1 - (state.time % 1)) * HOUR_SEC);
+    h = head('🏠 Emlak', '#d88a10') + `<div class="phBody"><div class="phBal"><small>Saatlik gelir · sonraki ödeme ${next} sn</small><b>+$${propIncome()}</b></div>
+      ${PROPERTIES.map(p => `<div class="phRow"><i class="phIc">${p.icon}</i><div><b>${p.name}</b><small>${state.props[p.id] ? `Senin · +$${p.income}/saat${state.spawnProp === p.id ? ' · 🛏 Doğuş' : ''}` : `$${p.price.toLocaleString('tr-TR')} · +$${p.income}/saat`}</small></div><button class="phBtn" data-gps="${p.id}">📍 GPS</button></div>`).join('')}
+      <p class="phNote">Mülkü satın almak için önündeki yeşil halkaya git.</p></div>`;
+  }
+  sc.innerHTML = h;
+}
+function carName(c) { const n = { bike: 'Motosiklet', sedan: 'Sedan', van: 'Minibüs', pickup: 'Pikap', suv: 'SUV', sport: 'Spor Coupe', super: 'Süper Araba', armored: 'Zırhlı SUV', taxi: 'Taksi', police: 'Polis Aracı' }; return n[c.kind] || c.kind; }
+function initPhone() {
+  const ph = $('phone'), tap = (e) => {
+    const t = e.target.closest('button'); if (!t) return;
+    e.preventDefault(); e.stopPropagation();
+    const d = t.dataset;
+    if (d.app) renderPhone(d.app);
+    else if (d.call) { if (callCar(cars[+d.call])) closePhone(); else renderPhone('valet'); }
+    else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
+    else if (d.contract) { startContract(+d.contract); closePhone(); }
+    else if (d.gps) { const p = PROPERTIES.find(q => q.id === d.gps); state.waypoint = { x: p.zone.x, z: p.zone.z, label: p.name }; floatText('📍 ' + p.name + ' işaretlendi'); closePhone(); }
+    else if (t.id === 'phClose' || t.id === 'phHomeBtn') { if (t.id === 'phHomeBtn' && state.phoneApp !== 'home') renderPhone('home'); else closePhone(); }
+  };
+  ph.addEventListener('click', tap);
+  const pb = $('bPhone');
+  pb.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); togglePhone(); }, { passive: false });
+  pb.addEventListener('click', e => { e.stopPropagation(); togglePhone(); });
 }
 
 // ============================================================ RADIO (procedural synthwave)
@@ -2513,6 +2802,8 @@ function loop(now) {
   updateMission(dt);
   updateShops(dt);
   updateStarts(dt);
+  updateEconomy(dt);
+  if (state.phoneOpen) $('phClock').textContent = clockStr();
   updateTrafficLights();
   // wanted level dynamics
   state.crimeTimer += dt;

@@ -11,6 +11,8 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🔧 Garaj & Boya**: araçla mavi halkaya gir → tamir (aranma yıldızlarını da siler), 9 renk boya, motor ve fren/tutuş yükseltmesi (3 seviye), gövde zırhı, spor araba / zırhlı araç çağırma
 - **🔫 Silah & Ekipman**: kırmızı halkada "MAĞAZAYI AÇ" (PC: E) → can/zırh, pompalı, taramalı tüfek, roketatar, mermi paketleri
 - **Görev halkaları (sarı)**: haritada 3 görev noktası — zamana karşı yarış, araç teslimatı (polisten kaç, garaja hasarsız getir), taksi, suikast, kurye · hedef oku ve ödül ekranda
+- **📱 Oyun içi telefon** (📱 butonu / PC: P veya Tab): Vale (kayıtlı aracını yolun kenarına çağır, ★ favori), Banka (bakiye, son işlemler, istatistikler, 12 başarım), Kontrat (korumalı hedef suikastı), Emlak (gelir ve GPS)
+- **🏠 Emlak & pasif gelir**: Oto Yıkama, Sahil Kulübü, Lüks Villa, Gece Kulübü — yeşil halkadan satın al, her oyun saatinde otomatik gelir; mülkler kayıt noktası ve doğuş noktası olur
 - **Mobil his**: titreşim (ateş, çarpışma, para, görev), yüzen joystick
 - **Kayıt sistemi**: para, sahip olunan silahlar, mermiler, araçlar, renkler ve yükseltmeler otomatik kaydedilir
 - **Gerçekçi grafik**: hareketli bulutlu gökyüzü, gün/gece döngüsü (16 dk), yumuşak gölgeler, sinematik renk düzenleme, zemin gölgelendirmesi, yansımalı cam ve araba boyası, okyanus shader'ı, sokak lambaları
@@ -34,7 +36,8 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 | Zıpla / el freni | ZIPLA / EL FRENİ | Space |
 | Koş | Joystick'i sonuna kadar it | Shift |
 | Silah değiştir | Silah butonu | 1-5 / X / fare tekerleği |
-| Mağaza / Garaj | Sarı buton | E |
+| Mağaza / Garaj / Mülk | Sarı buton | E |
+| Telefon | 📱 | P / Tab |
 | Ses (radyo → efektler → sessiz) | 📻 | R |
 
 ## Nasıl oynanır
