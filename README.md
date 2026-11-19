@@ -32,7 +32,9 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🏁 Stunt atlayışları**: 7 rampa (sahil + parklar); hızla atlayınca ağır çekim sinematik kamera, başarılı inişte STUNT BONUS (ilk atlayış x2)
 - **📖 Hikaye modu**: 2 perde, 9 bölüm (Rico, Nina, Victor Kral ve Kartel patronu Marisol) — mor "S" halkasından başlar, sinematik diyaloglar; araba, polis takibi, tekne, helikopter ve son patron savaşı
 - **🚌 Şehir otobüsü**: trafikte dolaşan ve durakta park halinde otobüsler, 4 otobüs durağı
-- **🚪 İç mekanlar**: dans eden kalabalık ve müzikli Gece Kulübü; Lüks Villa içi (yatakta uyu & kaydet, gardırop)
+- **🚪 Her binaya girilebilir**: 245 binanın kapısı var; içeride bina türüne göre oluşturulan market/kafe/butik, ofis lobisi, ev ve depo (aynı binada herkes aynı odayı görür)
+- **🎯 Nişangâh**: mermi tam nişangâhın gösterdiği yere gider (mobilde hafif nişan yardımı)
+- **🚪 Özel iç mekanlar**: dans eden kalabalık ve müzikli Gece Kulübü; Lüks Villa içi (yatakta uyu & kaydet, gardırop)
 - **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir
 - **📷 Fotoğraf modu** (telefon → Foto): oyunu durdurur, kamerayı serbestçe döndür, JPG olarak kaydet
 - **⚙️ Ayarlar** (telefon): FPS göstergesi, otomatik çözünürlük, titreşim, kamera hassasiyeti, grafik kalitesi, kaydı sıfırla
@@ -53,6 +55,11 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - Konum paketleri ayrı, hızlı (güvenilmez/sırasız) kanaldan gider; paket kaybında 250 ms'e kadar tahmin (extrapolation)
 - **🚗 Yolcu koltuğu**: başka oyuncunun aracına yaklaş → "ARACINA BİN" (F); yolcuyken ATEŞ ile camdan ateş et
 - **🏁 Sokak yarışı**: bir oyuncunun yanında "İLE YARIŞ" → bahis seç → kabul edilince haritada mavi fişek; ilk varan bahsi alır
+- **🌍 Ortak dünya**: trafik ve yayaları oda sahibi yönetir; herkes aynı arabaları ve insanları görür. Bir oyuncu dünya arabasına binince diğerlerinde de o oyuncuya geçer; araç hasarı ve yaya ölümleri herkese yansır
+- **⚔ Oyuncular arası çatışma**: kafadan vuruş 2.2x, roket alan hasarı, hasar yönü göstergesi, ölünce 3 sn doğuş koruması
+- **🏆 Skor tablosu** (👥 düğmesi / L): öldürme, ölüm, kazanılan yarış, nakit ve ödül
+- **🎯 Ödül (bounty)**: üst üste 3 oyuncu alt edenin başına otomatik ödül konur (mini haritada ☠); onu alt eden ödülü kazanır
+- **Özelleştirme senkronu**: garajdan neon alt ışık ve jant rengi, kıyafet mağazasından sırt çantası — hepsi diğer oyunculara görünür
 - **💼 Ortak soygun**: her 5 dakikada zırhlı konvoy tüm oyuncuların haritasında belirir; korumaları temizle, kasayı aç, saçılan para çantalarını kap
 
 Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
