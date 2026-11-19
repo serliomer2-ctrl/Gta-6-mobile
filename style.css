@@ -147,3 +147,10 @@ body.playing #bPhone{display:flex}
 .phStats{display:grid;grid-template-columns:1fr 1fr;gap:6px}.phStats div{background:#ffffff0a;border-radius:10px;padding:7px 9px}.phStats small{display:block;color:#ffffff88;font-size:11px}.phStats b{font-size:16px}
 .phAch{opacity:.55}.phAch.on{opacity:1}.phAch i{font-style:normal;font-size:20px}.phAch span{color:#ffd23a;font-weight:700;font-size:13px}
 @media (max-height:500px){#bPhone{bottom:auto;top:calc(200px + env(safe-area-inset-top,0px));width:44px;height:44px;font-size:22px}#phone{height:96vh;bottom:2vh}.phTime{font-size:38px}.phWall{padding:12px}.phDate{margin-bottom:12px}}
+
+/* ---------- HELICOPTER CONTROLS ---------- */
+.btn.heli{display:none}
+body.inheli .btn.heli{display:flex}
+body.inheli .btn.car{display:none}
+#bUp{right:calc(136px + var(--sr,0px));bottom:112px;background:#2e9e5255;border-color:#7dff9a;font-size:12px}
+#bDown{right:calc(136px + var(--sr,0px));bottom:26px;background:#c8283a44;border-color:#ff8a8a;font-size:12px}

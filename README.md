@@ -22,7 +22,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **Silahlar**: tabanca, Uzi, saldırı tüfeği, pompalı, roketatar · Şehre dağılmış silah / can / zırh kutuları
 - **Motosiklet**: virajda yatan, hızlı motorlar (sert çarpışmada uçarsın!)
 - **Görevler**: işarete ulaş, 5 noktalı yarış, taksi yolcusu taşıma, hedef aracı yok etme · Yerdeki paraları topla
-- **Hava durumu**: yağmur, ıslak yansıyan yollar, gece şimşek
+- **Hava durumu döngüsü**: ☀️ Güneşli → ⛅ Bulutlu → 🌧 Yağmurlu → ⛈ Fırtına (şimşek) → 🌫 Sisli; yağmurda yollar kayar ve yansır, simge saatin yanında
+- **🚁 Helikopter** (parktaki ve sahildeki pistler, gökdelen çatısına inilebilir): ▲ YÜKSEL / ▼ ALÇAL (PC: Space / C)
+- **🚤 Sürat teknesi**: sahildeki iskelede, dalgalarla sallanır, köpük izi bırakır
+- **Çete**: sanayi bölgesindeki Kızıl Kobralar, ateş edersen veya yanlarında oyalanırsan karşılık verir
+- **Canlı şehir**: silah sesinde trafik paniğe kapılır; araç ve yayalar oyuncunun etrafında (~150-230 m) sürekli yeniden konumlanır
 - **Araba radyosu**: VISTA FM 101.4 — anlık üretilen synthwave müzik (R / 📻)
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
 

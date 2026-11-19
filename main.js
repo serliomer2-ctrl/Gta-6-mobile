@@ -66,7 +66,7 @@ const state = {
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
   weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
   props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
-  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0 }, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true
+  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0 }, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
 };
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
@@ -335,6 +335,10 @@ function init() {
   buildProperties();
   if (state.spawnProp) { const [x, z] = spawnPoint(); player.pos.set(x, 0.25, z); }
   buildStarts();
+  buildDockAndPads();
+  buildSpecialVehicles();
+  buildGang();
+  setWeather('clear', false);
   if (AudioSys.master) AudioSys.master.gain.value = state.soundMode === 2 ? 0 : 0.55;
   spawnPeds();
   spawnPickups();
@@ -740,7 +744,7 @@ function blockAt(x, z) {
 }
 function groundY(x, z) {
   let g = x > SHORE_X ? sandHeight(x) : (blockAt(x, z) ? 0.25 : 0);
-  if (x > BEACH_X0) { const r = rampHeight(x, z); if (r > g) g = r; }
+  if (x > BEACH_X0) { const r = rampHeight(x, z); if (r > g) g = r; if (onDock(x, z)) g = Math.max(g, DOCK.y); }
   return g;
 }
 const hitRes = { x: 0, z: 0, nx: 0, nz: 0, hit: false };
@@ -762,7 +766,7 @@ function collide(x, z, r, y = 0) {
     }
   }
   // world bounds
-  if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { x = BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; }
+  if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
   if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; }
   const nl = Math.hypot(hitRes.nx, hitRes.nz) || 1; hitRes.nx /= nl; hitRes.nz /= nl;
   hitRes.x = x; hitRes.z = z; return hitRes;
@@ -1004,6 +1008,7 @@ function explodeCar(c) {
   if (state.inCar === c) { exitCar(true); state.health -= 45; }
   setTimeout(() => {
     if (!c.dead || c.police || c.display || c.delivery) return;
+    if (c.home) { respawnSpecial(c); return; }
     if (c.owned) { const [x, z] = dealerSpot(cars.filter(o => o.owned).indexOf(c)); c.dead = false; c.health = c.maxHealth; c.paint.material = c.paintM; c.mode = 'free'; c.vx = c.vz = 0; c.air = false; c.group.position.set(x, 0, z); c.y = 0; c.h = Math.PI / 2; c.group.rotation.set(0, c.h, 0); floatText('Sigorta: aracın galeride'); }
     else respawnTrafficCar(c);
   }, 25000);
@@ -1036,21 +1041,29 @@ function enterCar() {
   if (best.spec.bike) { best.group.add(player.human.g); player.human.g.position.set(0, 0.45, -0.28); player.human.g.rotation.set(0.32, 0, 0); }
   else player.human.g.visible = false;
   if (state.soundMode === 0) floatText('📻 VISTA FM 101.4');
-  document.body.classList.add('incar');
+  document.body.classList.add('incar'); document.body.classList.toggle('inheli', !!best.spec.heli);
+  if (best.spec.heli) floatText('🚁 Motor ısınıyor… ▲ YÜKSEL ile kalk');
   AudioSys.door();
 }
 function exitCar(forced) {
   const c = state.inCar; if (!c) return;
+  if (c.spec.heli && !forced && c.y - heliFloor(c) > 1.2) { floatText('🚁 Önce yere in'); return; }
   const sp = carSpeed(c);
   c.mode = c.dead ? 'dead' : 'free'; c.driver = false; state.inCar = null;
   let x = c.group.position.x + Math.cos(c.h) * 1.9, z = c.group.position.z - Math.sin(c.h) * 1.9; // driver (left) side
   const r = collide(x, z, 0.4, 0.5); x = r.x; z = r.z;
   player.pos.set(x, groundY(x, z), z); player.vy = 0;
+  if (c.spec.boat) {
+    const bx = c.group.position.x, bz = c.group.position.z;
+    if (bx < DOCK.x1 + 8 && Math.abs(bz - DOCK.z) < 12) player.pos.set(clamp(bx, DOCK.x0 + 1, DOCK.x1 - 1), DOCK.y, DOCK.z);
+    else { player.pos.set(WATERLINE - 3, 0.05, clamp(bz, BOUNDS.z0, BOUNDS.z1)); floatText('🏊 Kıyıya yüzdün'); }
+  }
+  if (c.spec.heli) c.vy = 0;
   if (player.human.g.parent !== scene) scene.add(player.human.g);
   player.human.g.rotation.set(0, c.h, 0); player.human.g.children[4].position.y = 0;
   player.human.g.visible = true; player.yaw = c.h;
   if (sp > 12 && !forced) state.health -= 8;
-  document.body.classList.remove('incar');
+  document.body.classList.remove('incar', 'inheli');
   AudioSys.door();
 }
 function updatePlayerFoot(dt) {
@@ -1094,7 +1107,9 @@ function updatePlayerFoot(dt) {
 function updatePlayerCar(dt) {
   const c = state.inCar;
   let throttle = clamp(input.my + (input.gas ? 1 : 0) - (input.brake ? 1 : 0), -1, 1);
-  carPhysics(c, dt, throttle, clamp(input.mx, -1, 1), input.hand);
+  if (c.spec.boat) boatPhysics(c, dt, throttle, clamp(input.mx, -1, 1));
+  else if (c.spec.heli) heliPhysics(c, dt, throttle, clamp(input.mx, -1, 1), (input.up ? 1 : 0) - (input.down ? 1 : 0));
+  else carPhysics(c, dt, throttle, clamp(input.mx, -1, 1), input.hand);
   if (!state.inCar) return; // crashed off bike
   player.pos.copy(c.group.position);
   { const v = carSpeed(c); state.stats.dist += v * dt; state.stats.topSpeed = Math.max(state.stats.topSpeed, Math.abs(carFwd(c)) * 3.6); }
@@ -1173,8 +1188,9 @@ function fire() {
     AudioSys.shot(w.vol);
   }
   // shots fired near people -> heat
-  if (state.wanted < 1) for (const p of peds) if (!p.dead && dist2(p) < 900) { addHeat(1); break; }
-  for (const p of peds) if (!p.dead && dist2(p) < 1600) { p.panic = 8; p.fleeX = p.x - ox; p.fleeZ = p.z - oz; if (p.npc && state.mission && state.mission.type === 'bounty') state.mission.alert = true; }
+  if (state.wanted < 1) for (const p of peds) if (!p.dead && !p.npc && dist2(p) < 900) { addHeat(1); break; }
+  for (const c of cars) if (c.mode === 'ai' && c.ai && Math.hypot(c.group.position.x - ox, c.group.position.z - oz) < 60) c.ai.panic = 6;
+  for (const p of peds) if (!p.dead && dist2(p) < 1600) { p.panic = 8; p.fleeX = p.x - ox; p.fleeZ = p.z - oz; if (p.npc && state.mission && state.mission.type === 'bounty') state.mission.alert = true; if (p.npc === 'gang') gangAggro(); }
 }
 const rockets = [], rocketPool = []; let rocketGeo = null, rocketMat = null;
 function launchRocket(x, y, z, dx, dy, dz) {
@@ -1205,7 +1221,8 @@ function killPed(p, byPlayer) {
   p.h.g.rotation.x = -Math.PI / 2;
   for (let k = 0; k < 10; k++) FX.norm.spawn(p.x, 0.9, p.z, MR(-2, 2), MR(1, 4), MR(-2, 2), 0.5, 0.35, 0.2, 0.55, 0.02, 0.02, 0.9, 12);
   spawnCash(p.x + MR(-0.5, 0.5), p.z + MR(-0.5, 0.5), Math.round(MR(10, 90)));
-  if (byPlayer) { addHeat(p.cop ? 1.5 : 0.7); state.stats.kills++; }
+  if (p.npc === 'gang') { gangAggro(); p.respawnT = 60; }
+  if (byPlayer) { addHeat(p.npc === 'gang' ? 0.3 : p.cop ? 1.5 : 0.7); state.stats.kills++; }
 }
 function addHeat(v) { state.heat = clamp(Math.max(state.heat, 1) + (state.heat >= 1 ? v : 0), 0, 5.99); state.crimeTimer = 0; }
 
@@ -1239,7 +1256,7 @@ function placeOnRoad(c, anywhere) {
   do {
     i = RI(0, N); j = RI(0, N); dir = RI(0, 3); tries++;
   } while ((i + DX[dir] < 0 || i + DX[dir] > N || j + DZ[dir] < 0 || j + DZ[dir] > N ||
-    (!anywhere && Math.hypot(nodeP(i) - player.pos.x, nodeP(j) - player.pos.z) < 120)) && tries < 50);
+    (anywhere === 'near' ? (dd => dd < 70 || dd > 200)(Math.hypot(nodeP(i) - player.pos.x, nodeP(j) - player.pos.z)) : (!anywhere && Math.hypot(nodeP(i) - player.pos.x, nodeP(j) - player.pos.z) < 120))) && tries < 60);
   c.ai = { i, j, dir, t: R(10, CELL - 10), lane: rnd() < 0.5 ? 2.4 : 6.6, speed: 0, cruise: R(9, 14), panic: 0, wait: 0, ghost: 0 };
   const tp = aiTarget(c.ai); c.group.position.set(tp[0], 0, tp[1]); c.h = Math.atan2(DX[dir], DZ[dir]); c.y = 0;
   c.mode = 'ai'; c.driver = true;
@@ -1374,7 +1391,7 @@ function placePed(p, anywhere) {
   for (let t = 0; t < 30; t++) {
     p.bi = RI(0, N - 1); p.bj = RI(0, N - 1);
     const b = blocks[p.bi][p.bj];
-    if (anywhere || Math.hypot(b.cx - player.pos.x, b.cz - player.pos.z) > 90) break;
+    const db = Math.hypot(b.cx - player.pos.x, b.cz - player.pos.z); if (anywhere || (db > 45 && db < 150)) break;
   }
   p.s = R(0, 1000); p.dir = rnd() < 0.5 ? 1 : -1; p.dead = false; p.free = false; p.panic = 0; p.h.g.rotation.x = 0; p.h.g.visible = true;
   const [x, z] = pathPos(p); p.x = x; p.z = z;
@@ -1409,7 +1426,7 @@ function updatePeds(dt) {
       continue;
     }
     const d2p = dist2(p);
-    if (d2p > 220 * 220 && !p.free) { placePed(p, false); }
+    if (d2p > 170 * 170 && !p.free) { placePed(p, false); }
     h.g.visible = d2p < 180 * 180;
     let speed = p.speed, ox = p.x, oz = p.z;
     if (p.panic > 0) p.panic -= dt;
@@ -1430,6 +1447,7 @@ function updatePeds(dt) {
     // car hits
     for (const c of cars) {
       if (!c.active) continue;
+      if (c.spec.heli || c.spec.boat) continue;
       const sp = carSpeed(c); if (sp < 5) continue;
       const cp = c.group.position, fx = Math.sin(c.h) * 1.2, fz = Math.cos(c.h) * 1.2;
       for (const sg of [1, 0, -1]) if (Math.hypot(p.x - cp.x - fx * sg, p.z - cp.z - fz * sg) < 1.35) {
@@ -1727,6 +1745,7 @@ function carCollisions() {
   for (let a = 0; a < act.length; a++) for (let b = a + 1; b < act.length; b++) {
     const A = act[a], B = act[b], pa = A.group.position, pb = B.group.position;
     if (A.mode === 'ai' && B.mode === 'ai') continue;
+    if (A.spec.heli || B.spec.heli || A.spec.boat || B.spec.boat) continue;
     if (Math.abs(pa.x - pb.x) > 6 || Math.abs(pa.z - pb.z) > 6) continue;
     for (const sa of [1, -1]) for (const sb of [1, -1]) {
       const oa = A.spec.co ?? 1.2, ob = B.spec.co ?? 1.2;
@@ -1774,12 +1793,8 @@ function buildWeather() {
 }
 function updateWeather(dt) {
   state.weatherT -= dt;
-  if (state.weatherT <= 0) {
-    const was = state.rainTarget > 0;
-    state.rainTarget = !was && Math.random() < 0.45 ? MR(0.6, 1) : 0;
-    state.weatherT = state.rainTarget ? MR(70, 140) : MR(100, 200);
-    if (state.rainTarget) floatText('🌧 Yağmur başladı');
-  }
+  if (state.weatherT <= 0) setWeather(pick(WEATHERS[state.weather].next));
+  state.cloud = damp(state.cloud, state.cloudTarget, 0.1, dt); state.fog = damp(state.fog, state.fogTarget, 0.08, dt);
   state.rain = damp(state.rain, state.rainTarget, 0.12, dt);
   const rain = state.rain;
   rainLines.visible = rain > 0.02;
@@ -1794,7 +1809,7 @@ function updateWeather(dt) {
     rainLines.geometry.setDrawRange(0, n * 2); rainLines.geometry.attributes.position.needsUpdate = true;
     rainLines.material.opacity = 0.25 + 0.3 * (1 - nightF);
   }
-  if (rain > 0.6 && Math.random() < dt * 0.07) { state.lightning = 1; setTimeout(() => AudioSys.thunder(), MR(300, 1800)); }
+  if (state.weather === 'storm' && rain > 0.6 && Math.random() < dt * 0.12) { state.lightning = 1; setTimeout(() => AudioSys.thunder(), MR(300, 1800)); }
   state.lightning = Math.max(0, state.lightning - dt * (Math.random() < 0.5 ? 3 : 9));
   clouds.position.copy(camera.position); clouds.material.uniforms.uTime.value = state.now;
   M.road.roughness = lerp(0.82, 0.12, rain); M.road.color.setScalar(lerp(1, 0.6, rain)); M.road.envMapIntensity = 1 + rain * 1.5;
@@ -1828,6 +1843,8 @@ function updateSky(dt) {
   if (rain > 0.001) fog.lerp(tmpC2.setRGB(0.3, 0.32, 0.35).multiplyScalar(0.2 + 0.8 * day), rain * 0.8);
   scene.fog.color.copy(fog);
   scene.fog.near = lerp(150, 25, rain); scene.fog.far = lerp(QUALITY === 'low' ? 600 : 900, 300, rain);
+  const fogA = state.fog;
+  if (fogA > 0.001) { scene.fog.near = lerp(scene.fog.near, 6, fogA); scene.fog.far = lerp(scene.fog.far, 150, fogA); fog.lerp(tmpC2.setRGB(0.72, 0.74, 0.77).multiplyScalar(0.15 + 0.85 * day), fogA * 0.85); scene.fog.color.copy(fog); sunLight.intensity *= 1 - 0.55 * fogA; }
   sunLight.intensity *= 1 - 0.8 * rain;
   hemi.intensity = hemi.intensity * (1 - 0.25 * rain) + state.lightning * 3;
   renderer.toneMappingExposure = (0.85 + night * 0.1) * (1 - 0.12 * rain);
@@ -1838,8 +1855,9 @@ function updateSky(dt) {
   M.pool.opacity = night * 0.6;
   M.carLight.color.setScalar(0.9 + night * 2.6);
   const cu = clouds.material.uniforms;
-  cu.uSunDir.value.copy(y > -0.05 ? sunDir : tmpV2); cu.uCover.value = 0.42 + state.rain * 0.58;
+  cu.uSunDir.value.copy(y > -0.05 ? sunDir : tmpV2); cu.uCover.value = Math.max(state.cloud, state.rain);
   cu.uLit.value.setRGB(1, 0.97, 0.92).lerp(tmpC2.setRGB(1, 0.62, 0.42), sunset * 0.8).multiplyScalar(0.06 + 0.94 * day).lerp(tmpC2.setRGB(0.42, 0.44, 0.47), state.rain * 0.75).addScalar(state.lightning);
+  if (state.fog > 0.01) { cu.uLit.value.lerp(scene.fog.color, state.fog * 0.7); }
   cu.uShade.value.setRGB(0.58, 0.62, 0.7).lerp(tmpC2.setRGB(0.55, 0.4, 0.45), sunset * 0.6).multiplyScalar(0.05 + 0.95 * day).lerp(tmpC2.setRGB(0.22, 0.23, 0.25).multiplyScalar(0.2 + 0.8 * day), state.rain * 0.8);
   if (bloomPass) bloomPass.strength = 0.18 + night * 0.3 + sunset * 0.08;
   // ocean
@@ -1851,20 +1869,20 @@ function updateSky(dt) {
   envTimer += dt;
   if (envTimer > 3) { envTimer = 0; if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.02); scene.environment = envRT.texture; }
   const hh = Math.floor(state.time), mm = Math.floor((state.time - hh) * 60);
-  $('clock').textContent = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  $('clock').textContent = (WEATHERS[state.weather] ? WEATHERS[state.weather].icon + ' ' : '') + String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
 
 // ============================================================ CAMERA
 function updateCamera(dt) {
   const c = state.inCar;
-  const tx = player.pos.x, ty = player.pos.y + (c ? 1.7 : 1.55), tz = player.pos.z;
+  const tx = player.pos.x, ty = player.pos.y + (c ? (c.spec.heli ? 2.6 : 1.7) : 1.55), tz = player.pos.z;
   camYaw -= input.lookDX; camPitch = clamp(camPitch + input.lookDY, -0.35, 1.25);
   if (input.lookDX || input.lookDY) state.lastLookInput = state.now;
   input.lookDX = input.lookDY = 0;
   let dist = 4.6;
   if (c) {
     const sp = carSpeed(c);
-    dist = (c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
+    dist = (c.spec.heli ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
     if (state.now - state.lastLookInput > 1.3 && sp > 2) {
       const behind = (carFwd(c) < -1 ? c.h : c.h + Math.PI);
       camYaw += wrapA(behind - camYaw) * (1 - Math.exp(-3.5 * dt));
@@ -1891,7 +1909,7 @@ function updateCamera(dt) {
 }
 
 // ============================================================ INPUT
-const input = { mx: 0, my: 0, lookDX: 0, lookDY: 0, fire: false, jump: false, sprint: false, gas: false, brake: false, hand: false };
+const input = { mx: 0, my: 0, lookDX: 0, lookDY: 0, fire: false, jump: false, sprint: false, gas: false, brake: false, hand: false, up: false, down: false };
 const keys = {};
 const touchState = { joyId: null, jx: 0, jy: 0, jdx: 0, jdy: 0, lookId: null, lx: 0, ly: 0 };
 function initInput() {
@@ -1955,14 +1973,14 @@ function initInput() {
     const up = e => { e.preventDefault(); keys[key] = false; el.classList.remove('down'); };
     el.addEventListener('touchend', up, opts); el.addEventListener('touchcancel', up, opts);
   };
-  btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand');
+  btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown');
   btn('bEnter', 'TEnter', enterCar);
   btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact);
   $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
 }
 function readInput() {
   const k = keys;
-  if (state.phoneOpen) { Object.assign(input, { mx: 0, my: 0, lookDX: 0, lookDY: 0, fire: false, jump: false, sprint: false, gas: false, brake: false, hand: false }); return; }
+  if (state.phoneOpen) { Object.assign(input, { mx: 0, my: 0, lookDX: 0, lookDY: 0, fire: false, jump: false, sprint: false, gas: false, brake: false, hand: false, up: false, down: false }); return; }
   let mx = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
   let my = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0);
   if (touchState.joyId !== null) { mx += touchState.jdx; my -= touchState.jdy; }
@@ -1972,6 +1990,7 @@ function readInput() {
   input.hand = !!(k.THand || (state.inCar && k.Space));
   input.sprint = !!(k.ShiftLeft || k.ShiftRight);
   input.gas = !!k.TGas; input.brake = !!k.TBrake;
+  input.up = !!(k.TUp || (state.inCar && k.Space)); input.down = !!(k.TDown || k.KeyC || (state.inCar && (k.ShiftLeft || k.ControlLeft)));
 }
 
 // ============================================================ HUD
@@ -2020,6 +2039,8 @@ function drawMinimap() {
     g.fillStyle = col; g.beginPath(); g.arc(px, py, rad, 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 2; g.stroke();
   };
   for (const c of cars) if (c.active && c.police && c.mode === 'police') dot(c.group.position.x, c.group.position.z, Math.sin(state.now * 12) > 0 ? '#ff2040' : '#2060ff', 8, true);
+  g.font = '18px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const c of cars) if (c.home && !c.dead && c !== state.inCar) { const [px, py] = toMap(c.group.position.x, c.group.position.z); if (Math.hypot(px - r, py - r) < r - 10) g.fillText(c.spec.heli ? '🚁' : '🚤', px, py); }
   for (const c of cars) if (c.owned && !c.dead && c !== state.inCar) dot(c.group.position.x, c.group.position.z, '#40a0ff', 6, false);
   g.font = '22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const s of SHOPS) { let [px, py] = toMap(s.x, s.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 15, 0, 7); g.fill(); g.strokeStyle = s.mapCol; g.lineWidth = 3; g.stroke(); g.fillText(s.icon, px, py + 1); }
@@ -2124,7 +2145,8 @@ const AudioSys = {
   fail() { [392, 330, 262].forEach((f, i) => this.tone(f, 0.4, 0.25, 'triangle', 1, i * 0.15)); },
   update(dt, policeDist) {
     if (!this.ctx) return; const t = this.ctx.currentTime, c = state.inCar;
-    if (c) { const bk = c.spec.bike ? 1.6 : 1, sp = Math.abs(carFwd(c)) * bk, gear = sp / c.spec.max * 5, rpm = 0.3 + (gear % 1) * 0.7 + Math.floor(gear) * 0.08; this.eo.frequency.setTargetAtTime(40 + rpm * 90 + sp, t, 0.05); this.eo2.frequency.setTargetAtTime(20 + rpm * 45 + sp * 0.5, t, 0.05); this.ef.frequency.setTargetAtTime(300 + Math.abs(input.my) * 900 + sp * 15, t, 0.1); this.eg.gain.setTargetAtTime(0.09 + Math.abs(input.my) * 0.06, t, 0.1); }
+    if (c && c.spec.heli) { const pw = c.power; this.eo.frequency.setTargetAtTime(18 + pw * 16, t, 0.1); this.eo2.frequency.setTargetAtTime(9 + pw * 8, t, 0.1); this.ef.frequency.setTargetAtTime(350 + pw * 450, t, 0.1); this.eg.gain.setTargetAtTime(0.17 * pw, t, 0.1); }
+    else if (c) { const bk = c.spec.bike ? 1.6 : c.spec.boat ? 1.3 : 1, sp = Math.abs(carFwd(c)) * bk, gear = sp / c.spec.max * 5, rpm = 0.3 + (gear % 1) * 0.7 + Math.floor(gear) * 0.08; this.eo.frequency.setTargetAtTime(40 + rpm * 90 + sp, t, 0.05); this.eo2.frequency.setTargetAtTime(20 + rpm * 45 + sp * 0.5, t, 0.05); this.ef.frequency.setTargetAtTime(300 + Math.abs(input.my) * 900 + sp * 15, t, 0.1); this.eg.gain.setTargetAtTime(0.09 + Math.abs(input.my) * 0.06, t, 0.1); }
     else this.eg.gain.setTargetAtTime(0, t, 0.15);
     const sv = state.wanted > 0 ? clamp(1 - policeDist / 150, 0, 1) * 0.12 : 0;
     this.sg.gain.setTargetAtTime(sv, t, 0.2); this.so.frequency.setTargetAtTime(650 + Math.sin(state.now * 3.5) * 220, t, 0.03);
@@ -2302,7 +2324,7 @@ function buildShops(save) {
   }
   CAR_ITEMS.forEach(([kind], k) => { const c = createCar(kind, pick(CAR_COLORS), db.cx - 27 + k * 8.5, db.cz + 6 + (k % 2) * 6, Math.PI + 0.4, 'free'); c.display = true; c.driver = false; });
   if (save && save.owned) save.owned.forEach(([kind, hex, up, fav], k) => {
-    if (!CAR_SPECS[kind]) return;
+    if (!CAR_SPECS[kind] || CAR_SPECS[kind].heli || CAR_SPECS[kind].boat) return;
     const [x, z] = dealerSpot(k); const c = createCar(kind, '#' + hex, x, z, Math.PI / 2, 'free'); c.owned = true; c.driver = false;
     if (up) Object.assign(c.up, up);
     if (fav) c.fav = true;
@@ -2403,7 +2425,7 @@ function saveGame() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
-      owned: cars.filter(c => c.owned && !c.dead && !c.delivery).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
+      owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
       props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach
     }));
   } catch (e) { }
@@ -2510,7 +2532,7 @@ const S = () => state.stats;
 function earn(amt, label) { state.money += amt; S().earned += amt; ledger(label, amt); }
 function ledger(label, amt) { state.ledger.unshift({ t: clockStr(), label, amt }); if (state.ledger.length > 8) state.ledger.pop(); }
 function clockStr() { const h = Math.floor(state.time), m = Math.floor((state.time - h) * 60); return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
-const ownedCars = () => cars.filter(c => c.owned && !c.display && !c.delivery);
+const ownedCars = () => cars.filter(c => c.owned && !c.display && !c.delivery && !c.home);
 const ACHIEVEMENTS = [
   { id: 'm1', name: 'İlk İş', desc: '1 görev tamamla', reward: 250, test: () => S().missions >= 1 },
   { id: 'm10', name: 'Profesyonel', desc: '10 görev tamamla', reward: 2500, test: () => S().missions >= 10 },
@@ -2598,6 +2620,7 @@ function startContract(k) {
 }
 function hideBounty(m) { for (const p of [m.boss, ...m.guards]) { p.dead = true; p.h.g.visible = false; p.h.g.rotation.x = 0; } }
 function hitPed(p) {
+  if (p.npc === 'gang') gangAggro();
   if (p.npc && p.hp > 1) {
     p.hp--; if (state.mission && state.mission.type === 'bounty') state.mission.alert = true;
     for (let k = 0; k < 6; k++) FX.norm.spawn(p.x, 1.1, p.z, MR(-1.5, 1.5), MR(1, 3), MR(-1.5, 1.5), 0.4, 0.3, 0.2, 0.55, 0.02, 0.02, 0.9, 12);
@@ -2634,7 +2657,7 @@ function updateBounty(dt, m) {
     const want = m.alert && p.npc === 'guard' ? Math.atan2(dx, dz) : spd ? Math.atan2(mx, mz) : p.yaw + Math.sin(state.now * 0.7 + p.x) * 0.004;
     p.yaw = wrapA(p.yaw + wrapA(want - p.yaw) * (1 - Math.exp(-8 * dt)));
     const c = state.inCar;
-    if (c && carSpeed(c) > 6 && Math.hypot(c.group.position.x - p.x, c.group.position.z - p.z) < 1.7) { killPed(p, true); state.shake = 0.3; AudioSys.thud(); m.alert = true; continue; }
+    if (c && !c.spec.heli && !c.spec.boat && carSpeed(c) > 6 && Math.hypot(c.group.position.x - p.x, c.group.position.z - p.z) < 1.7) { killPed(p, true); state.shake = 0.3; AudioSys.thud(); m.alert = true; continue; }
     h.g.position.set(p.x, groundY(p.x, p.z), p.z); h.g.rotation.y = p.yaw;
     animHuman(h, spd, dt, m.alert && p.npc === 'guard');
   }
@@ -2720,6 +2743,218 @@ function initPhone() {
   pb.addEventListener('click', e => { e.stopPropagation(); togglePhone(); });
 }
 
+// ============================================================ WEATHER CYCLE (clear -> cloudy -> rain -> storm -> fog ...)
+const WEATHERS = {
+  clear: { rain: 0, cloud: 0.32, fog: 0, icon: '☀️', name: 'Güneşli', next: ['clear', 'cloudy', 'cloudy'] },
+  cloudy: { rain: 0, cloud: 0.78, fog: 0.08, icon: '⛅', name: 'Bulutlu', next: ['rain', 'rain', 'clear', 'fog'] },
+  rain: { rain: 0.75, cloud: 1, fog: 0.2, icon: '🌧', name: 'Yağmurlu', next: ['storm', 'cloudy', 'fog'] },
+  storm: { rain: 1, cloud: 1, fog: 0.3, icon: '⛈', name: 'Fırtına', next: ['rain'] },
+  fog: { rain: 0, cloud: 0.7, fog: 1, icon: '🌫', name: 'Sisli', next: ['clear', 'cloudy'] },
+};
+function setWeather(w, announce = true) {
+  state.weather = w; const W = WEATHERS[w];
+  state.rainTarget = W.rain; state.cloudTarget = W.cloud; state.fogTarget = W.fog;
+  state.weatherT = w === 'storm' ? MR(50, 80) : MR(80, 160);
+  if (announce) floatText(`${W.icon} Hava: ${W.name}`);
+}
+
+// ============================================================ DOCK + HELIPADS
+const DOCK = { z: 40, w: 4.4, x0: SHORE_X - 8, x1: WATERLINE + 34, y: 0.7 };
+const onDock = (x, z) => x > DOCK.x0 && x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2;
+const HELIPADS = [];
+function waveH(x, z) {
+  const t = state.now, k = smooth(WATERLINE, WATERLINE + 40, x);
+  return -0.25 + k * (Math.sin(x * 0.045 + t * 0.8) * 0.35 + Math.sin(z * 0.06 - t * 0.6 + x * 0.02) * 0.25 + Math.sin((x + z) * 0.1 + t * 1.3) * 0.12);
+}
+function roofHeight(x, z) { const b = blockAt(x, z); let h = 0; if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); return h; }
+const heliFloor = c => Math.max(groundY(c.group.position.x, c.group.position.z), roofHeight(c.group.position.x, c.group.position.z));
+function buildDockAndPads() {
+  const wood = new THREE.MeshStandardMaterial({ map: noiseTex('#8a6a48', ['#7a5a3a', '#9a7a56', '#6a4a30'], 128, 2500, 1, 6), roughness: 0.9 });
+  const len = DOCK.x1 - DOCK.x0, parts = [new THREE.BoxGeometry(len, 0.25, DOCK.w).translate(0, DOCK.y - 0.12, 0)];
+  for (let x = -len / 2 + 1; x < len / 2; x += 4) for (const s of [-1, 1]) parts.push(new THREE.CylinderGeometry(0.16, 0.18, 3.5, 6).translate(x, DOCK.y - 1.7, s * (DOCK.w / 2 - 0.2)));
+  for (const s of [-1, 1]) parts.push(new THREE.BoxGeometry(len, 0.1, 0.1).translate(0, DOCK.y + 0.9, s * (DOCK.w / 2 - 0.1)));
+  const dock = new THREE.Mesh(merge(parts), wood); dock.position.set((DOCK.x0 + DOCK.x1) / 2, 0, DOCK.z); dock.castShadow = dock.receiveShadow = true; scene.add(dock);
+  const padTex = canvasTex(256, 256, g => { g.fillStyle = '#3a3d42'; g.beginPath(); g.arc(128, 128, 126, 0, 7); g.fill(); g.strokeStyle = '#ffd23a'; g.lineWidth = 10; g.beginPath(); g.arc(128, 128, 104, 0, 7); g.stroke(); g.fillStyle = '#fff'; g.font = 'bold 150px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('H', 128, 136); });
+  const padMat = new THREE.MeshStandardMaterial({ map: padTex, transparent: true, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
+  const pad = (x, y, z) => { const m = new THREE.Mesh(new THREE.CircleGeometry(6, 40).rotateX(-Math.PI / 2), padMat); m.position.set(x, y + 0.03, z); m.receiveShadow = true; scene.add(m); HELIPADS.push([x, y, z]); };
+  const pk = blocks[3][3]; pad(pk.cx, 0.31, pk.cz);
+  pad(BEACH_X0 + 62, 0.03, 200);
+  // rooftop pad on the tallest downtown tower (landing spot for pilots)
+  let best = null; for (const row of blocks) for (const b of row) if (b.dist === 'downtown') for (const o of b.bld) if ((o.x1 - o.x0) >= 14 && (o.z1 - o.z0) >= 14 && (!best || o.h > best.h)) best = o;
+  if (best) pad((best.x0 + best.x1) / 2, best.h, (best.z0 + best.z1) / 2);
+}
+
+// ============================================================ SPEEDBOAT
+function baseVehicle(group, inner, paint, paintM, kind, spec, h, extra = {}) {
+  return Object.assign({ group, inner, paint, paintM, spinners: [], fronts: [], siren: null, kind, spec, h, vx: 0, vz: 0, y: group.position.y, vy: 0, air: false, steer: 0, spin: 0, mode: 'free', health: 100, driver: false, active: true, ai: null, stuck: 0, reverseT: 0, smokeT: 0, police: false, pathT: 0, path: null, shootT: 2, idleT: 0, dead: false, honk: 0 }, extra);
+}
+CAR_SPECS.boat = { W: 2.3, wr: 0.3, max: 34, acc: 13, boat: true, cr: 1.4, co: 1.3 };
+CAR_SPECS.heli = { W: 3, wr: 0.3, max: 48, acc: 18, heli: true, cr: 3, co: 0 };
+function createBoat(color, x, z, h) {
+  const s = CAR_SPECS.boat, group = new THREE.Group(); group.rotation.order = 'YXZ';
+  const inner = new THREE.Group(); group.add(inner);
+  const sh = new THREE.Shape(); [[-1.1, -3], [1.1, -3], [1.15, 0.8], [0.55, 2.7], [0, 3.4], [-0.55, 2.7], [-1.15, 0.8]].forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1])); sh.closePath();
+  const hull = new THREE.ExtrudeGeometry(sh, { depth: 0.95, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 }).rotateX(Math.PI / 2).translate(0, 0.55, 0);
+  const paintM = paintMat(color), paint = new THREE.Mesh(hull, paintM); paint.castShadow = true;
+  const trim = new THREE.Mesh(merge([colorize(new THREE.BoxGeometry(2.1, 0.08, 4.6).translate(0, 0.62, -0.5), '#d8c8a8'), colorize(new THREE.BoxGeometry(2.36, 0.16, 6.0).translate(0, 0.12, -0.2), '#1a3a7a'),
+    colorize(new THREE.BoxGeometry(0.9, 0.5, 0.7).translate(0.45, 0.9, -0.6), '#202428'), colorize(new THREE.BoxGeometry(0.9, 0.5, 0.7).translate(-0.45, 0.9, -1.9), '#202428'),
+    colorize(new THREE.BoxGeometry(0.5, 0.9, 0.5).translate(0, 0.65, -3.25), '#111'), colorize(new THREE.BoxGeometry(0.14, 0.9, 0.14).translate(0, 0.1, -3.3), '#333')]), M.trim);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.06).rotateX(-0.6).translate(0, 1.0, 0.55), M.carGlass);
+  inner.add(paint, trim, glass);
+  group.position.set(x, -0.2, z); group.rotation.y = h; scene.add(group);
+  const c = baseVehicle(group, inner, paint, paintM, 'boat', s, h, { home: [x, z, h] });
+  cars.push(initCar(c)); return c;
+}
+function boatPhysics(c, dt, thr, steer) {
+  const up = c.up || { engine: 0 }, sMax = c.spec.max * (1 + 0.2 * up.engine), sin = Math.sin(c.h), cos = Math.cos(c.h);
+  let vF = c.vx * sin + c.vz * cos, vL = c.vx * -cos + c.vz * sin;
+  if (!c.dead) vF += thr * (thr > 0 ? c.spec.acc * (1 - Math.max(0, vF) / sMax * 0.8) : (vF > 0.5 ? 14 : 6)) * dt;
+  vF *= Math.exp(-0.32 * dt); vF = clamp(vF, -7, sMax);
+  c.steer = damp(c.steer, steer * 0.6, 4, dt);
+  c.h += -c.steer * clamp(vF / 7, -1, 1) * 1.15 * dt;
+  vL *= Math.exp(-2.4 * dt);
+  const s2 = Math.sin(c.h), c2 = Math.cos(c.h); c.vx = s2 * vF - c2 * vL; c.vz = c2 * vF + s2 * vL;
+  let x = c.group.position.x + c.vx * dt, z = c.group.position.z + c.vz * dt;
+  const xmin = WATERLINE + 3.5;
+  if (x < xmin) { x = xmin; c.vx = Math.abs(c.vx) * 0.2; if (Math.abs(vF) > 8 && c.mode === 'player') { AudioSys.crash(0.5); damageCar(c, Math.abs(vF)); } }
+  x = Math.min(x, SHORE_X + 1500); z = clamp(z, -2800, 2800);
+  if (x < DOCK.x1 + 1.5 && Math.abs(z - DOCK.z) < DOCK.w / 2 + 1.4) { const sd = z >= DOCK.z ? 1 : -1; if (x > DOCK.x1 - 0.5) x = DOCK.x1 + 1.5; else z = DOCK.z + sd * (DOCK.w / 2 + 1.4); c.vz *= -0.3; }
+  c.group.position.x = x; c.group.position.z = z;
+  const w = waveH(x, z), wf = waveH(x + s2 * 2.5, z + c2 * 2.5), wb = waveH(x - s2 * 2.5, z - c2 * 2.5);
+  c.y = c.dead ? c.y - dt * 0.35 : w + 0.05; c.group.position.y = c.y;
+  c.group.rotation.y = c.h;
+  c.group.rotation.x = damp(c.group.rotation.x, -Math.atan2(wf - wb, 5) - clamp(vF / 160, -0.05, 0.16), 4, dt);
+  c.group.rotation.z = damp(c.group.rotation.z, c.steer * clamp(vF / 25, -1, 1) * 0.25 + Math.sin(state.now * 1.3 + x) * 0.03, 4, dt);
+  if (Math.abs(vF) > 5 && !c.dead && Math.random() < 0.8) {
+    const bx = x - s2 * 3.2, bz = z - c2 * 3.2;
+    FX.norm.spawn(bx + MR(-0.6, 0.6), c.y + 0.2, bz + MR(-0.6, 0.6), -s2 * 2 + MR(-1.5, 1.5), MR(1, 2.5), -c2 * 2 + MR(-1.5, 1.5), 1.1, 0.6, 2.2, 0.92, 0.95, 1, 0.55, 6);
+  }
+}
+
+// ============================================================ HELICOPTER
+function createHeli(color, x, y, z, h) {
+  const s = CAR_SPECS.heli, group = new THREE.Group(); group.rotation.order = 'YXZ';
+  const inner = new THREE.Group(); group.add(inner);
+  const paintM = paintMat(color);
+  const body = merge([new THREE.SphereGeometry(1, 18, 12).scale(1.2, 1.05, 2.1).translate(0, 1.55, 0.3), new THREE.CylinderGeometry(0.22, 0.38, 4.6, 10).rotateX(Math.PI / 2).translate(0, 1.85, -3.4), new THREE.BoxGeometry(0.12, 1.3, 0.8).translate(0, 2.4, -5.5)]);
+  const paint = new THREE.Mesh(body, paintM); paint.castShadow = true;
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1.1, 0.9, 1.3).rotateX(1.15).translate(0, 1.7, 1.1), M.carGlass);
+  const skids = new THREE.Mesh(merge([colorize(new THREE.BoxGeometry(0.12, 0.12, 4.2).translate(0.95, 0.06, 0.2), '#222'), colorize(new THREE.BoxGeometry(0.12, 0.12, 4.2).translate(-0.95, 0.06, 0.2), '#222'),
+    ...[[0.8, 1.2], [-0.8, 1.2], [0.8, -0.7], [-0.8, -0.7]].map(([sx, sz]) => colorize(new THREE.BoxGeometry(0.08, 0.75, 0.08).translate(sx, 0.45, sz), '#222')), colorize(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8).translate(0, 2.75, 0.1), '#222')]), M.trim);
+  const rotor = new THREE.Group(); rotor.position.set(0, 3.0, 0.1);
+  const bladeM = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
+  for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.05, 7.2).translate(0, 0, 3.6), bladeM); b.rotation.y = k * Math.PI / 2; rotor.add(b); }
+  const tail = new THREE.Group(); tail.position.set(0.18, 2.3, -5.6);
+  for (let k = 0; k < 2; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.6, 0.18), bladeM); b.rotation.x = k * Math.PI / 2; tail.add(b); }
+  inner.add(paint, glass, skids, rotor, tail);
+  group.position.set(x, y, z); group.rotation.y = h; scene.add(group);
+  const c = baseVehicle(group, inner, paint, paintM, 'heli', s, h, { rotor, tailRotor: tail, power: 0, rotorA: 0, home: [x, y, z, h] });
+  c.y = y; cars.push(initCar(c)); return c;
+}
+function heliPhysics(c, dt, fwdIn, turnIn, liftIn) {
+  const on = c.mode === 'player' && !c.dead, p = c.group.position;
+  c.power = damp(c.power, on ? 1 : 0, on ? 0.9 : 0.4, dt);
+  c.rotorA += c.power * 30 * dt; c.rotor.rotation.y = c.rotorA; c.tailRotor.rotation.x = c.rotorA * 1.6;
+  const floor = Math.max(groundY(p.x, p.z), roofHeight(p.x, p.z)), alt = c.y - floor, flying = alt > 0.25;
+  if (c.dead) c.vy -= 16 * dt;
+  else { const ready = c.power > 0.8; c.vy = damp(c.vy, ready ? liftIn * 9 : (flying ? -6 : 0), ready ? 2.5 : 1.2, dt); }
+  const sMax = c.spec.max * (1 + 0.2 * ((c.up && c.up.engine) || 0));
+  if (flying && !c.dead) {
+    c.vx += Math.sin(c.h) * fwdIn * 20 * dt * c.power; c.vz += Math.cos(c.h) * fwdIn * 20 * dt * c.power;
+    c.h += -turnIn * 1.7 * dt;
+    const sp = Math.hypot(c.vx, c.vz); if (sp > sMax) { c.vx *= sMax / sp; c.vz *= sMax / sp; }
+    c.vx *= Math.exp(-0.6 * dt); c.vz *= Math.exp(-0.6 * dt);
+  } else { c.vx *= Math.exp(-6 * dt); c.vz *= Math.exp(-6 * dt); if (c.power > 0.8) c.h += -turnIn * 0.9 * dt; }
+  let x = p.x + c.vx * dt, z = p.z + c.vz * dt;
+  c.y = Math.min(300, c.y + c.vy * dt);
+  if (Math.abs(x) < HALF + 30 && Math.abs(z) < HALF + 30) {
+    const r = collide(x, z, 2.6, c.y + 0.5);
+    if (r.hit && Math.abs(r.x) < HALF + 25 && Math.abs(r.z) < HALF + 25) { const imp = Math.hypot(c.vx, c.vz); x = r.x; z = r.z; c.vx *= -0.3; c.vz *= -0.3; if (imp > 9) { damageCar(c, imp * 2.5); state.shake = 0.6; AudioSys.crash(0.8); } }
+  }
+  x = clamp(x, -2200, 2200); z = clamp(z, -2200, 2200);
+  const nf = Math.max(groundY(x, z), roofHeight(x, z));
+  if (c.y < nf) { if (c.vy < -9 && !c.dead) { damageCar(c, -c.vy * 5); state.shake = 0.7; AudioSys.crash(0.7); } c.y = nf; c.vy = Math.max(0, c.vy); }
+  p.set(x, c.y, z); c.group.rotation.y = c.h;
+  c.group.rotation.x = damp(c.group.rotation.x, flying ? fwdIn * 0.22 : 0, 3, dt);
+  c.group.rotation.z = damp(c.group.rotation.z, flying ? turnIn * 0.18 : 0, 3, dt);
+  if (c.power > 0.5 && alt < 8 && Math.random() < 0.5) FX.norm.spawn(x + MR(-4, 4), nf + 0.3, z + MR(-4, 4), MR(-6, 6), 0.5, MR(-6, 6), 0.9, 1, 3, 0.75, 0.72, 0.65, 0.3 * (1 - alt / 8), 0);
+}
+function respawnSpecial(c) {
+  const h = c.home; c.dead = false; c.health = c.maxHealth; c.paint.material = c.paintM; c.mode = 'free'; c.vx = c.vz = c.vy = 0; c.air = false;
+  if (c.spec.heli) { c.y = h[1]; c.group.position.set(h[0], h[1], h[2]); c.h = h[3]; } else { c.group.position.set(h[0], 0, h[1]); c.h = h[2]; c.y = 0; }
+  c.group.rotation.set(0, c.h, 0); c.group.visible = true; c.active = true;
+}
+function buildSpecialVehicles() {
+  createBoat('#f4f4f4', DOCK.x1 - 6, DOCK.z + DOCK.w / 2 + 1.6, Math.PI / 2);
+  createBoat('#c81e28', DOCK.x1 - 14, DOCK.z - DOCK.w / 2 - 1.6, Math.PI / 2);
+  createHeli('#1a3a6a', HELIPADS[0][0], HELIPADS[0][1], HELIPADS[0][2], 0);
+  createHeli('#e8e8e8', HELIPADS[1][0], HELIPADS[1][1], HELIPADS[1][2], -Math.PI / 2);
+}
+
+// ============================================================ GANG (industrial district fights back)
+const GANG = { name: 'Kızıl Kobralar', members: [], hostile: false, calmT: 0, warnT: 0, inZone: false };
+function inGangZone(x, z) { const b = blockAt(x, z) || blocks[clamp(Math.floor((x - OFF) / CELL), 0, N - 1)][clamp(Math.floor((z - OFF) / CELL), 0, N - 1)]; return b.dist === 'industrial' && Math.abs(z - b.cz) < CELL / 2 && Math.abs(x - b.cx) < CELL / 2; }
+function buildGang() {
+  const zone = []; for (const row of blocks) for (const b of row) if (b.dist === 'industrial') zone.push(b);
+  for (const b of zone.slice(0, 4)) {
+    const gx = b.cx + R(-18, 18), gz = b.cz + BLOCK / 2 - 3;
+    for (let k = 0; k < 2; k++) {
+      const p = npcPed({ skin: pick(SKIN), shirt: '#a8141e', pants: pick(['#1d1d24', '#2b3a55']), hair: '#101010', shoes: '#f2f2f2', cap: Math.random() < 0.6 ? '#a8141e' : null, glasses: Math.random() < 0.4, gun: true }, gx + k * 1.6, gz);
+      p.npc = 'gang'; p.hp = 2; p.home = [gx + k * 1.6, gz]; p.dead = false; p.yaw = Math.PI; p.h.g.visible = true; p.respawnT = 0;
+      GANG.members.push(p);
+    }
+  }
+}
+function updateGang(dt) {
+  const inZ = inGangZone(player.pos.x, player.pos.z);
+  if (inZ && !GANG.inZone) floatText(`⚠ ${GANG.name} bölgesi`);
+  GANG.inZone = inZ;
+  let near = 1e9;
+  for (const p of GANG.members) {
+    const h = p.h;
+    if (p.dead) {
+      p.respawnT -= dt; h.g.position.set(p.x, groundY(p.x, p.z) + 0.12, p.z);
+      if (p.respawnT <= 0 && dist2(p) > 140 * 140) { p.dead = false; p.hp = 2; p.x = p.home[0]; p.z = p.home[1]; h.g.rotation.set(0, Math.PI, 0); }
+      continue;
+    }
+    const dx = player.pos.x - p.x, dz = player.pos.z - p.z, d = Math.hypot(dx, dz) || 1; near = Math.min(near, d);
+    h.g.visible = d < 180;
+    let spd = 0, mx = 0, mz = 0;
+    if (GANG.hostile && d < 55 && !state.dead) {
+      if (d > 11) { spd = 3.4; mx = dx / d; mz = dz / d; }
+      p.shootT -= dt;
+      if (d < 42 && p.shootT <= 0 && los(p.x, 1.4, p.z, player.pos.x, 1.3, player.pos.z)) {
+        p.shootT = MR(0.7, 1.5); const hit = Math.random() < 0.3;
+        FX.tracer(p.x, 1.45, p.z, player.pos.x + (hit ? 0 : MR(-2.5, 2.5)), player.pos.y + 1.2, player.pos.z + (hit ? 0 : MR(-2.5, 2.5)), true);
+        AudioSys.shot(0.45);
+        if (hit) { if (state.inCar) { damageCar(state.inCar, 4); state.health -= 1; } else applyDamage(6); }
+      }
+    } else if (Math.hypot(p.x - p.home[0], p.z - p.home[1]) > 2) { const hx = p.home[0] - p.x, hz = p.home[1] - p.z, hl = Math.hypot(hx, hz); spd = 1.6; mx = hx / hl; mz = hz / hl; }
+    if (spd) { const r = collide(p.x + mx * spd * dt, p.z + mz * spd * dt, 0.35, 0.5); p.x = r.x; p.z = r.z; }
+    const want = GANG.hostile && d < 55 ? Math.atan2(dx, dz) : spd ? Math.atan2(mx, mz) : (d < 12 ? Math.atan2(dx, dz) : p.yaw);
+    p.yaw = wrapA(p.yaw + wrapA(want - p.yaw) * (1 - Math.exp(-6 * dt)));
+    const c = state.inCar;
+    if (c && !c.spec.heli && !c.spec.boat && carSpeed(c) > 6 && Math.hypot(c.group.position.x - p.x, c.group.position.z - p.z) < 1.7) { killPed(p, true); AudioSys.thud(); continue; }
+    if (h.g.visible) { h.g.position.set(p.x, groundY(p.x, p.z), p.z); h.g.rotation.y = p.yaw; animHuman(h, spd, dt, GANG.hostile && d < 55); }
+  }
+  // provocation: loitering right next to them on foot
+  if (!GANG.hostile && !state.inCar && near < 6) { GANG.warnT += dt; if (GANG.warnT > 2 && GANG.warnT - dt <= 2) floatText('💬 "Burada ne arıyorsun?"'); if (GANG.warnT > 6) gangAggro(); }
+  else GANG.warnT = Math.max(0, GANG.warnT - dt);
+  if (GANG.hostile) { GANG.calmT = near > 120 ? GANG.calmT + dt : 0; if (GANG.calmT > 15) { GANG.hostile = false; GANG.calmT = 0; } }
+}
+function gangAggro() { if (!GANG.hostile) floatText(`🔥 ${GANG.name} saldırıyor!`); GANG.hostile = true; GANG.calmT = 0; }
+
+// ============================================================ POPULATION BUBBLE (despawn / respawn around the player)
+let recycleT = 0;
+function recyclePopulation(dt) {
+  recycleT += dt; if (recycleT < 0.5) return; recycleT = 0;
+  const tgt = state.mission && state.mission.type === 'hit' ? state.mission.target : null;
+  for (const c of cars) {
+    if (!c.active || c.mode !== 'ai' || c === tgt) continue;
+    if (Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) > 230) { placeOnRoad(c, 'near'); c.group.visible = true; }
+  }
+}
+
 // ============================================================ RADIO (procedural synthwave)
 const Radio = {
   timer: null, step: 0, next: 0, gain: null, on: false,
@@ -2776,7 +3011,7 @@ function toggleRadio() {
 let frame = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  const dt = clamp((now - lastT) / 1000, 0, 0.05); lastT = now;
   if (state.shopOpen) { if (composer) composer.render(); else renderer.render(scene, camera); return; }
   state.now += dt; frame++;
   state.saveT += dt; if (state.saveT > 12) { state.saveT = 0; saveGame(); }
@@ -2792,7 +3027,11 @@ function loop(now) {
     if (c === state.inCar) { c.group.visible = true; continue; }
     if (!c.active) continue;
     if (c.mode === 'ai') { const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d > 300 && frame % 3) continue; updateAI(c, dt); }
-    else if (c.mode === 'free' || c.mode === 'dead') { if (carSpeed(c) > 0.05 || c.air) carPhysics(c, dt, 0, 0, c.mode === 'dead'); }
+    else if (c.mode === 'free' || c.mode === 'dead') {
+      if (c.spec.boat) { if (Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < 300) boatPhysics(c, dt, 0, 0); }
+      else if (c.spec.heli) { if (c.power > 0.01 || c.dead || c.y > heliFloor(c) + 0.05) heliPhysics(c, dt, 0, 0, 0); }
+      else if (carSpeed(c) > 0.05 || c.air) carPhysics(c, dt, 0, 0, c.mode === 'dead');
+    }
     c.group.visible = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < 320;
   }
   const pd = updatePolice(dt);
@@ -2803,6 +3042,8 @@ function loop(now) {
   updateShops(dt);
   updateStarts(dt);
   updateEconomy(dt);
+  updateGang(dt);
+  recyclePopulation(dt);
   if (state.phoneOpen) $('phClock').textContent = clockStr();
   updateTrafficLights();
   // wanted level dynamics
