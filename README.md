@@ -30,6 +30,12 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **💰 Zırhlı para kamyonu**: rastgele beliren kamyonu patlat, saçılan para balyalarını topla
 - **🎒 20 gizli paket**: arka sokaklara, iskeleye, harita köşelerine ve bir gökdelen çatısına saklı; her biri +$500 ve görev ödüllerine kalıcı +%3, 5/10/15/20'de ekstra bonus
 - **🏁 Stunt atlayışları**: 7 rampa (sahil + parklar); hızla atlayınca ağır çekim sinematik kamera, başarılı inişte STUNT BONUS (ilk atlayış x2)
+- **📖 Hikaye modu**: 6 bölüm (Rico, Nina ve Victor Kral) — mor "S" halkasından başlar, sinematik diyaloglar; araba, polis takibi, tekne, helikopter ve son patron savaşı
+- **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir
+- **📷 Fotoğraf modu** (telefon → Foto): oyunu durdurur, kamerayı serbestçe döndür, JPG olarak kaydet
+- **⚙️ Ayarlar** (telefon): FPS göstergesi, otomatik çözünürlük, titreşim, kamera hassasiyeti, grafik kalitesi, kaydı sıfırla
+- **Daha yumuşak grafik**: dizli/dirsekli, yüzlü yeni karakterler; yuvarlatılmış araç gövdeleri ve jantlı tekerlekler; daha yuvarlak ağaçlar; bina saçakları; Orta kalitede FXAA kenar yumuşatma
+- **Performans**: FPS düşünce çözünürlük otomatik ayarlanır, Orta/Düşük'te gölgeler yarı hızda güncellenir, sekme arka plandayken oyun durur
 - **Canlı şehir**: silah sesinde trafik paniğe kapılır; araç ve yayalar oyuncunun etrafında (~150-230 m) sürekli yeniden konumlanır
 - **Araba radyosu**: VISTA FM 101.4 — anlık üretilen synthwave müzik (R / 📻)
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
