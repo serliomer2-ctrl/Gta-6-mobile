@@ -154,3 +154,9 @@ body.inheli .btn.heli{display:flex}
 body.inheli .btn.car{display:none}
 #bUp{right:calc(136px + var(--sr,0px));bottom:112px;background:#2e9e5255;border-color:#7dff9a;font-size:12px}
 #bDown{right:calc(136px + var(--sr,0px));bottom:26px;background:#c8283a44;border-color:#ff8a8a;font-size:12px}
+
+/* ---------- CINEMATIC (slow-mo stunt) ---------- */
+body::before,body::after{content:'';position:fixed;left:0;right:0;height:0;background:#000;z-index:15;pointer-events:none;transition:height .35s ease}
+body::before{top:0}body::after{bottom:0}
+body.cine::before,body.cine::after{height:11vh}
+body.cine #hud>*:not(#bigMsg){opacity:0;transition:opacity .3s}

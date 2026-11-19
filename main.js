@@ -66,7 +66,7 @@ const state = {
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
   weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
   props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
-  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0 }, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
+  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
 };
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
@@ -338,6 +338,9 @@ function init() {
   buildDockAndPads();
   buildSpecialVehicles();
   buildGang();
+  buildStuntRamps();
+  buildTurfs();
+  buildPackages();
   setWeather('clear', false);
   if (AudioSys.master) AudioSys.master.gain.value = state.soundMode === 2 ? 0 : 0.55;
   spawnPeds();
@@ -730,7 +733,7 @@ function rampHeight(x, z) {
   let best = -1;
   for (const r of ramps) {
     const dx = x - r.x, dz = z - r.z, a = dx * r.fx + dz * r.fz, l = Math.abs(dx * -r.fz + dz * r.fx);
-    if (a >= 0 && a <= r.len && l <= r.w / 2) best = Math.max(best, a / r.len * r.h);
+    if (a >= 0 && a <= r.len && l <= r.w / 2) best = Math.max(best, (r.y0 || 0) + a / r.len * r.h);
   }
   return best;
 }
@@ -744,7 +747,8 @@ function blockAt(x, z) {
 }
 function groundY(x, z) {
   let g = x > SHORE_X ? sandHeight(x) : (blockAt(x, z) ? 0.25 : 0);
-  if (x > BEACH_X0) { const r = rampHeight(x, z); if (r > g) g = r; if (onDock(x, z)) g = Math.max(g, DOCK.y); }
+  { const r = rampHeight(x, z); if (r > g) g = r; }
+  if (x > BEACH_X0 && onDock(x, z)) g = Math.max(g, DOCK.y);
   return g;
 }
 const hitRes = { x: 0, z: 0, nx: 0, nz: 0, hit: false };
@@ -1009,6 +1013,7 @@ function explodeCar(c) {
   setTimeout(() => {
     if (!c.dead || c.police || c.display || c.delivery) return;
     if (c.home) { respawnSpecial(c); return; }
+    if (c.event) { c.active = false; c.group.visible = false; return; }
     if (c.owned) { const [x, z] = dealerSpot(cars.filter(o => o.owned).indexOf(c)); c.dead = false; c.health = c.maxHealth; c.paint.material = c.paintM; c.mode = 'free'; c.vx = c.vz = 0; c.air = false; c.group.position.set(x, 0, z); c.y = 0; c.h = Math.PI / 2; c.group.rotation.set(0, c.h, 0); floatText('Sigorta: aracın galeride'); }
     else respawnTrafficCar(c);
   }, 25000);
@@ -1047,6 +1052,7 @@ function enterCar() {
 }
 function exitCar(forced) {
   const c = state.inCar; if (!c) return;
+  if (state.stunt && (forced || !(c.spec.heli && c.y - heliFloor(c) > 1.2))) endStunt(false);
   if (c.spec.heli && !forced && c.y - heliFloor(c) > 1.2) { floatText('🚁 Önce yere in'); return; }
   const sp = carSpeed(c);
   c.mode = c.dead ? 'dead' : 'free'; c.driver = false; state.inCar = null;
@@ -1111,6 +1117,7 @@ function updatePlayerCar(dt) {
   else if (c.spec.heli) heliPhysics(c, dt, throttle, clamp(input.mx, -1, 1), (input.up ? 1 : 0) - (input.down ? 1 : 0));
   else carPhysics(c, dt, throttle, clamp(input.mx, -1, 1), input.hand);
   if (!state.inCar) return; // crashed off bike
+  updateStunt(c, state.realDt);
   player.pos.copy(c.group.position);
   { const v = carSpeed(c); state.stats.dist += v * dt; state.stats.topSpeed = Math.max(state.stats.topSpeed, Math.abs(carFwd(c)) * 3.6); }
   if (c.spec.bike) { const h = player.human; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.armL.rotation.x = h.armR.rotation.x = -1.15; h.legL.rotation.z = 0.25; h.legR.rotation.z = -0.25; }
@@ -1222,7 +1229,7 @@ function killPed(p, byPlayer) {
   for (let k = 0; k < 10; k++) FX.norm.spawn(p.x, 0.9, p.z, MR(-2, 2), MR(1, 4), MR(-2, 2), 0.5, 0.35, 0.2, 0.55, 0.02, 0.02, 0.9, 12);
   spawnCash(p.x + MR(-0.5, 0.5), p.z + MR(-0.5, 0.5), Math.round(MR(10, 90)));
   if (p.npc === 'gang') { gangAggro(); p.respawnT = 60; }
-  if (byPlayer) { addHeat(p.npc === 'gang' ? 0.3 : p.cop ? 1.5 : 0.7); state.stats.kills++; }
+  if (byPlayer) { if (p.npc !== 'turf') addHeat(p.npc === 'gang' ? 0.3 : p.cop ? 1.5 : 0.7); state.stats.kills++; }
 }
 function addHeat(v) { state.heat = clamp(Math.max(state.heat, 1) + (state.heat >= 1 ? v : 0), 0, 5.99); state.crimeTimer = 0; }
 
@@ -1510,7 +1517,7 @@ function updatePickups(dt) {
   cashMesh.count = n; cashMesh.instanceMatrix.needsUpdate = true;
   crateMesh.count = nc; crateMesh.instanceMatrix.needsUpdate = true; if (crateMesh.instanceColor) crateMesh.instanceColor.needsUpdate = true;
 }
-const MCOL = { reach: 0xffc020, race: 0x20e0ff, taxi: 0x40ff80, hit: 0xff3040, delivery: 0xff9a20, bounty: 0xff2050 };
+const MCOL = { reach: 0xffc020, race: 0x20e0ff, taxi: 0x40ff80, hit: 0xff3040, delivery: 0xff9a20, bounty: 0xff2050, turf: 0x30d070 };
 function setMarker(x, z, type) {
   markerGroup.position.set(x, 0, z); markerGroup.visible = true;
   markerGroup.children[0].material.color.setHex(MCOL[type]); markerGroup.children[1].material.color.setHex(MCOL[type]);
@@ -1568,10 +1575,12 @@ function newMission(type = pick(['reach', 'race', 'race', 'taxi', 'taxi', 'hit']
     showBig('GÖREV', '#ffd23a', 2, `İşarete ${time} saniyede ulaş · Ödül $${reward}`);
   }
 }
-function missionPos() { const m = state.mission; if (m.type === 'bounty') return [m.boss.x, m.boss.z]; return m.type === 'hit' ? [m.target.group.position.x, m.target.group.position.z] : m.type === 'delivery' && m.stage === 0 ? [m.car.group.position.x, m.car.group.position.z] : [m.x, m.z]; }
+function missionPos() { const m = state.mission; if (m.type === 'turf') { const e = m.enemies.find(p => !p.dead); return e ? [e.x, e.z] : [m.x, m.z]; } if (m.type === 'bounty') return [m.boss.x, m.boss.z]; return m.type === 'hit' ? [m.target.group.position.x, m.target.group.position.z] : m.type === 'delivery' && m.stage === 0 ? [m.car.group.position.x, m.car.group.position.z] : [m.x, m.z]; }
 function missionEnd(ok, sub) {
   const m = state.mission;
   if (ok) S().missions++; else S().fails++;
+  if (ok && packagesFound()) m.reward = Math.round(m.reward * (1 + 0.03 * packagesFound()) / 10) * 10;
+  if (m.type === 'turf') setTimeout(() => { if (!state.mission || state.mission.type !== 'turf') hideTurfWar(m); }, ok ? 8000 : 0);
   if (m.type === 'bounty') setTimeout(() => { if (!state.mission || state.mission.type !== 'bounty') hideBounty(m); }, ok ? 9000 : 0);
   if (ok) { earn(m.reward, '🎯 Görev'); showBig('GÖREV TAMAMLANDI', '#7dff9a', 3, `+$${m.reward}` + (sub ? ' · ' + sub : '')); AudioSys.success(); AudioSys.cash(); haptic([40, 40, 90]); state.armor = Math.min(100, state.armor + 25); state.ammo[1] += 60; saveGame(); }
   else { showBig('GÖREV BAŞARISIZ', '#ff3b3b', 2.5, sub); AudioSys.fail(); haptic(120); }
@@ -1610,6 +1619,8 @@ function updateMission(dt) {
       }
       if (c !== dc && Math.hypot(dc.group.position.x - player.pos.x, dc.group.position.z - player.pos.z) > 60) return missionEnd(false, 'Aracı terk ettin');
     }
+  } else if (m.type === 'turf') {
+    updateTurfWar(dt, m); return;
   } else if (m.type === 'bounty') {
     updateBounty(dt, m);
     const alive = m.guards.filter(g => !g.dead).length;
@@ -1874,6 +1885,11 @@ function updateSky(dt) {
 
 // ============================================================ CAMERA
 function updateCamera(dt) {
+  if (state.stunt && state.stunt.cam) {
+    const sc = state.stunt.car, sp = sc.group.position;
+    camera.position.lerp(state.stunt.cam, 0.12); camera.lookAt(sp.x, sc.y + 1, sp.z);
+    camera.fov = damp(camera.fov, 48, 3, dt); camera.updateProjectionMatrix(); input.lookDX = input.lookDY = 0; return;
+  }
   const c = state.inCar;
   const tx = player.pos.x, ty = player.pos.y + (c ? (c.spec.heli ? 2.6 : 1.7) : 1.55), tz = player.pos.z;
   camYaw -= input.lookDX; camPitch = clamp(camPitch + input.lookDY, -0.35, 1.25);
@@ -2027,6 +2043,7 @@ function drawMinimap() {
   g.translate(r, r); g.rotate(camYaw);
   g.scale(zoom, zoom);
   g.drawImage(mapBase, -MAP.X(player.pos.x), -MAP.Z(player.pos.z));
+  if (turfLayer) g.drawImage(turfLayer, -MAP.X(player.pos.x), -MAP.Z(player.pos.z));
   g.restore();
   const toMap = (x, z) => {
     const dx = (x - player.pos.x) * MAP.k * zoom, dz = (z - player.pos.z) * MAP.k * zoom;
@@ -2044,6 +2061,9 @@ function drawMinimap() {
   for (const c of cars) if (c.owned && !c.dead && c !== state.inCar) dot(c.group.position.x, c.group.position.z, '#40a0ff', 6, false);
   g.font = '22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const s of SHOPS) { let [px, py] = toMap(s.x, s.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 15, 0, 7); g.fill(); g.strokeStyle = s.mapCol; g.lineWidth = 3; g.stroke(); g.fillText(s.icon, px, py + 1); }
+  g.font = '16px sans-serif';
+  for (const t of TURFS) if (t.x !== undefined && !turfOwned(t.id)) { const [px, py] = toMap(t.x, t.z); if (Math.hypot(px - r, py - r) < r - 10) { g.fillStyle = t.color; g.beginPath(); g.arc(px, py, 11, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillText('⚔', px, py + 1); } }
+  if (state.truck && state.truck.active && !state.truck.looted) { let [px, py] = toMap(state.truck.group.position.x, state.truck.group.position.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '18px sans-serif'; g.fillText('💰', px, py + 1); }
   if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
@@ -2098,6 +2118,7 @@ function respawn() {
   state.dead = false; state.health = 100; state.heat = 0; state.wanted = 0;
   const loss = 0; state.money -= loss;
   const [x, z] = spawnPoint();
+  if (packagesFound() >= 5) state.armor = 100;
   player.pos.set(x, 0.25, z); player.human.g.rotation.x = 0; player.human.g.visible = true;
   $('fade').style.opacity = 0;
   for (const c of cars) if (c.police && c.active) { c.active = false; c.group.visible = false; }
@@ -2426,7 +2447,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone
     }));
   } catch (e) { }
 }
@@ -2438,6 +2459,7 @@ function loadGame() {
     state.ownedW = WEAPONS.map((w, i) => i === 0 || (d.ownedW ? !!d.ownedW[i] : state.ammo[i] > 0));
     if (d.soundMode != null) state.soundMode = d.soundMode;
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
+    state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     return d;
   } catch (e) { return null; }
 }
@@ -2495,7 +2517,7 @@ const PROPERTIES = [
   { id: 'club', name: 'Gece Kulübü', icon: '🎵', block: [4, 2], price: 50000, income: 1200, desc: 'Şehrin en popüler gece kulübü' },
 ];
 const HOUR_SEC = 1 / TIME_SPEED; // real seconds per in-game hour
-function propIncome() { return PROPERTIES.reduce((a, p) => a + (state.props[p.id] ? p.income : 0), 0); }
+function propIncome() { return PROPERTIES.reduce((a, p) => a + (state.props[p.id] ? p.income : 0), 0) + turfIncome(); }
 function ownedProps() { return PROPERTIES.filter(p => state.props[p.id]).length; }
 function propSignText(p) { return state.props[p.id] ? ['SAHİBİ: SEN', `+$${p.income} / saat`] : ['SATILIK', '$' + p.price.toLocaleString('tr-TR')]; }
 function buildProperties() {
@@ -2546,6 +2568,11 @@ const ACHIEVEMENTS = [
   { id: 'rich', name: 'Zengin', desc: 'Hesabında $100.000 biriktir', reward: 5000, test: () => state.money >= 100000 },
   { id: 'km', name: 'Yol Canavarı', desc: '50 km araç kullan', reward: 1500, test: () => S().dist >= 50000 },
   { id: 'guns', name: 'Cephanelik', desc: 'Tüm silahlara sahip ol', reward: 1000, test: () => state.ownedW.every(Boolean) },
+  { id: 'turf1', name: 'Mahalle Ağası', desc: 'İlk bölgeni ele geçir', reward: 1500, test: () => turfCount() >= 1 },
+  { id: 'turfAll', name: 'Şehrin Sahibi', desc: 'Tüm bölgeleri ele geçir', reward: 20000, test: () => turfCount() === TURFS.length },
+  { id: 'pk20', name: 'Hazine Avcısı', desc: '20 gizli paketin hepsini bul', reward: 10000, test: () => packagesFound() === PACKAGE_COUNT },
+  { id: 'rob', name: 'Soyguncu', desc: 'Zırhlı para kamyonunu soy', reward: 1000, test: () => S().robberies >= 1 },
+  { id: 'stunt5', name: 'Dublör', desc: '5 stunt atlayışı yap', reward: 1500, test: () => S().stunts >= 5 },
 ];
 let econT = 0;
 function updateEconomy(dt) {
@@ -2664,7 +2691,7 @@ function updateBounty(dt, m) {
 }
 
 // ============================================================ SMARTPHONE UI
-const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10']];
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8']];
 function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
 function openPhone() {
   if (state.shopOpen || state.dead) return;
@@ -2706,7 +2733,7 @@ function renderPhone(app) {
   } else if (app === 'bank') {
     const st = S(), m = Math.floor(st.play / 60);
     const stats = [['Toplam kazanç', '$' + st.earned.toLocaleString('tr-TR')], ['Harcanan', '$' + st.spent.toLocaleString('tr-TR')], ['Saatlik mülk geliri', '+$' + propIncome()], ['Etkisiz hale getirilen', st.kills],
-      ['Tamamlanan görev', st.missions], ['Başarısız görev', st.fails], ['Kontratlar', st.contracts], ['Çalınan araç', st.jacked], ['Gidilen yol', (st.dist / 1000).toFixed(1) + ' km'], ['En yüksek hız', Math.round(st.topSpeed) + ' km/s'], ['En yüksek aranma', '★'.repeat(st.maxWanted) || '—'], ['Oyun süresi', `${Math.floor(m / 60)} sa ${m % 60} dk`]];
+      ['Tamamlanan görev', st.missions], ['Başarısız görev', st.fails], ['Kontratlar', st.contracts], ['Çalınan araç', st.jacked], ['Gidilen yol', (st.dist / 1000).toFixed(1) + ' km'], ['En yüksek hız', Math.round(st.topSpeed) + ' km/s'], ['En yüksek aranma', '★'.repeat(st.maxWanted) || '—'], ['Bölgeler', turfCount() + '/' + TURFS.length], ['Gizli paket', packagesFound() + '/' + PACKAGE_COUNT], ['Stunt', st.stunts], ['Soygun', st.robberies], ['Oyun süresi', `${Math.floor(m / 60)} sa ${m % 60} dk`]];
     const done = ACHIEVEMENTS.filter(a => state.ach[a.id]).length;
     h = head('🏦 Banka', '#1a9a50') + `<div class="phBody"><div class="phBal"><small>Hesap bakiyesi</small><b>${money}</b></div>
       <div class="phSec">Son işlemler</div>${state.ledger.length ? state.ledger.map(l => `<div class="phLed"><span>${l.t}</span><span>${l.label}</span><b class="${l.amt < 0 ? 'neg' : ''}">${l.amt < 0 ? '-' : '+'}$${Math.abs(l.amt).toLocaleString('tr-TR')}</b></div>`).join('') : '<div class="phEmpty">Henüz işlem yok</div>'}
@@ -2716,6 +2743,13 @@ function renderPhone(app) {
     const busy = !!state.mission;
     h = head('🎯 Kontratlar', '#c8283a') + `<div class="phBody"><p class="phNote">Korumalı hedefleri ortadan kaldır. Hedef kaçar, korumalar ateş eder.</p>${busy ? '<div class="phEmpty">Önce mevcut görevi bitir.</div>' : ''}
       ${state.contractOffers.map((o, k) => `<div class="phCard"><div><b>${o.name}</b><small>📍 ${o.area} · ${Math.round(Math.hypot(o.x - player.pos.x, o.z - player.pos.z))} m · 🛡 ${o.guards} koruma</small></div><div class="phCardR"><span>$${o.reward.toLocaleString('tr-TR')}</span><button class="phBtn red" data-contract="${k}" ${busy ? 'disabled' : ''}>Kabul et</button></div></div>`).join('')}</div>`;
+  } else if (app === 'world') {
+    const tr = state.truck, truck = tr && tr.active && !tr.looted ? `💰 Zırhlı kamyon yolda · ${Math.round(Math.hypot(tr.group.position.x - player.pos.x, tr.group.position.z - player.pos.z))} m` : '💰 Şu an para kamyonu yok';
+    h = head('🗺 Dünya', '#6a3ac8') + `<div class="phBody"><div class="phBal"><small>Bölge geliri · ${turfCount()}/${TURFS.length} bölge</small><b>+$${turfIncome()}/saat</b></div>
+      <div class="phSec">Bölgeler</div>${TURFS.map(t => `<div class="phRow"><i class="sw" style="background:${turfOwned(t.id) ? PLAYER_TURF : t.color}"></i><div><b>${t.name}</b><small>${turfOwned(t.id) ? 'Senin · +$' + t.income + '/saat' : t.gang + ' · ele geçir: +$' + t.income + '/saat'}</small></div><button class="phBtn" data-tgps="${t.id}">📍 GPS</button></div>`).join('')}
+      <div class="phSec">Etkinlikler</div><div class="phRow"><div><b>${truck}</b><small>Kamyonu patlat, saçılan parayı topla</small></div></div>
+      <div class="phRow"><div><b>🎒 Gizli paketler ${packagesFound()}/${PACKAGE_COUNT}</b><small>Her paket +$500 ve görev ödüllerine kalıcı +%3 · 5/10/15/20'de ekstra bonus</small></div></div>
+      <div class="phRow"><div><b>🏁 Stunt atlayışları ${Object.keys(state.stuntsDone).length}/${ramps.length}</b><small>Rampalardan hızla atla · ilk atlayış x2 bonus</small></div></div></div>`;
   } else if (app === 'props') {
     const next = Math.ceil((1 - (state.time % 1)) * HOUR_SEC);
     h = head('🏠 Emlak', '#d88a10') + `<div class="phBody"><div class="phBal"><small>Saatlik gelir · sonraki ödeme ${next} sn</small><b>+$${propIncome()}</b></div>
@@ -2734,6 +2768,7 @@ function initPhone() {
     else if (d.call) { if (callCar(cars[+d.call])) closePhone(); else renderPhone('valet'); }
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
+    else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
     else if (d.gps) { const p = PROPERTIES.find(q => q.id === d.gps); state.waypoint = { x: p.zone.x, z: p.zone.z, label: p.name }; floatText('📍 ' + p.name + ' işaretlendi'); closePhone(); }
     else if (t.id === 'phClose' || t.id === 'phHomeBtn') { if (t.id === 'phHomeBtn' && state.phoneApp !== 'home') renderPhone('home'); else closePhone(); }
   };
@@ -2896,7 +2931,7 @@ const GANG = { name: 'Kızıl Kobralar', members: [], hostile: false, calmT: 0, 
 function inGangZone(x, z) { const b = blockAt(x, z) || blocks[clamp(Math.floor((x - OFF) / CELL), 0, N - 1)][clamp(Math.floor((z - OFF) / CELL), 0, N - 1)]; return b.dist === 'industrial' && Math.abs(z - b.cz) < CELL / 2 && Math.abs(x - b.cx) < CELL / 2; }
 function buildGang() {
   const zone = []; for (const row of blocks) for (const b of row) if (b.dist === 'industrial') zone.push(b);
-  for (const b of zone.slice(0, 4)) {
+  for (const b of zone.filter(b => b.i >= 4).slice(0, 4)) {
     const gx = b.cx + R(-18, 18), gz = b.cz + BLOCK / 2 - 3;
     for (let k = 0; k < 2; k++) {
       const p = npcPed({ skin: pick(SKIN), shirt: '#a8141e', pants: pick(['#1d1d24', '#2b3a55']), hair: '#101010', shoes: '#f2f2f2', cap: Math.random() < 0.6 ? '#a8141e' : null, glasses: Math.random() < 0.4, gun: true }, gx + k * 1.6, gz);
@@ -2907,7 +2942,7 @@ function buildGang() {
 }
 function updateGang(dt) {
   const inZ = inGangZone(player.pos.x, player.pos.z);
-  if (inZ && !GANG.inZone) floatText(`⚠ ${GANG.name} bölgesi`);
+  if (turfOwned('se')) { for (const p of GANG.members) if (!p.dead) { p.dead = true; p.h.g.visible = false; } GANG.hostile = false; return; }
   GANG.inZone = inZ;
   let near = 1e9;
   for (const p of GANG.members) {
@@ -2950,9 +2985,245 @@ function recyclePopulation(dt) {
   recycleT += dt; if (recycleT < 0.5) return; recycleT = 0;
   const tgt = state.mission && state.mission.type === 'hit' ? state.mission.target : null;
   for (const c of cars) {
-    if (!c.active || c.mode !== 'ai' || c === tgt) continue;
+    if (!c.active || c.mode !== 'ai' || c === tgt || c.event) continue;
     if (Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) > 230) { placeOnRoad(c, 'near'); c.group.visible = true; }
   }
+}
+
+// ============================================================ TURF WARS (4 territories)
+const TURFS = [
+  { id: 'nw', name: 'Kuzeybatı', gang: 'Mavi Ejderler', color: '#2a6ad8', i0: 0, i1: 3, j0: 0, j1: 3, flag: [1, 1], income: 400 },
+  { id: 'ne', name: 'Kuzeydoğu', gang: 'Altın Kartallar', color: '#e0b020', i0: 4, i1: 7, j0: 0, j1: 3, flag: [6, 1], income: 500 },
+  { id: 'sw', name: 'Güneybatı', gang: 'Mor Akrepler', color: '#8a3ad0', i0: 0, i1: 3, j0: 4, j1: 7, flag: [2, 5], income: 400 },
+  { id: 'se', name: 'Güneydoğu', gang: 'Kızıl Kobralar', color: '#c8202a', i0: 4, i1: 7, j0: 4, j1: 7, flag: [5, 7], income: 600 },
+];
+const PLAYER_TURF = '#30d070';
+const turfOwned = id => state.turf[id] === 'player';
+const turfCount = () => TURFS.filter(t => turfOwned(t.id)).length;
+const turfIncome = () => TURFS.reduce((a, t) => a + (turfOwned(t.id) ? t.income : 0), 0);
+function turfAt(x, z) { const i = Math.floor((x - OFF) / CELL), j = Math.floor((z - OFF) / CELL); return TURFS.find(t => i >= t.i0 && i <= t.i1 && j >= t.j0 && j <= t.j1) || null; }
+let turfLayer = null;
+function drawTurfLayer() {
+  if (!turfLayer) { turfLayer = document.createElement('canvas'); turfLayer.width = turfLayer.height = MAP.S; }
+  const g = turfLayer.getContext('2d'); g.clearRect(0, 0, MAP.S, MAP.S);
+  for (const t of TURFS) {
+    const x0 = MAP.X(nodeP(t.i0)), x1 = MAP.X(nodeP(t.i1 + 1)), z0 = MAP.Z(nodeP(t.j0)), z1 = MAP.Z(nodeP(t.j1 + 1)), col = turfOwned(t.id) ? PLAYER_TURF : t.color;
+    g.globalAlpha = 0.24; g.fillStyle = col; g.fillRect(x0, z0, x1 - x0, z1 - z0);
+    g.globalAlpha = 0.85; g.strokeStyle = col; g.lineWidth = 3; g.strokeRect(x0 + 2, z0 + 2, x1 - x0 - 4, z1 - z0 - 4);
+  }
+  g.globalAlpha = 1;
+}
+function buildTurfs() {
+  const poleM = new THREE.MeshStandardMaterial({ color: 0x8a8d92, metalness: 0.7, roughness: 0.4 });
+  for (const t of TURFS) {
+    const b = blocks[t.flag[0]][t.flag[1]], x = b.cx - 14, z = b.cz + BLOCK / 2 - 3, y = groundY(x, z);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 6.5, 8).translate(0, 3.25, 0), poleM); pole.position.set(x, y, z);
+    t.clothM = new THREE.MeshStandardMaterial({ color: turfOwned(t.id) ? PLAYER_TURF : t.color, side: THREE.DoubleSide, emissive: 0x000000, roughness: 0.8 });
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.4, 8, 1).translate(1.1, 5.7, 0), t.clothM); cloth.position.set(x, y, z);
+    t.ringM = new THREE.MeshBasicMaterial({ color: turfOwned(t.id) ? PLAYER_TURF : t.color, transparent: true, opacity: 0.8, depthWrite: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(2.8, 3.4, 40).rotateX(-Math.PI / 2), t.ringM); ring.position.set(x, y + 0.04, z);
+    pole.castShadow = cloth.castShadow = true; scene.add(pole, cloth, ring);
+    Object.assign(t, { x, z, cloth, ring, pool: [] });
+  }
+  drawTurfLayer();
+}
+function setTurfOwner(t, owner) {
+  state.turf[t.id] = owner; const col = owner === 'player' ? PLAYER_TURF : t.color;
+  t.clothM.color.set(col); t.ringM.color.set(col); drawTurfLayer();
+}
+function turfPed(t) {
+  const free = t.pool.find(p => p.dead && !p.h.g.visible); if (free) return free;
+  const p = npcPed({ skin: pick(SKIN), shirt: t.color, pants: pick(['#1d1d24', '#2b3a55', '#3a3a40']), hair: '#101010', shoes: '#f2f2f2', cap: Math.random() < 0.5 ? t.color : null, glasses: Math.random() < 0.4, gun: true }, 0, 0);
+  p.npc = 'turf'; t.pool.push(p); return p;
+}
+function startTurfWar(t) {
+  if (state.mission) { floatText('Önce mevcut görevi bitir'); return; }
+  state.mission = { type: 'turf', turf: t, wave: 0, waves: [4, 5, 6], enemies: [], x: t.x, z: t.z, time: 999, reward: 3000 + t.income * 5, nextT: 1.5 };
+  setMarker(t.x, t.z, 'turf'); markerGroup.visible = false;
+  showBig('BÖLGE SAVAŞI', t.color, 3, `${t.gang} · 3 dalgayı temizle · Ödül $${state.mission.reward}`);
+  haptic([60, 40, 60]); AudioSys.thunder();
+}
+function spawnTurfWave(m) {
+  const t = m.turf, n = m.waves[m.wave];
+  m.enemies = [];
+  for (let k = 0; k < n; k++) {
+    const a = Math.random() * Math.PI * 2, d = MR(24, 38), p = turfPed(t);
+    const r = collide(t.x + Math.cos(a) * d, t.z + Math.sin(a) * d, 0.5, 0.5);
+    Object.assign(p, { x: r.x, z: r.z, dead: false, hp: 2, shootT: MR(1, 2.5), yaw: 0 });
+    p.h.g.rotation.set(0, 0, 0); p.h.g.visible = true; m.enemies.push(p);
+  }
+  floatText(`⚔ Dalga ${m.wave + 1}/${m.waves.length} · ${n} düşman`); AudioSys.door();
+}
+function updateTurfWar(dt, m) {
+  const t = m.turf, el = $('mission');
+  if (Math.hypot(player.pos.x - t.x, player.pos.z - t.z) > 140) return missionEnd(false, 'Bölgeden kaçtın');
+  if (!m.enemies.length || m.enemies.every(p => p.dead)) {
+    if (m.enemies.length) { m.wave++; m.enemies = []; m.nextT = 3; if (m.wave >= m.waves.length) { setTurfOwner(t, 'player'); showBig('BÖLGE ELE GEÇİRİLDİ', PLAYER_TURF, 3, `${t.name} artık senin · +$${t.income}/saat`); return missionEnd(true, `${t.name} kontrolünde`); } floatText('✔ Dalga temizlendi'); }
+    m.nextT -= dt; if (m.nextT <= 0) spawnTurfWave(m);
+  }
+  const alive = m.enemies.filter(p => !p.dead).length;
+  el.textContent = `⚔ ${t.gang} · Dalga ${Math.min(m.wave + 1, m.waves.length)}/${m.waves.length} · Kalan ${alive} · 💵 $${m.reward}`;
+  for (const p of m.enemies) {
+    const h = p.h;
+    if (p.dead) { h.g.position.set(p.x, groundY(p.x, p.z) + 0.12, p.z); continue; }
+    const dx = player.pos.x - p.x, dz = player.pos.z - p.z, d = Math.hypot(dx, dz) || 1;
+    let spd = 0;
+    if (d > 10 && !state.dead) { spd = 3.6; const r = collide(p.x + dx / d * spd * dt, p.z + dz / d * spd * dt, 0.35, 0.5); p.x = r.x; p.z = r.z; }
+    p.shootT -= dt;
+    if (!state.dead && d < 45 && p.shootT <= 0 && los(p.x, 1.4, p.z, player.pos.x, 1.3, player.pos.z)) {
+      p.shootT = MR(0.8, 1.7); const hit = Math.random() < 0.3;
+      FX.tracer(p.x, 1.45, p.z, player.pos.x + (hit ? 0 : MR(-2.5, 2.5)), player.pos.y + 1.2, player.pos.z + (hit ? 0 : MR(-2.5, 2.5)), true);
+      AudioSys.shot(0.45);
+      if (hit) { if (state.inCar) { damageCar(state.inCar, 4); state.health -= 1; } else applyDamage(6); }
+    }
+    const c = state.inCar;
+    if (c && !c.spec.heli && !c.spec.boat && carSpeed(c) > 6 && Math.hypot(c.group.position.x - p.x, c.group.position.z - p.z) < 1.7) { killPed(p, true); AudioSys.thud(); continue; }
+    p.yaw = wrapA(p.yaw + wrapA(Math.atan2(dx, dz) - p.yaw) * (1 - Math.exp(-6 * dt)));
+    h.g.position.set(p.x, groundY(p.x, p.z), p.z); h.g.rotation.y = p.yaw; animHuman(h, spd, dt, true);
+  }
+}
+function hideTurfWar(m) { for (const p of m.turf.pool) { p.dead = true; p.h.g.visible = false; p.h.g.rotation.x = 0; } }
+function updateTurfs(dt) {
+  for (const t of TURFS) {
+    t.cloth.rotation.y = Math.sin(state.now * 2 + t.x) * 0.25;
+    if (turfOwned(t.id) || state.mission || state.dead) continue;
+    if (Math.hypot(player.pos.x - t.x, player.pos.z - t.z) < 3.4) state.interact = state.inCar ? { label: 'Bölge savaşı için araçtan in', fn: null } : { label: '⚔ BÖLGE SAVAŞI BAŞLAT', fn: () => startTurfWar(t) };
+  }
+  const cur = turfAt(player.pos.x, player.pos.z);
+  if (cur !== state.curTurf) { state.curTurf = cur; if (cur) floatText(turfOwned(cur.id) ? `🟢 Senin bölgen: ${cur.name}` : `⚠ ${cur.gang} bölgesi`); }
+}
+
+// ============================================================ WORLD EVENTS: armored truck + hidden packages
+const PACKAGE_COUNT = 20;
+const PACKAGES = [];
+let packageMesh = null;
+function buildPackages() {
+  const r = mulberry32(777), RR = (a, b) => a + r() * (b - a);
+  const spots = [[DOCK.x1 - 1.5, DOCK.y, DOCK.z], [WATERLINE - 4, 0.05, -HALF - 40], [WATERLINE - 4, 0.05, HALF + 40], [-HALF - 50, 0.02, -HALF - 50], [-HALF - 50, 0.02, HALF + 50]];
+  if (HELIPADS[2]) spots.push([HELIPADS[2][0] + 4, HELIPADS[2][1], HELIPADS[2][2] + 4]); // rooftop: helicopter only
+  let tries = 0;
+  while (spots.length < PACKAGE_COUNT && tries++ < 4000) {
+    const b = blocks[Math.floor(r() * N)][Math.floor(r() * N)];
+    if (b.park || b.dist === 'residential') continue;
+    const x = b.cx + RR(-31, 31), z = b.cz + RR(-31, 31);
+    if (insideBuilding(x, 0.5, z)) continue;
+    if (collide(x, z, 0.7, 0.5).hit) continue;            // free spot …
+    if (!collide(x, z, 2.2, 0.5).hit) continue;           // … but tucked against a wall (back alley)
+    if (spots.some(s => Math.hypot(s[0] - x, s[2] - z) < 70)) continue;
+    spots.push([x, 0.25, z]);
+  }
+  spots.slice(0, PACKAGE_COUNT).forEach((s, id) => PACKAGES.push({ id, x: s[0], y: s[1], z: s[2] }));
+  const geo = merge([colorize(new THREE.BoxGeometry(0.62, 0.42, 0.3), '#ffffff'), colorize(new THREE.TorusGeometry(0.14, 0.03, 6, 12, Math.PI).translate(0, 0.21, 0), '#ffffff')]);
+  packageMesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true }), PACKAGES.length);
+  PACKAGES.forEach((p, i) => packageMesh.setColorAt(i, new THREE.Color().setHSL((i * 0.13) % 1, 1, 0.55).multiplyScalar(2.2)));
+  packageMesh.frustumCulled = false; scene.add(packageMesh);
+}
+const packagesFound = () => PACKAGES.filter(p => state.packages[p.id]).length;
+function updatePackages(dt) {
+  const t = state.now;
+  for (const p of PACKAGES) {
+    const found = state.packages[p.id];
+    m4.compose(tmpV.set(p.x, p.y + 0.7 + Math.sin(t * 2 + p.id) * 0.12, p.z), q4.setFromEuler(e4.set(0, t * 1.5 + p.id, 0)), tmpV2.setScalar(found ? 0 : 1));
+    packageMesh.setMatrixAt(p.id, m4);
+    if (found) continue;
+    const d = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
+    if (d < (state.inCar ? 3 : 1.6) && Math.abs(player.pos.y - p.y) < 3) collectPackage(p);
+  }
+  packageMesh.instanceMatrix.needsUpdate = true;
+}
+function collectPackage(p) {
+  state.packages[p.id] = true;
+  const n = packagesFound(); earn(500, '🎒 Gizli paket');
+  let bonus = `Görev ödülleri kalıcı +%${n * 3}`;
+  if (n === 5) bonus = 'BONUS: Her doğuşta tam zırh';
+  if (n === 10) { state.ownedW[2] = true; state.ammo[2] += 300; bonus = 'BONUS: Taramalı tüfek + 300 mermi'; }
+  if (n === 15) { state.ownedW[4] = true; state.ammo[4] += 10; bonus = 'BONUS: Roketatar + 10 roket'; }
+  if (n === PACKAGE_COUNT) { earn(50000, '🎒 Tüm paketler'); bonus = 'TÜM PAKETLER! +$50.000'; }
+  showBig(`🎒 GİZLİ PAKET ${n}/${PACKAGE_COUNT}`, '#ff5fd0', 3, `+$500 · ${bonus}`);
+  AudioSys.success(); AudioSys.cash(); haptic([30, 30, 30, 30, 80]);
+  for (let k = 0; k < 20; k++) FX.add.spawn(p.x, p.y + 0.8, p.z, MR(-3, 3), MR(2, 6), MR(-3, 3), 0.8, 0.35, 0, 2.5, 0.6, 2.2, 1, 6);
+  saveGame();
+}
+function updateEvents(dt) {
+  const tr = state.truck;
+  if (tr && tr.active) {
+    const d = Math.hypot(tr.group.position.x - player.pos.x, tr.group.position.z - player.pos.z);
+    tr.eventT += dt;
+    if (tr.dead && !tr.looted) {
+      tr.looted = true; const p = tr.group.position;
+      for (let k = 0; k < 10; k++) { const a = Math.random() * Math.PI * 2, rr = MR(1.5, 6); spawnCash(p.x + Math.cos(a) * rr, p.z + Math.sin(a) * rr, Math.round(MR(250, 650) / 10) * 10, false); }
+      addHeat(1.5); S().robberies++;
+      showBig('SOYGUN!', '#7dff9a', 3, 'Para balyaları etrafa saçıldı — topla!'); haptic([50, 30, 50]);
+    }
+    if (!tr.dead && tr.eventT > 200 && d > 150) { tr.active = false; tr.group.visible = false; floatText('💰 Para kamyonu bölgeden ayrıldı'); }
+    if (tr.ai && tr.health < tr.maxHealth && !tr.dead) tr.ai.panic = 4;
+  }
+  state.eventT -= dt;
+  if (state.eventT <= 0) {
+    state.eventT = MR(200, 320);
+    if (!tr || !tr.active || tr.dead) {
+      let c = tr;
+      if (!c) { c = createCar('armored', '#4a5644', 0, 0, 0, 'ai'); c.event = 'truck'; state.truck = c; }
+      c.dead = false; c.paint.material = c.paintM; c.maxHealth = c.health = 520; c.active = true; c.group.visible = true; c.looted = false; c.eventT = 0;
+      c.group.rotation.set(0, 0, 0); c.vx = c.vz = c.vy = 0; c.air = false;
+      placeOnRoad(c, 'near'); c.ai.cruise = 10;
+      showBig('💰 ZIRHLI PARA KAMYONU', '#ffd23a', 3, 'Yakınlarda para taşıyor · durdur ve patlat!');
+      AudioSys.tone(660, 0.2, 0.2, 'square'); AudioSys.tone(880, 0.3, 0.2, 'square', 1, 0.2);
+    }
+  }
+}
+
+// ============================================================ STUNT JUMPS + SLOW MOTION
+function addRamp(x, z, heading, y0, rampMat, stripe) {
+  const len = 14, h = 3.4, w = 7, rot = heading - Math.PI / 2;
+  const sh2 = new THREE.Shape(); sh2.moveTo(0, 0); sh2.lineTo(len, h); sh2.lineTo(len, 0); sh2.closePath();
+  const g = new THREE.ExtrudeGeometry(sh2, { depth: w, bevelEnabled: false }); g.translate(0, 0, -w / 2);
+  const mesh = new THREE.Mesh(g, rampMat); mesh.position.set(x, y0, z); mesh.rotation.y = rot; mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh);
+  const st = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, w + 0.02), stripe); st.position.set(len - 0.2, h, 0); mesh.add(st);
+  ramps.push({ x, z, fx: Math.sin(heading), fz: Math.cos(heading), len, h, w, y0 });
+}
+function buildStuntRamps() {
+  const rampMat = new THREE.MeshStandardMaterial({ color: 0xb08850, roughness: 0.8, map: noiseTex('#a88450', ['#8a6a3a', '#c09a60'], 128, 1500, 1, 8) });
+  const stripe = new THREE.MeshBasicMaterial({ color: 0xffc020 });
+  for (const [bi, bj, hd] of [[1, 2, Math.PI / 2], [5, 1, -Math.PI / 2], [6, 5, 0]]) {
+    const b = blocks[bi][bj]; addRamp(b.cx - Math.sin(hd) * 16, b.cz - Math.cos(hd) * 16, hd, 0.31, rampMat, stripe);
+  }
+  ramps.forEach((r, i) => r.id = i);
+}
+function rampAt(x, z) { for (const r of ramps) { const dx = x - r.x, dz = z - r.z, a = dx * r.fx + dz * r.fz, l = Math.abs(dx * -r.fz + dz * r.fx); if (a >= 0 && a <= r.len + 0.5 && l <= r.w / 2) return r; } return null; }
+function updateStunt(c, realDt) {
+  if (c.spec.heli || c.spec.boat) return;
+  const p = c.group.position, r = rampAt(p.x, p.z);
+  if (r) { c.rampT = state.now; c.rampId = r.id; }
+  const st = state.stunt;
+  if (!st) {
+    if (c.air && state.now - (c.rampT ?? -9) < 0.5 && carSpeed(c) > 15) {
+      const fx = Math.sin(c.h), fz = Math.cos(c.h), rx = -Math.cos(c.h), rz = Math.sin(c.h);
+      state.stunt = { car: c, t: 0, x0: p.x, z0: p.z, y0: c.y, maxH: 0, ramp: c.rampId, cam: new THREE.Vector3(p.x + fx * 16 + rx * 11, c.y + 4, p.z + fz * 16 + rz * 11) };
+      state.timeTarget = 0.3; document.body.classList.add('cine');
+    }
+    return;
+  }
+  st.t += realDt; st.maxH = Math.max(st.maxH, c.y - groundY(p.x, p.z));
+  if (st.t > 2.4) { state.timeTarget = 1; st.cam = null; document.body.classList.remove('cine'); }
+  if (st.t > 6) { endStunt(false); return; }
+  if (!c.air && st.t > 0.15) {
+    endStunt(true);
+  }
+}
+function endStunt(landed) {
+  const st = state.stunt; if (!st) return;
+  state.stunt = null; state.timeTarget = 1; document.body.classList.remove('cine');
+  const c = st.car, p = c.group.position, dist = Math.hypot(p.x - st.x0, p.z - st.z0);
+  if (!landed || c.dead || state.inCar !== c || dist < 8) return;
+  const first = !state.stuntsDone[st.ramp];
+  let bonus = Math.round((80 + dist * 9 + st.maxH * 45) / 10) * 10; if (first) bonus *= 2;
+  const tilt = Math.abs(c.group.rotation.z) + Math.abs(c.group.rotation.x);
+  if (tilt > 0.9) { showBig('KÖTÜ İNİŞ', '#ff8a3a', 2, 'Bonus yok'); return; }
+  state.stuntsDone[st.ramp] = true; S().stunts++;
+  earn(bonus, '🏁 Stunt');
+  showBig('STUNT BONUS', '#ffd23a', 3, `+$${bonus} · ${Math.round(dist)} m · yükseklik ${st.maxH.toFixed(1)} m${first ? ' · İLK ATLAYIŞ x2' : ''}`);
+  AudioSys.success(); AudioSys.cash(); haptic([40, 30, 80]);
 }
 
 // ============================================================ RADIO (procedural synthwave)
@@ -3011,7 +3282,8 @@ function toggleRadio() {
 let frame = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = clamp((now - lastT) / 1000, 0, 0.05); lastT = now;
+  let dt = clamp((now - lastT) / 1000, 0, 0.05); lastT = now;
+  state.realDt = dt; state.timeScale = damp(state.timeScale, state.timeTarget, 6, dt); dt *= state.timeScale;
   if (state.shopOpen) { if (composer) composer.render(); else renderer.render(scene, camera); return; }
   state.now += dt; frame++;
   state.saveT += dt; if (state.saveT > 12) { state.saveT = 0; saveGame(); }
@@ -3043,6 +3315,9 @@ function loop(now) {
   updateStarts(dt);
   updateEconomy(dt);
   updateGang(dt);
+  updateTurfs(dt);
+  updateEvents(dt);
+  updatePackages(dt);
   recyclePopulation(dt);
   if (state.phoneOpen) $('phClock').textContent = clockStr();
   updateTrafficLights();
