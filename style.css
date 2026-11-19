@@ -178,3 +178,35 @@ body.photo #hud,body.photo #touch .btn,body.photo #bPhone,body.photo #joyHint{di
 #fps{position:fixed;z-index:12;left:50%;transform:translateX(-50%);bottom:4px;font:700 12px monospace;color:#7dff9a;background:#0008;padding:2px 8px;border-radius:6px;display:none;pointer-events:none}
 .phBtn.off{background:#3a3f47}
 .phQ{gap:8px}.phQ .phBtn{flex:1}
+
+/* ---------- LOBBY ---------- */
+#modeBtns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+#onlineBtn{font-family:'Oswald',Impact,sans-serif;font-weight:700;font-size:clamp(22px,4.6vmin,34px);letter-spacing:3px;padding:8px 34px;border:0;border-radius:6px;cursor:pointer;color:#fff;background:#1e6ad8;box-shadow:0 6px 0 #123e80,0 12px 26px rgba(0,0,0,.35)}
+#modeBtns #playBtn{font-size:clamp(22px,4.6vmin,34px);padding:8px 34px}
+#lobby{display:none;margin:4px auto 0;max-width:560px;background:#000b;border:1px solid #ffffff2a;border-radius:14px;padding:12px 16px;text-align:left}
+.lbRow{display:flex;align-items:center;gap:10px;margin-bottom:8px}.lbRow label{width:80px;font-weight:700;color:#ffffffcc}
+#mpName,#mpCode{font:700 18px 'Rajdhani',sans-serif;padding:8px 10px;border-radius:8px;border:1px solid #ffffff44;background:#ffffff14;color:#fff;outline:none;flex:1;min-width:0}
+#mpCode{width:84px;flex:none;text-align:center;letter-spacing:4px}
+#mpColors{display:flex;gap:6px;flex-wrap:wrap}#mpColors button{width:30px;height:30px;border-radius:50%;border:2px solid #0006;cursor:pointer}#mpColors button.on{border-color:#fff;box-shadow:0 0 0 2px #fff}
+#mpCostumes{display:flex;gap:6px;flex-wrap:wrap}#mpCostumes button{font:700 14px 'Rajdhani',sans-serif;padding:6px 10px;border-radius:8px;border:1px solid #ffffff44;background:#ffffff10;color:#fff;cursor:pointer}#mpCostumes button.on{background:#fff;color:#111}
+.lbActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.lbActions>button,.lbJoin button{font:700 16px 'Rajdhani',sans-serif;padding:10px 14px;border-radius:9px;border:0;cursor:pointer;background:#2e9e52;color:#fff;min-height:44px}
+#mpQuickBtn{background:#d88a10!important}.lbJoin{display:flex;gap:6px}.lbJoin button{background:#1e6ad8}
+#lobby button:disabled{opacity:.5}
+#mpStatus{margin-top:8px;font-weight:700;font-size:14px;min-height:20px}
+#mpBack{margin-top:6px;background:none;border:0;color:#ffffffaa;font:700 15px 'Rajdhani',sans-serif;cursor:pointer}
+/* ---------- ONLINE HUD ---------- */
+#mpPill,#bChat{display:none}
+body.online.playing #mpPill{display:block}body.online.playing #bChat{display:flex}
+#mpPill{position:fixed;z-index:22;left:50%;transform:translateX(-50%);bottom:94px;background:#000b;color:#fff;font:700 14px 'Rajdhani',sans-serif;padding:6px 14px;border-radius:20px;border:1px solid #ffffff33;cursor:pointer}
+#mpList{display:none;position:fixed;z-index:56;left:50%;transform:translateX(-50%);bottom:130px;width:min(360px,92vw);background:rgba(14,16,20,.94);border:1px solid #ffffff22;border-radius:14px;padding:10px 12px;color:#fff;font-family:'Rajdhani',sans-serif}
+.mpHead{font-weight:700;margin-bottom:6px}.mpRow{display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #ffffff10}.mpRow i{width:12px;height:12px;border-radius:50%}.mpRow b{flex:1}.mpRow span{color:#ffffff88;font-size:13px}
+.mpBtns{display:flex;gap:8px;margin-top:8px}.mpBtns button{flex:1;min-height:40px;border:0;border-radius:9px;background:#1e6ad8;color:#fff;font:700 14px 'Rajdhani',sans-serif;cursor:pointer}.mpBtns button.red{background:#c8283a}
+#bChat{position:fixed;z-index:22;left:calc(16px + env(safe-area-inset-left,0px));bottom:210px;width:50px;height:50px;border-radius:14px;align-items:center;justify-content:center;font-size:24px;background:#0009;border:2px solid #ffffffaa;cursor:pointer;touch-action:none}
+#chatPanel{display:none;position:fixed;z-index:56;left:calc(76px + env(safe-area-inset-left,0px));bottom:150px;width:min(400px,70vw);background:rgba(14,16,20,.94);border:1px solid #ffffff22;border-radius:14px;padding:8px}
+.cpGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.cpGrid button,.cpEm button{min-height:42px;border:0;border-radius:9px;background:#ffffff14;color:#fff;font:700 14px 'Rajdhani',sans-serif;cursor:pointer}
+.cpEm{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}.cpEm button{font-size:22px;display:flex;flex-direction:column;align-items:center;padding:4px}.cpEm small{font-size:11px}
+#chatFeed{position:fixed;z-index:11;left:calc(14px + env(safe-area-inset-left,0px));top:46%;width:min(320px,50vw);pointer-events:none;font:700 15px 'Rajdhani',sans-serif;color:#fff;text-shadow:0 1px 3px #000}
+#chatFeed div{background:#0007;border-radius:8px;padding:3px 8px;margin-top:4px;transition:opacity .5s}
+body.photo #mpPill,body.photo #bChat,body.talking #bChat,body.photo #chatFeed{display:none!important}
+@media (max-height:500px){#bChat{bottom:auto;top:calc(252px + env(safe-area-inset-top,0px));width:44px;height:44px;font-size:21px}#chatPanel{bottom:auto;top:20px}#mpPill{bottom:84px}#lobby{padding:8px 12px}.lbRow{margin-bottom:5px}}

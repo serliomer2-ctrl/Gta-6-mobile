@@ -30,7 +30,9 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **💰 Zırhlı para kamyonu**: rastgele beliren kamyonu patlat, saçılan para balyalarını topla
 - **🎒 20 gizli paket**: arka sokaklara, iskeleye, harita köşelerine ve bir gökdelen çatısına saklı; her biri +$500 ve görev ödüllerine kalıcı +%3, 5/10/15/20'de ekstra bonus
 - **🏁 Stunt atlayışları**: 7 rampa (sahil + parklar); hızla atlayınca ağır çekim sinematik kamera, başarılı inişte STUNT BONUS (ilk atlayış x2)
-- **📖 Hikaye modu**: 6 bölüm (Rico, Nina ve Victor Kral) — mor "S" halkasından başlar, sinematik diyaloglar; araba, polis takibi, tekne, helikopter ve son patron savaşı
+- **📖 Hikaye modu**: 2 perde, 9 bölüm (Rico, Nina, Victor Kral ve Kartel patronu Marisol) — mor "S" halkasından başlar, sinematik diyaloglar; araba, polis takibi, tekne, helikopter ve son patron savaşı
+- **🚌 Şehir otobüsü**: trafikte dolaşan ve durakta park halinde otobüsler, 4 otobüs durağı
+- **🚪 İç mekanlar**: dans eden kalabalık ve müzikli Gece Kulübü; Lüks Villa içi (yatakta uyu & kaydet, gardırop)
 - **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir
 - **📷 Fotoğraf modu** (telefon → Foto): oyunu durdurur, kamerayı serbestçe döndür, JPG olarak kaydet
 - **⚙️ Ayarlar** (telefon): FPS göstergesi, otomatik çözünürlük, titreşim, kamera hassasiyeti, grafik kalitesi, kaydı sıfırla
@@ -39,6 +41,17 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **Canlı şehir**: silah sesinde trafik paniğe kapılır; araç ve yayalar oyuncunun etrafında (~150-230 m) sürekli yeniden konumlanır
 - **Araba radyosu**: VISTA FM 101.4 — anlık üretilen synthwave müzik (R / 📻)
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
+
+## 🌐 Online (Multiplayer)
+Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
+- **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
+- **Katıl**: kodu yaz, bağlan · **⚡ Hızlı Katıl**: açık genel odaya girer, yoksa yeni genel oda açar
+- En fazla 8 oyuncu; konum/araç/silah/ateş 20 tick/sn senkron, 120 ms tamponlu yumuşatma (lerp)
+- Kafada isim etiketi, can barı ve aranma yıldızı; mini haritada renkli noktalar
+- 💬 Hızlı sohbet (8 hazır mesaj) ve ifadeler: el sallama, dans, sevinme, korna (PC: T)
+- Sunucu gerekmez: PeerJS (WebRTC) ile eşler arası; para ve envanter tek oyunculudan gelir
+
+Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
 
 ## Kontroller
 | | Mobil | PC |

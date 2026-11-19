@@ -31,7 +31,19 @@
   <div class="startInner">
     <div class="logo">VISTA BAY</div>
     <div class="tag">AÇIK DÜNYA · SAHİL ŞEHRİ · SUÇ</div>
-    <button id="playBtn">OYNA</button>
+    <div id="modeBtns"><button id="playBtn">TEK OYUNCULU</button><button id="onlineBtn">🌐 ONLINE</button></div>
+    <div id="lobby">
+      <div class="lbRow"><label>Takma ad</label><input id="mpName" maxlength="14" autocomplete="off" spellcheck="false"></div>
+      <div class="lbRow"><label>Renk</label><div id="mpColors"></div></div>
+      <div class="lbRow"><label>Kostüm</label><div id="mpCostumes"></div></div>
+      <div class="lbActions">
+        <button id="mpHostBtn">🏠 ODA KUR</button>
+        <div class="lbJoin"><input id="mpCode" maxlength="4" inputmode="numeric" placeholder="Kod"><button id="mpJoinBtn">KATIL</button></div>
+        <button id="mpQuickBtn">⚡ HIZLI KATIL</button>
+      </div>
+      <div id="mpStatus">En fazla 8 oyuncu · paran ve silahların seninle gelir</div>
+      <button id="mpBack">‹ Geri</button>
+    </div>
     <div class="quality">
       <span>Grafik:</span>
       <button data-q="low">Düşük</button>
@@ -102,6 +114,12 @@
 <!-- PHOTO MODE -->
 <div id="photoUI"><div class="phHint">Sürükle: döndür · Joystick / W-S: yakınlaş-uzaklaş</div><button id="phShot">📸 FOTOĞRAF ÇEK</button><button id="phExit">✕</button></div>
 <div id="fps"></div>
+<!-- ONLINE -->
+<div id="mpPill">🌐</div>
+<div id="mpList"></div>
+<div id="chatFeed"></div>
+<div id="bChat">💬</div>
+<div id="chatPanel"></div>
 
 <script type="module" src="main.js"></script>
 </body>

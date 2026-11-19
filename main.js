@@ -42,7 +42,8 @@ const setQ = q => { QUALITY = q; qBtns.forEach(b => b.classList.toggle('on', b.d
 qBtns.forEach(b => b.addEventListener('click', () => setQ(b.dataset.q)));
 setQ(QUALITY);
 
-$('playBtn').addEventListener('click', async () => {
+$('playBtn').addEventListener('click', () => startGame(false));
+async function startGame(online) {
   settings.quality = QUALITY; saveSettings();
   $('loading').style.display = 'block';
   try { if (isTouch && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); } catch (e) { }
@@ -54,10 +55,11 @@ $('playBtn').addEventListener('click', async () => {
     $('hud').style.display = 'block'; document.body.classList.add('playing');
     if (isTouch) $('touch').style.display = 'block'; else $('cross').style.display = 'block';
     showBig('VISTA BAY', '#ffffff', 3, 'Sarı halkalar = görev · 🔫 Silah · 🔧 Garaj · 🚗 Galeri haritada');
+    if (online) mpAfterStart();
     lastT = performance.now();
     requestAnimationFrame(loop);
   }, 30);
-});
+}
 
 // ============================================================ GLOBALS
 let renderer, scene, camera, composer, bloomPass, sunLight, hemi, sky, envScene, pmrem, envRT, stars, ocean;
@@ -70,7 +72,7 @@ const state = {
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
   weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
   props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
-  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, story: 0, look: null, dialog: null, photo: null, hidden: false, noSave: false, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
+  stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, story: 0, look: null, dialog: null, photo: null, hidden: false, noSave: false, emote: null, interior: null, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0
 };
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
@@ -337,6 +339,8 @@ function init() {
   spawnPlayer();
   spawnTraffic();
   buildShops(save);
+  buildBusStops();
+  spawnBuses();
   buildProperties();
   if (state.spawnProp) { const [x, z] = spawnPoint(); player.pos.set(x, 0.25, z); }
   buildStarts();
@@ -356,6 +360,8 @@ function init() {
   initPerf();
   buildStory();
   buildClothesShop();
+  buildInteriors();
+  initOnlineUI();
   updateSky(0);
   addEventListener('resize', onResize);
 }
@@ -888,12 +894,12 @@ function carGeos(kind) {
     g.translate(0, 0, -depth / 2); g.computeVertexNormals(); return g;
   };
   const RB = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2) * 0.999);
-  const body = ext(s.body, W - 0.3, 0.15, 0.3), cab = ext(s.cab, W - 0.52, 0.1, 0.22);
+  const body = ext(s.body, W - 0.3, 0.15, 0.3), cab = ext(s.cab, s.cabW ? s.cabW - 0.2 : W - 0.52, 0.1, s.cabW ? 0.08 : 0.22);
   const p1 = s.cab[1], p2 = s.cab[2];
   const roof = RB(Math.abs(p1[0] - p2[0]) + 0.3, 0.07, W - 0.5, 0.035).translate((p1[0] + p2[0]) / 2, Math.max(p1[1], p2[1]) + 0.085, 0);
   const paint = merge([body, roof]);
   const fx = s.body[2][0], rx = s.body[7][0], ly = s.body[2][1] + 0.06;
-  const lights = merge([
+  let lights = merge([
     colorize(RB(0.12, 0.13, 0.42, 0.05).translate(fx - 0.06, ly, 0.6), '#fff4dd'), colorize(RB(0.12, 0.13, 0.42, 0.05).translate(fx - 0.06, ly, -0.6), '#fff4dd'),
     colorize(RB(0.1, 0.14, 0.5, 0.04).translate(rx + 0.05, ly + 0.08, 0.58), '#ff1a10'), colorize(RB(0.1, 0.14, 0.5, 0.04).translate(rx + 0.05, ly + 0.08, -0.58), '#ff1a10')]);
   const trimL = [colorize(RB(0.24, 0.24, W - 0.12, 0.09).translate(fx - 0.02, s.body[0][1] + 0.05, 0), '#1a1a1c'), colorize(RB(0.24, 0.24, W - 0.12, 0.09).translate(rx + 0.02, s.body[0][1] + 0.05, 0), '#1a1a1c'),
@@ -908,6 +914,7 @@ function carGeos(kind) {
   if (kind === 'armored') trimL.push(colorize(RB(0.12, 0.5, W - 0.2, 0.05).translate(fx + 0.12, s.body[0][1] + 0.3, 0), '#2a2a2a'), colorize(RB(2.6, 0.08, W + 0.04, 0.03).translate(-0.2, s.body[4][1] - 0.1, 0), '#3a3c40'));
   if (kind === 'pickup') trimL.push(colorize(RB(1.7, 0.05, W - 0.32, 0.02).translate(-1.65, 1.3, 0), '#141414'));
   if (kind === 'taxi') trimL.push(colorize(RB(0.5, 0.2, 0.25, 0.06).translate((p1[0] + p2[0]) / 2, Math.max(p1[1], p2[1]) + 0.22, 0), '#ffe36e'));
+  if (kind === 'bus') { trimL.push(colorize(RB(11, 0.28, W + 0.03, 0.1).translate(-0.05, 1.3, 0), '#1e5ab4'), colorize(RB(0.9, 2.2, 0.05, 0.02).translate(4.7, 1.6, W / 2 + 0.01), '#2a3038')); lights = merge([lights, colorize(RB(0.06, 0.32, 1.7, 0.03).translate(5.47, 3.0, 0), '#ffb020')]); }
   const trim = merge(trimL);
   // wheels: rounded tyre profile (lathe) + 5-spoke rim
   const r = s.wr, tw = 0.15;
@@ -1137,7 +1144,7 @@ function updatePlayerFoot(dt) {
   player.vy -= 18 * dt; player.pos.y += player.vy * dt;
   if (player.pos.y <= g) { if (g - player.pos.y < 0.6 || !player.onGround) { player.pos.y = g; player.vy = 0; player.onGround = true; } }
   else if (player.pos.y > g + 0.05) player.onGround = false;
-  const r = collide(x, z, 0.38, player.pos.y + 0.2); x = r.x; z = r.z;
+  const r = state.interior ? interiorCollide(x, z, 0.38) : collide(x, z, 0.38, player.pos.y + 0.2); x = r.x; z = r.z;
   // cars push
   for (const c of cars) {
     if (!c.active) continue;
@@ -1157,6 +1164,7 @@ function updatePlayerFoot(dt) {
   h.g.position.copy(player.pos); h.g.rotation.y = player.yaw;
   h.legL.rotation.z = h.legR.rotation.z = 0;
   animHuman(h, player.onGround ? player.speed : 0, dt, player.aimT > 0);
+  if (state.emote) applyEmote(h, state.emote.type, state.emote.t);
   if (!player.onGround) { h.legL.rotation.x = -0.6; h.legR.rotation.x = 0.3; }
 }
 function updatePlayerCar(dt) {
@@ -1243,6 +1251,7 @@ function fire() {
     }
     AudioSys.shot(w.vol);
   }
+  if (MP.on) { const q = v => Math.round(v * 100) / 100; mpSend({ t: 'shot', a: [q(mx), q(oy), q(mz)], b: [q(tx), q(ty), q(tz)], w: state.weapon, n: w.pellets || 1 }); }
   // shots fired near people -> heat
   if (state.wanted < 1) for (const p of peds) if (!p.dead && !p.npc && dist2(p) < 900) { addHeat(1); break; }
   for (const c of cars) if (c.mode === 'ai' && c.ai && Math.hypot(c.group.position.x - ox, c.group.position.z - oz) < 60) c.ai.panic = 6;
@@ -1473,6 +1482,7 @@ function randomSidewalk() {
   return side === 0 ? [b.cx + t, b.cz - hs] : side === 1 ? [b.cx + t, b.cz + hs] : side === 2 ? [b.cx - hs, b.cz + t] : [b.cx + hs, b.cz + t];
 }
 function updatePeds(dt) {
+  if (state.interior) return;
   for (const p of peds) {
     if (p.npc) continue;
     const h = p.h;
@@ -1779,6 +1789,7 @@ function initFX() {
   };
 }
 function explosion(x, y, z, byPlayer) {
+  if (byPlayer && MP.on) mpSend({ t: 'fx', k: 'boom', p: [x, y, z].map(v => Math.round(v * 10) / 10) });
   for (let k = 0; k < 60; k++) FX.add.spawn(x, y, z, MR(-8, 8), MR(2, 12), MR(-8, 8), MR(0.4, 1.1), MR(1.5, 3), 3, 3, MR(0.8, 1.6), 0.2, 1, 4);
   for (let k = 0; k < 40; k++) FX.norm.spawn(x + MR(-1, 1), y + MR(0, 2), z + MR(-1, 1), MR(-3, 3), MR(2, 7), MR(-3, 3), MR(2, 4), MR(2, 3), 6, 0.12, 0.11, 0.1, 0.8, -0.5);
   for (let k = 0; k < 25; k++) FX.add.spawn(x, y, z, MR(-15, 15), MR(5, 18), MR(-15, 15), MR(0.5, 1.2), 0.25, 0, 3, 2, 0.6, 1, 18);
@@ -1860,7 +1871,7 @@ function updateWeather(dt) {
   state.cloud = damp(state.cloud, state.cloudTarget, 0.1, dt); state.fog = damp(state.fog, state.fogTarget, 0.08, dt);
   state.rain = damp(state.rain, state.rainTarget, 0.12, dt);
   const rain = state.rain;
-  rainLines.visible = rain > 0.02;
+  rainLines.visible = rain > 0.02 && !state.interior;
   if (rainLines.visible) {
     const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z, n = Math.floor(RAIN_N * rain * (QUALITY === 'low' ? 0.5 : 1));
     for (let i = 0; i < n; i++) {
@@ -1908,6 +1919,7 @@ function updateSky(dt) {
   scene.fog.near = lerp(150, 25, rain); scene.fog.far = lerp(QUALITY === 'low' ? 600 : 900, 300, rain);
   const fogA = state.fog;
   if (fogA > 0.001) { scene.fog.near = lerp(scene.fog.near, 6, fogA); scene.fog.far = lerp(scene.fog.far, 150, fogA); fog.lerp(tmpC2.setRGB(0.72, 0.74, 0.77).multiplyScalar(0.15 + 0.85 * day), fogA * 0.85); scene.fog.color.copy(fog); sunLight.intensity *= 1 - 0.55 * fogA; }
+  if (state.interior) { scene.fog.near = 300; scene.fog.far = 2000; }
   sunLight.intensity *= 1 - 0.8 * rain;
   hemi.intensity = hemi.intensity * (1 - 0.25 * rain) + state.lightning * 3;
   renderer.toneMappingExposure = (0.85 + night * 0.1) * (1 - 0.12 * rain);
@@ -1947,10 +1959,10 @@ function updateCamera(dt) {
   camYaw -= input.lookDX * settings.sens; camPitch = clamp(camPitch + input.lookDY * settings.sens, -0.35, 1.25);
   if (input.lookDX || input.lookDY) state.lastLookInput = state.now;
   input.lookDX = input.lookDY = 0;
-  let dist = 4.6;
+  let dist = state.interior ? 3 : 4.6;
   if (c) {
     const sp = carSpeed(c);
-    dist = (c.spec.heli ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
+    dist = (c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
     if (state.now - state.lastLookInput > 1.3 && sp > 2) {
       const behind = (carFwd(c) < -1 ? c.h : c.h + Math.PI);
       camYaw += wrapA(behind - camYaw) * (1 - Math.exp(-3.5 * dt));
@@ -1965,6 +1977,7 @@ function updateCamera(dt) {
   for (let k = 1; k <= 14; k++) { const t = k / 14 * camDist; if (insideBuilding(tx + dx * t, ty + dy * t, tz + dz * t)) { d = Math.max(1.2, t - 0.6); break; } }
   let cx = tx + dx * d, cy = ty + dy * d, cz = tz + dz * d;
   cy = Math.max(cy, groundY(cx, cz) + 0.4);
+  if (state.interior) { const I = INTERIORS[state.interior]; cx = clamp(cx, I.x0 + 0.35, I.x1 - 0.35); cz = clamp(cz, I.z0 + 0.35, I.z1 - 0.35); cy = clamp(cy, 0.5, I.h - 0.35); }
   if (state.shake > 0) { const s = state.shake * 0.35; cx += MR(-s, s); cy += MR(-s, s); cz += MR(-s, s); state.shake = Math.max(0, state.shake - dt * 2.2); }
   camera.position.set(cx, cy, cz);
   camera.lookAt(tx, ty + 0.2, tz);
@@ -1992,6 +2005,7 @@ function initInput() {
     if (/^Digit[1-5]$/.test(e.code)) selectWeapon(+e.code[5] - 1);
     if (e.code === 'KeyX') nextWeapon();
     if (e.code === 'KeyR') toggleRadio();
+    if (e.code === 'KeyT' && MP.on) { const cp = $('chatPanel'); cp.style.display = cp.style.display === 'block' ? 'none' : 'block'; }
     if (e.code === 'Space') e.preventDefault();
   });
   addEventListener('keyup', e => { keys[e.code] = false; });
@@ -2092,6 +2106,7 @@ function buildMinimapBase() {
   mapCtx = $('minimap').getContext('2d');
 }
 function drawMinimap() {
+  if (state.interior) { const g = mapCtx; g.clearRect(0, 0, 300, 300); g.fillStyle = '#1a1420'; g.fillRect(0, 0, 300, 300); g.fillStyle = '#fff'; g.font = 'bold 30px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillText('İÇ MEKAN', 150, 140); g.font = '20px sans-serif'; g.fillText(INTERIORS[state.interior].name, 150, 175); return; }
   const g = mapCtx, W = 300, r = W / 2, zoom = 1.5;  // canvas px per map px
   g.save(); g.clearRect(0, 0, W, W);
   g.translate(r, r); g.rotate(camYaw);
@@ -2120,6 +2135,7 @@ function drawMinimap() {
   for (const t of TURFS) if (t.x !== undefined && !turfOwned(t.id)) { const [px, py] = toMap(t.x, t.z); if (Math.hypot(px - r, py - r) < r - 10) { g.fillStyle = t.color; g.beginPath(); g.arc(px, py, 11, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillText('⚔', px, py + 1); } }
   if (state.truck && state.truck.active && !state.truck.looted) { let [px, py] = toMap(state.truck.group.position.x, state.truck.group.position.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '18px sans-serif'; g.fillText('💰', px, py + 1); }
   if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
+  for (const rp of MP.remotes.values()) dot(rp.x, rp.z, rp.info.color, 8, true);
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
   // player arrow
@@ -2172,6 +2188,7 @@ function busted() { if (state.dead) return; const loss = Math.min(state.money, 2
 function respawn() {
   state.dead = false; state.health = 100; state.heat = 0; state.wanted = 0;
   const loss = 0; state.money -= loss;
+  if (state.interior) { state.interior = null; interiorLight.intensity = 0; for (const hh of clubDancers) hh.g.visible = false; }
   const [x, z] = spawnPoint();
   if (packagesFound() >= 5) state.armor = 100;
   player.pos.set(x, 0.25, z); player.human.g.rotation.x = 0; player.human.g.visible = true;
@@ -2228,7 +2245,7 @@ const AudioSys = {
     this.sg.gain.setTargetAtTime(sv, t, 0.2); this.so.frequency.setTargetAtTime(650 + Math.sin(state.now * 3.5) * 220, t, 0.03);
     this.ag.gain.setTargetAtTime(0.015 + clamp((player.pos.x - BEACH_X0) / 100, 0, 1) * 0.08 + state.rain * 0.16, t, 0.5);
     this.af.frequency.setTargetAtTime(400 + state.rain * 2600, t, 0.5);
-    Radio.update(!!c && state.soundMode === 0 && !state.dead);
+    Radio.update((!!c || state.interior === 'club') && state.soundMode === 0 && !state.dead);
   }
 };
 
@@ -3052,6 +3069,7 @@ function gangAggro() { if (!GANG.hostile) floatText(`🔥 ${GANG.name} saldırı
 // ============================================================ POPULATION BUBBLE (despawn / respawn around the player)
 let recycleT = 0;
 function recyclePopulation(dt) {
+  if (state.interior) return;
   recycleT += dt; if (recycleT < 0.5) return; recycleT = 0;
   const tgt = state.mission && (state.mission.type === 'hit' || state.mission.type === 'story') ? state.mission.target : null;
   for (const c of cars) {
@@ -3330,7 +3348,7 @@ function initPerf() {
 }
 
 // ============================================================ DIALOG (story cutscenes)
-const CHARS = { rico: { name: 'Rico', icon: '😎', col: '#ffb040' }, nina: { name: 'Nina', icon: '🔧', col: '#40c0ff' }, vic: { name: 'Victor Kral', icon: '🎩', col: '#ff5060' }, you: { name: 'Sen', icon: '🙂', col: '#7dff9a' } };
+const CHARS = { rico: { name: 'Rico', icon: '😎', col: '#ffb040' }, nina: { name: 'Nina', icon: '🔧', col: '#40c0ff' }, vic: { name: 'Victor Kral', icon: '🎩', col: '#ff5060' }, you: { name: 'Sen', icon: '🙂', col: '#7dff9a' }, mar: { name: 'Marisol', icon: '💃', col: '#ff6ad5' } };
 function showDialog(lines, onDone) {
   state.dialog = { lines, i: 0, onDone };
   try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
@@ -3379,7 +3397,25 @@ const STORY = [
   { title: 'Kral\'ın Düşüşü', giver: 'rico', reward: 10000,
     intro: [['rico', 'İşte o an geldi. Victor Kral sanayi bölgesinde.'], ['vic', 'Rico\'nun yeni oyuncağı demek… Gel bakalım!'], ['rico', 'Korumalarına dikkat et. Bu iş bitince şehir bizim!']],
     stages: [{ kind: 'boss', guards: 4, pos: () => { const b = blocks[5][7]; return [b.cx + 10, b.cz + BLOCK / 2 - 3]; }, text: 'Victor Kral\'ı etkisiz hale getir' }],
-    outro: [['rico', 'Bitti… Vista Bay artık bizim!'], ['nina', 'Ve garajım kâra geçecek gibi görünüyor 😄'], ['rico', 'Hikaye burada bitmiyor kardeşim. Şehir senin, keyfini çıkar!']] },
+    outro: [['rico', 'Bitti… Vista Bay artık bizim!'], ['nina', 'Ve garajım kâra geçecek gibi görünüyor 😄'], ['rico', 'Ama bu boşluğu dolduracak başkaları da var. Hazır ol…']] },
+  // ---------------- PERDE 2: KARTEL
+  { title: 'Yeni Oyuncular', giver: 'nina', reward: 6000,
+    intro: [['nina', 'Kral düştü ama boşluğu Kartel doldurmaya çalışıyor.'], ['nina', 'Kuryeleri şehirde mal taşıyor. Kuryenin aracını durdur!']],
+    stages: [{ kind: 'destroy', text: 'Kartel kuryesinin aracını yok et' }],
+    outro: [['nina', 'Kartel bunu kişisel algılayacak… Rico\'yla konuş.']] },
+  { title: 'Otobüs Operasyonu', giver: 'rico', reward: 7000,
+    intro: [['rico', 'Kartel, şehir otobüslerini kurye olarak kullanıyor.'], ['rico', 'Bir otobüs al ve 3 durağı dolaş. Paketleri durağa bırakacağız.']],
+    stages: [{ kind: 'getin', what: 'bus', text: 'Bir şehir otobüsüne bin (durakta park halinde biri var)' },
+      { kind: 'goto', pos: () => [BUS_STOPS[1].x, BUS_STOPS[1].roadZ], r: 9, need: 'bus', text: '1. durağa git' },
+      { kind: 'goto', pos: () => [BUS_STOPS[2].x, BUS_STOPS[2].roadZ], r: 9, need: 'bus', text: '2. durağa git' },
+      { kind: 'goto', pos: () => [BUS_STOPS[3].x, BUS_STOPS[3].roadZ], r: 9, need: 'bus', text: '3. durağa git' }],
+    outro: [['rico', 'Paketler yerinde. Kartel\'in rotası çöktü!'], ['rico', 'Patronları Marisol bu gece kulüpte olacakmış…']] },
+  { title: 'Kulüpte Hesaplaşma', giver: 'rico', reward: 15000,
+    intro: [['rico', 'Kartel patronu Marisol, Gece Kulübü\'nde.'], ['rico', 'İçeri gir, onunla konuş… ama dikkatli ol.']],
+    stages: [{ kind: 'interior', id: 'club', text: 'Gece Kulübü\'ne gir' },
+      { kind: 'talk', lines: [['mar', 'Demek ünlü yeni oyuncu sensin.'], ['mar', 'Vista Bay\'i kimseyle paylaşmam. Adamlarım dışarıda seni bekliyor!'], ['you', 'O zaman dışarıda görüşelim.']] },
+      { kind: 'boss', guards: 4, pos: () => { const [x, z] = INTERIORS.club.ext; return [x + 14, z + 5]; }, text: 'Dışarı çık ve Kartel tetikçilerini alt et' }],
+    outro: [['rico', 'Kartel de bitti. Şehirde senden büyük yok!'], ['nina', 'Bir sonraki perdeye kadar biraz dinlen 😄']] },
 ];
 const STORY_SPOTS = {
   rico: () => [24, 12],
@@ -3418,11 +3454,13 @@ function nextStoryStage(m) {
   const ch = STORY[m.ch]; m.si++;
   if (m.si >= ch.stages.length) {
     markerGroup.visible = false;
-    showDialog(ch.outro, () => { state.story = Math.max(state.story, m.ch + 1); missionEnd(true, `Bölüm ${m.ch + 1} tamamlandı`); if (state.story >= STORY.length) setTimeout(() => showBig('HİKAYE TAMAMLANDI', '#c080ff', 4, 'Vista Bay\'in efsanesi oldun!'), 3200); });
+    showDialog(ch.outro, () => { state.story = Math.max(state.story, m.ch + 1); missionEnd(true, `Bölüm ${m.ch + 1} tamamlandı`); if (m.ch === 5) setTimeout(() => showBig('1. PERDE TAMAMLANDI', '#c080ff', 4, '2. Perde: Kartel geliyor… Nina seni bekliyor'), 3200); if (state.story >= STORY.length) setTimeout(() => showBig('HİKAYE TAMAMLANDI', '#c080ff', 4, 'Vista Bay\'in efsanesi oldun!'), 3200); });
     return;
   }
   const st = ch.stages[m.si]; m.stage = st; m.wasWanted = state.wanted > 0;
   markerGroup.visible = false;
+  if (st.kind === 'talk') { showDialog(st.lines, () => nextStoryStage(m)); return; }
+  if (st.kind === 'interior') { [m.tx, m.tz] = INTERIORS[st.id].ext; setMarker(m.tx, m.tz, 'race'); }
   if (st.kind === 'goto') { [m.tx, m.tz] = st.pos(); setMarker(m.tx, m.tz, 'race'); }
   if (st.kind === 'destroy') {
     const cand = cars.filter(c => c.active && c.mode === 'ai' && !c.dead && !c.event && Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) > 110);
@@ -3446,7 +3484,7 @@ function spawnBossGroup(x, z, n) {
   guards.forEach((g, i) => { const a = i / n * Math.PI * 2; place(g, x + Math.cos(a) * 3, z + Math.sin(a) * 3, 'guard', 3); });
   return { boss: bountyNpcs.boss, guards, alert: false };
 }
-function vehicleIs(c, what) { if (!c) return false; if (what === 'boat') return !!c.spec.boat; if (what === 'heli') return !!c.spec.heli; return !c.spec.boat && !c.spec.heli; }
+function vehicleIs(c, what) { if (!c) return false; if (what === 'bus') return c.kind === 'bus'; if (what === 'boat') return !!c.spec.boat; if (what === 'heli') return !!c.spec.heli; return !c.spec.boat && !c.spec.heli; }
 function updateStory(dt, m) {
   const ch = STORY[m.ch], st = m.stage, el = $('mission'), c = state.inCar;
   if (!st) return;
@@ -3460,6 +3498,7 @@ function updateStory(dt, m) {
     const altOk = !st.alt || (c && Math.abs(c.y - st.alt()) < 1.6 && c.spec.heli && Math.abs(c.vy) < 2);
     ok = d < st.r && needOk && altOk;
   }
+  else if (st.kind === 'interior') { ok = state.interior === st.id; const e = INTERIORS[st.id].ext; m.tx = e[0]; m.tz = e[1]; extra = ` · ${Math.round(Math.hypot(player.pos.x - m.tx, player.pos.z - m.tz))} m`; }
   else if (st.kind === 'wanted') { ok = state.wanted >= st.n; extra = ` · ${'★'.repeat(state.wanted)}${'☆'.repeat(Math.max(0, st.n - state.wanted))}`; m.tx = player.pos.x; m.tz = player.pos.z; }
   else if (st.kind === 'lose') { ok = state.wanted === 0; extra = ` · ${'★'.repeat(state.wanted)}`; m.tx = player.pos.x; m.tz = player.pos.z; }
   else if (st.kind === 'destroy') {
@@ -3541,6 +3580,507 @@ function initExtrasUI() {
   tapBtn('phExit', endPhoto);
 }
 
+// ============================================================ CITY BUS + BUS STOPS
+CAR_SPECS.bus = { W: 2.5, cabW: 2.6, wr: 0.5, wx: 3.7, max: 24, acc: 7, co: 3.9, cr: 1.35, bus: true,
+  body: [[-5.5, 0.5], [5.4, 0.5], [5.52, 1.0], [5.45, 2.95], [5.2, 3.15], [-5.3, 3.15], [-5.48, 2.95], [-5.55, 1.0]],
+  cab: [[5.28, 1.55], [5.2, 2.8], [-5.28, 2.8], [-5.36, 1.55]] };
+const BUS_STOPS = [];
+function buildBusStops() {
+  const glass = new THREE.MeshStandardMaterial({ color: 0x9ec4d8, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.3, depthWrite: false });
+  const frame = new THREE.MeshStandardMaterial({ color: 0x2a3a5a, metalness: 0.6, roughness: 0.4 });
+  const signTex = canvasTex(128, 64, g => { g.fillStyle = '#1e5ab4'; g.fillRect(0, 0, 128, 64); g.fillStyle = '#fff'; g.font = 'bold 30px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🚌 DURAK', 64, 34); });
+  const signM = new THREE.MeshBasicMaterial({ map: signTex });
+  for (const [bi, bj] of [[1, 4], [4, 1], [6, 6], [3, 0]]) {
+    const b = blocks[bi][bj], x = b.cx + 20, z = b.cz + BLOCK / 2 - 1.7;
+    const g = new THREE.Group(); g.position.set(x, 0.25, z);
+    g.add(new THREE.Mesh(merge([new THREE.BoxGeometry(4.4, 0.1, 1.8).translate(0, 2.5, 0), ...[[-2.1, -0.8], [2.1, -0.8], [-2.1, 0.8], [2.1, 0.8]].map(([px, pz]) => new THREE.CylinderGeometry(0.05, 0.05, 2.5, 6).translate(px, 1.25, pz)), new THREE.BoxGeometry(3.8, 0.08, 0.45).translate(0, 0.5, -0.55)]), frame));
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.2, 0.04).translate(0, 1.35, -0.85), glass));
+    const sg = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.45, 0.06), signM); sg.position.set(2.5, 2.4, 0.8); g.add(sg);
+    g.children.forEach(m => m.castShadow = true); scene.add(g);
+    BUS_STOPS.push({ x, z, roadZ: nodeP(bj + 1) - ROAD / 2 + 2.6 });
+  }
+}
+function spawnBuses() {
+  for (let k = 0; k < (QUALITY === 'low' ? 1 : 2); k++) { const c = createCar('bus', '#e9edf2', 0, 0, 0, 'ai'); placeOnRoad(c, true); c.ai.cruise = 9; c.ai.lane = 6.6; }
+  const s = BUS_STOPS[0]; createCar('bus', '#e9edf2', s.x - 9, s.roadZ, Math.PI / 2, 'free').driver = false;
+}
+
+// ============================================================ INTERIORS (night club, villa)
+const INTERIORS = {
+  club: { name: 'Gece Kulübü', x0: -2614, x1: -2586, z0: -2611, z1: -2589, h: 6, spawn: [-2600, -2592.8, Math.PI], exitAt: [-2600, -2590.2], boxes: [], ext: null },
+  house: { name: 'Lüks Villa', x0: -2559, x1: -2541, z0: -2607, z1: -2593, h: 3.4, spawn: [-2550, -2595.6, Math.PI], exitAt: [-2550, -2593.6], boxes: [], ext: null },
+};
+let interiorLight = null, danceTiles = null, clubDancers = [];
+function buildInteriors() {
+  interiorLight = new THREE.PointLight(0xffffff, 0, 40, 1.4); scene.add(interiorLight);
+  const box = (I, x, y, z, w, h, d, mat, solid = true) => { const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(0.04, w / 2.1, h / 2.1, d / 2.1)), mat); m.position.set(x, y + h / 2, z); m.castShadow = m.receiveShadow = true; scene.add(m); if (solid) I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 }); return m; };
+  const shell = (I, wallM, floorM, ceilM) => {
+    const cx = (I.x0 + I.x1) / 2, cz = (I.z0 + I.z1) / 2, w = I.x1 - I.x0, d = I.z1 - I.z0, t = 0.3;
+    const fl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), floorM); fl.position.set(cx, 0.0, cz); fl.receiveShadow = true; scene.add(fl);
+    const ce = new THREE.Mesh(new THREE.BoxGeometry(w + 2 * t, 0.2, d + 2 * t), ceilM); ce.position.set(cx, I.h + 0.1, cz); ce.castShadow = true; scene.add(ce);
+    for (const [x, z, ww, dd] of [[cx, I.z0 - t / 2, w + 2 * t, t], [cx, I.z1 + t / 2, w + 2 * t, t], [I.x0 - t / 2, cz, t, d], [I.x1 + t / 2, cz, t, d]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(ww, I.h + 0.2, dd), wallM); m.position.set(x, I.h / 2, z); m.castShadow = m.receiveShadow = true; scene.add(m); }
+    // exit door
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.08), new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.6 })); door.position.set(I.exitAt[0], 1.2, I.z1 - 0.02); scene.add(door);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x40e080, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(I.exitAt[0], 0.03, I.exitAt[1] - 0.6); scene.add(ring);
+  };
+  // ---- CLUB
+  {
+    const I = INTERIORS.club;
+    shell(I, new THREE.MeshStandardMaterial({ color: 0x1a1020, roughness: 0.85 }), new THREE.MeshStandardMaterial({ color: 0x141016, roughness: 0.35, metalness: 0.3 }), new THREE.MeshStandardMaterial({ color: 0x0a080c }));
+    // dance floor (animated tiles)
+    const tileGeo = new THREE.BoxGeometry(1.5, 0.06, 1.5);
+    danceTiles = new THREE.InstancedMesh(tileGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), 36);
+    let k = 0; const m4l = new THREE.Matrix4();
+    for (let a = 0; a < 6; a++) for (let c = 0; c < 6; c++) { m4l.makeTranslation(-2600 - 4.5 + a * 1.6 + 0.4, 0.06, -2601 - 4 + c * 1.6); danceTiles.setMatrixAt(k, m4l); danceTiles.setColorAt(k++, new THREE.Color(1, 1, 1)); }
+    scene.add(danceTiles);
+    // bar + bottles
+    const barM = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.4, metalness: 0.2 });
+    box(I, -2611.5, 0, -2601, 1.2, 1.15, 12, barM);
+    box(I, -2613.6, 0, -2601, 0.5, 2.6, 12, new THREE.MeshStandardMaterial({ color: 0x20161a }));
+    const bottles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.07, 0.32, 8), new THREE.MeshBasicMaterial(), 30);
+    for (let i = 0; i < 30; i++) { m4l.makeTranslation(-2613.3, 1.3 + (i % 3) * 0.55, -2606.5 + Math.floor(i / 3) * 1.15); bottles.setMatrixAt(i, m4l); bottles.setColorAt(i, new THREE.Color().setHSL(Math.random(), 0.8, 0.55).multiplyScalar(1.6)); }
+    scene.add(bottles);
+    // DJ booth
+    box(I, -2600, 0, -2609.4, 5, 1.2, 1.6, new THREE.MeshStandardMaterial({ color: 0x101014, metalness: 0.6, roughness: 0.3 }));
+    const djGlow = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.12, 0.04), new THREE.MeshBasicMaterial({ color: 0x40e0ff })); djGlow.position.set(-2600, 0.9, -2608.58); scene.add(djGlow); I.djGlow = djGlow;
+    // neon strips along walls
+    I.neon = [];
+    for (const [x, z, w, d, col] of [[-2600, -2610.8, 27, 0.08, 0xff2a8a], [-2613.8, -2600, 0.08, 21, 0x2ad8ff], [-2586.2, -2600, 0.08, 21, 0xb050ff]]) { const n = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), new THREE.MeshBasicMaterial({ color: col })); n.position.set(x, 4.8, z); scene.add(n); I.neon.push(n); }
+    // sofas / tables
+    const sofaM = new THREE.MeshStandardMaterial({ color: 0x5a1a3a, roughness: 0.7 });
+    for (const z of [-2606, -2600, -2594]) { box(I, -2588.2, 0, z, 1.2, 0.8, 3, sofaM); box(I, -2589.9, 0, z, 0.7, 0.7, 0.7, new THREE.MeshStandardMaterial({ color: 0x222226, metalness: 0.5 })); }
+    // dancers
+    for (let i = 0; i < 9; i++) { const h = makeHuman(randLook()); h.base = [-2600 - 4 + (i % 3) * 3.2 + MR(-0.6, 0.6), -2604.5 + Math.floor(i / 3) * 3 + MR(-0.6, 0.6)]; h.g.position.set(h.base[0], 0.05, h.base[1]); h.g.rotation.y = Math.random() * 6; h.dt = Math.random() * 5; h.g.visible = false; clubDancers.push(h); }
+  }
+  // ---- HOUSE
+  {
+    const I = INTERIORS.house;
+    const wood = new THREE.MeshStandardMaterial({ map: noiseTex('#8a6240', ['#7a5434', '#9a7048', '#6e4a2c'], 256, 4000, 1, 10), roughness: 0.55 });
+    shell(I, new THREE.MeshStandardMaterial({ color: 0xece4d6, roughness: 0.9 }), wood, new THREE.MeshStandardMaterial({ color: 0xf6f2ea }));
+    const fab = new THREE.MeshStandardMaterial({ color: 0x3a5a7a, roughness: 0.9 });
+    box(I, -2554, 0, -2604.8, 4, 0.45, 1.2, fab); box(I, -2554, 0.45, -2605.25, 4, 0.5, 0.3, fab);          // sofa
+    box(I, -2554, 0, -2602.4, 1.8, 0.4, 0.9, new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.4 })); // coffee table
+    const rug = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.02, 3.2), new THREE.MeshStandardMaterial({ color: 0xb08a6a, roughness: 1 })); rug.position.set(-2554, 0.065, -2603); scene.add(rug);
+    box(I, -2554, 0, -2599.6, 2.4, 0.6, 0.5, new THREE.MeshStandardMaterial({ color: 0x1a1a1c }));                // TV stand
+    const tv = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 0.06), new THREE.MeshBasicMaterial({ color: 0x2a6ab8 })); tv.position.set(-2554, 1.35, -2599.55); scene.add(tv); I.tv = tv;
+    box(I, -2545, 0, -2605, 2.2, 0.55, 3, new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.9 }));    // bed
+    box(I, -2545, 0.55, -2606.1, 2, 0.18, 0.6, new THREE.MeshStandardMaterial({ color: 0xffffff }), false);          // pillow
+    box(I, -2545, 0.5, -2604.2, 2.25, 0.12, 1.4, new THREE.MeshStandardMaterial({ color: 0x8a3a3a }), false);        // blanket
+    box(I, -2542.2, 0, -2598, 0.9, 0.95, 4, new THREE.MeshStandardMaterial({ color: 0xd8d8d4, roughness: 0.3 }));  // kitchen counter
+    box(I, -2542.3, 0, -2595.2, 0.9, 2, 0.9, new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.6, roughness: 0.3 })); // fridge
+    box(I, -2558.2, 0, -2596, 0.7, 2.1, 1.6, new THREE.MeshStandardMaterial({ color: 0x5a3a26 }));                  // wardrobe
+    const pot = box(I, -2557.8, 0, -2606.2, 0.5, 0.5, 0.5, new THREE.MeshStandardMaterial({ color: 0xb05a3a })); const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), new THREE.MeshStandardMaterial({ color: 0x3a7a3a })); leaf.position.set(-2557.8, 1.1, -2606.2); scene.add(leaf);
+    I.bed = [-2545, -2603.2]; I.wardrobe = [-2557.4, -2596];
+  }
+  // exterior entrances
+  { const b = blocks[4][2]; INTERIORS.club.ext = [b.cx - 6, b.cz + BLOCK / 2 - 2.2]; }
+  { const b = blocks[0][3]; INTERIORS.house.ext = [b.cx - 6, b.cz + BLOCK / 2 - 2.2]; }
+  for (const id in INTERIORS) {
+    const I = INTERIORS[id], [x, z] = I.ext, y = groundY(x, z);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: id === 'club' ? 0xff4fd0 : 0x40e080, transparent: true, opacity: 0.85, depthWrite: false }));
+    ring.position.set(x, y + 0.04, z); scene.add(ring);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(128, 128, g => { g.fillStyle = 'rgba(0,0,0,0.6)'; g.beginPath(); g.arc(64, 64, 60, 0, 7); g.fill(); g.font = '68px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(id === 'club' ? '🚪' : '🏠', 64, 70); }) }));
+    sp.scale.set(1.2, 1.2, 1); sp.position.set(x, y + 2.6, z); scene.add(sp); I.extSprite = sp;
+  }
+}
+function interiorCollide(x, z, r) {
+  const I = INTERIORS[state.interior];
+  x = clamp(x, I.x0 + r, I.x1 - r); z = clamp(z, I.z0 + r, I.z1 - r);
+  for (const b of I.boxes) {
+    const cx = clamp(x, b.x0, b.x1), cz = clamp(z, b.z0, b.z1), dx = x - cx, dz = z - cz, d2 = dx * dx + dz * dz;
+    if (d2 < r * r) { if (d2 > 1e-8) { const d = Math.sqrt(d2); x = cx + dx / d * r; z = cz + dz / d * r; } else { const l = x - b.x0, rr = b.x1 - x, t = z - b.z0, bb = b.z1 - z, m = Math.min(l, rr, t, bb); if (m === l) x = b.x0 - r; else if (m === rr) x = b.x1 + r; else if (m === t) z = b.z0 - r; else z = b.z1 + r; } }
+  }
+  return { x, z, hit: false, nx: 0, nz: 0 };
+}
+function enterInterior(id) {
+  const I = INTERIORS[id];
+  if (id === 'house' && !state.props.villa) { floatText('🏠 Önce Lüks Villa\'yı satın al'); return; }
+  const f = $('fade'); f.style.opacity = 1;
+  setTimeout(() => {
+    state.interior = id; player.pos.set(I.spawn[0], 0, I.spawn[1]); player.yaw = I.spawn[2]; camYaw = player.yaw + Math.PI; camDist = 3;
+    if (id === 'club') { for (const h of clubDancers) h.g.visible = true; interiorLight.position.set(-2600, 5, -2601); }
+    else interiorLight.position.set(-2550, 3, -2600);
+    interiorLight.intensity = id === 'club' ? 180 : 30;
+    f.style.opacity = 0; floatText(`🚪 ${I.name}`);
+  }, 350);
+}
+function exitInterior() {
+  const I = INTERIORS[state.interior], f = $('fade'); f.style.opacity = 1;
+  setTimeout(() => {
+    state.interior = null; interiorLight.intensity = 0; for (const h of clubDancers) h.g.visible = false;
+    const [x, z] = I.ext; player.pos.set(x, groundY(x, z), z + 2.4); player.yaw = 0; camYaw = Math.PI; f.style.opacity = 0;
+  }, 350);
+}
+function updateInteriors(dt) {
+  if (!state.interior) {
+    for (const id in INTERIORS) {
+      const I = INTERIORS[id], [x, z] = I.ext; I.extSprite.position.y = groundY(x, z) + 2.6 + Math.sin(state.now * 2.5) * 0.12;
+      if (!state.dead && !state.mission?.boss && Math.hypot(player.pos.x - x, player.pos.z - z) < 1.6) state.interact = state.inCar ? { label: 'İçeri girmek için araçtan in', fn: null } : { label: id === 'club' ? '🚪 KULÜBE GİR' : (state.props.villa ? '🏠 EVE GİR' : '🏠 Villa satın alınınca açılır'), fn: id === 'house' && !state.props.villa ? null : () => enterInterior(id) };
+    }
+    return;
+  }
+  const I = INTERIORS[state.interior], t = state.now;
+  if (Math.hypot(player.pos.x - I.exitAt[0], player.pos.z - (I.exitAt[1] - 0.6)) < 1.1) state.interact = { label: '🚪 DIŞARI ÇIK', fn: exitInterior };
+  if (state.interior === 'club') {
+    if (Math.floor(t * 4) !== I.lastBeat) { I.lastBeat = Math.floor(t * 4); for (let k = 0; k < 36; k++) danceTiles.setColorAt(k, tmpC.setHSL((k * 0.11 + t * 0.3) % 1, 0.9, Math.random() < 0.5 ? 0.6 : 0.15).multiplyScalar(1.4)); danceTiles.instanceColor.needsUpdate = true; }
+    interiorLight.color.setHSL((t * 0.15) % 1, 0.8, 0.6); interiorLight.intensity = 140 + Math.sin(t * 8) * 60;
+    I.djGlow.material.color.setHSL((t * 0.4) % 1, 1, 0.55);
+    for (const h of clubDancers) { h.dt += dt; animHuman(h, 0, dt, false); applyEmote(h, 'dance', h.dt); h.g.rotation.y += dt * 0.6; }
+  } else {
+    I.tv.material.color.setHSL(0.58 + Math.sin(t * 0.7) * 0.05, 0.6, 0.35 + Math.sin(t * 3.1) * 0.08);
+    if (Math.hypot(player.pos.x - I.bed[0], player.pos.z - I.bed[1]) < 2) state.interact = { label: '🛏 UYU & KAYDET', fn: () => { state.health = 100; state.armor = Math.max(state.armor, 50); state.time = (state.time + 8) % 24; state.lastHour = Math.floor(state.time); saveGame(); showBig('İYİ UYUDUN', '#7dff9a', 2.5, '8 saat geçti · can doldu · oyun kaydedildi'); } };
+    if (Math.hypot(player.pos.x - I.wardrobe[0], player.pos.z - I.wardrobe[1]) < 1.8) state.interact = { label: '👕 GARDIROP', fn: () => openShop('clothes') };
+  }
+}
+
+// ============================================================ MULTIPLAYER (PeerJS / WebRTC, host-relay star topology)
+// Host peer id = 'vistabay-<code>'. Clients connect only to the host; the host relays every packet to the others.
+// Messages: hello/welcome/join/leave (lobby), st (20 Hz state), shot/fx (combat FX), chat/emote, world (time + weather).
+const MP = { on: false, host: false, peer: null, conns: new Map(), hostConn: null, myId: null, code: null, pub: false, nextId: 0, remotes: new Map(), acc: 0, worldT: 0, chatT: -99, name: '', color: '#e8443a', costume: 0 };
+const MP_PREFIX = 'vistabay-', MP_MAX = 8, MP_TICK = 0.05, MP_DELAY = 0.12, MP_PUB = 5;
+const MP_COLORS = ['#e8443a', '#2e86de', '#20bf6b', '#f7b731', '#8854d0', '#fd79a8', '#00cec9', '#f0f0f0'];
+const MP_COSTUMES = [{ name: 'Sokak', cap: null, glasses: true, shorts: false }, { name: 'Sahil', cap: null, glasses: true, shorts: true }, { name: 'Şapkalı', cap: '#1a1a1e', glasses: false, shorts: false }, { name: 'Patron', cap: '#d4a017', glasses: true, shorts: false }];
+const QUICK_MSGS = ['Selam! 👋', 'Arabama bin! 🚗', 'Yarışalım mı? 🏁', 'Polisler peşimde! 🚨', 'Beni takip et! 👉', 'Yardım lazım! 🆘', 'Harika! 😎', 'GG 🏆'];
+const EMOTES = [['wave', '👋', 'El salla'], ['dance', '💃', 'Dans'], ['cheer', '🙌', 'Sevin'], ['honk', '📯', 'Korna']];
+const mpNow = () => performance.now() / 1000;
+
+function loadPeerJS() {
+  return new Promise((res, rej) => {
+    if (window.Peer) return res();
+    const add = (src, next) => { const s = document.createElement('script'); s.src = src; s.onload = () => window.Peer ? res() : next(); s.onerror = next; document.head.appendChild(s); };
+    add('https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', () => add('lib/peerjs.min.js', () => rej(new Error('PeerJS yüklenemedi'))));
+  });
+}
+function peerOptions() {
+  const q = new URLSearchParams(location.search);
+  const o = { debug: 1, config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
+  if (q.get('peerhost')) { o.host = q.get('peerhost'); o.port = +(q.get('peerport') || 9000); o.path = q.get('peerpath') || '/'; o.secure = q.get('peersecure') === '1'; }
+  return o;
+}
+function newPeer(id) {
+  return new Promise((res, rej) => {
+    const p = id ? new Peer(id, peerOptions()) : new Peer(peerOptions());
+    let done = false;
+    const to = setTimeout(() => { if (done) return; done = true; try { p.destroy(); } catch (e) { } rej(Object.assign(new Error('Sunucuya ulaşılamadı'), { type: 'timeout' })); }, 10000);
+    p.on('open', () => { if (done) return; done = true; clearTimeout(to); res(p); });
+    p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
+  });
+}
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look }; }
+// ---------------- hosting
+async function mpHost(fixedId, pub) {
+  let peer = null, code = null;
+  for (let k = 0; k < 6 && !peer; k++) {
+    code = fixedId || String(1000 + Math.floor(Math.random() * 9000));
+    try { peer = await newPeer(MP_PREFIX + code); } catch (e) { if (e.type === 'unavailable-id' && !fixedId) continue; throw e; }
+  }
+  if (!peer) throw new Error('Oda kurulamadı');
+  Object.assign(MP, { peer, code, host: true, on: true, myId: 'h', pub: !!pub });
+  peer.on('connection', onHostConn);
+  peer.on('disconnected', () => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { } });
+  peer.on('error', e => console.warn('peer', e.type));
+}
+function onHostConn(conn) {
+  const id = 'p' + (++MP.nextId);
+  conn.on('open', () => {
+    if (MP.conns.size >= MP_MAX - 1) { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 400); return; }
+    conn.pid = id; MP.conns.set(id, conn);
+  });
+  conn.on('data', d => { if (conn.pid) hostRecv(id, d); });
+  conn.on('close', () => dropPlayer(id));
+  conn.on('error', () => dropPlayer(id));
+}
+function hostRecv(id, d) {
+  if (!d || !d.t || !scene) return;
+  if (d.t === 'hello') {
+    const r = ensureRemote(id, d.info);
+    const players = [{ id: 'h', info: myInfo() }]; for (const [rid, rr] of MP.remotes) if (rid !== id) players.push({ id: rid, info: rr.info });
+    MP.conns.get(id).send({ t: 'welcome', id, players, time: state.time, weather: state.weather, code: MP.code });
+    mpBroadcast({ t: 'join', id, info: r.info }, id);
+    mpFeed(`🟢 ${r.info.name} katıldı`); AudioSys.tone(880, 0.12, 0.12, 'sine');
+    return;
+  }
+  d.id = id;
+  applyPacket(d);
+  if (d.t === 'st' || d.t === 'shot' || d.t === 'chat' || d.t === 'emote' || d.t === 'fx') mpBroadcast(d, id);
+}
+function dropPlayer(id) {
+  if (!MP.conns.has(id) && !MP.remotes.has(id)) return;
+  MP.conns.delete(id);
+  const r = MP.remotes.get(id); if (r) mpFeed(`🔴 ${r.info.name} ayrıldı`);
+  removeRemote(id);
+  if (MP.host) mpBroadcast({ t: 'leave', id });
+}
+function mpBroadcast(msg, except) { for (const [id, c] of MP.conns) if (id !== except && c.open) { try { c.send(msg); } catch (e) { } } }
+// ---------------- joining
+function connectTo(peer, targetId, timeout = 12000) {
+  return new Promise((res, rej) => {
+    let done = false;
+    const conn = peer.connect(MP_PREFIX + targetId, { reliable: true, serialization: 'json' });
+    const fail = msg => { if (done) return; done = true; clearTimeout(to); peer.off('error', onErr); try { conn.close(); } catch (e) { } rej(new Error(msg)); };
+    const onErr = e => { if (e.type === 'peer-unavailable') fail('Oda bulunamadı'); };
+    const to = setTimeout(() => fail('Oda yanıt vermedi'), timeout);
+    peer.on('error', onErr);
+    conn.on('open', () => { if (done) return; done = true; clearTimeout(to); peer.off('error', onErr); res(conn); });
+  });
+}
+async function mpJoin(code) {
+  const peer = MP.peer && !MP.peer.destroyed ? MP.peer : await newPeer();
+  MP.peer = peer;
+  const conn = await connectTo(peer, code);
+  attachClient(conn, code);
+}
+function attachClient(conn, code) {
+  Object.assign(MP, { hostConn: conn, on: true, host: false, code, pub: String(code).startsWith('pub') });
+  conn.on('data', clientRecv);
+  conn.on('close', () => mpLost('Oda sahibi ayrıldı'));
+  conn.on('error', () => mpLost('Bağlantı hatası'));   // 'hello' is sent from mpAfterStart() once the world is built
+}
+async function mpQuickJoin(status) {
+  const peer = await newPeer(); MP.peer = peer;
+  for (let k = 1; k <= MP_PUB; k++) {
+    status(`Açık odalar aranıyor… (${k}/${MP_PUB})`);
+    try { const conn = await connectTo(peer, 'pub-' + k, 5000); attachClient(conn, 'pub-' + k); return 'joined'; } catch (e) { }
+  }
+  try { peer.destroy(); } catch (e) { } MP.peer = null;
+  for (let k = 1; k <= MP_PUB; k++) {
+    status('Açık oda yok, yeni bir genel oda kuruluyor…');
+    try { await mpHost('pub-' + k, true); return 'hosted'; } catch (e) { if (e.type !== 'unavailable-id') throw e; }
+  }
+  throw new Error('Tüm genel odalar dolu');
+}
+function clientRecv(d) {
+  if (!d || !d.t) return;
+  if (d.t === 'welcome') {
+    MP.myId = d.id; for (const p of d.players) ensureRemote(p.id, p.info);
+    applyWorld(d); mpFeed(`🌐 Odaya katıldın · ${d.players.length + 1} oyuncu`); return;
+  }
+  if (d.t === 'join') { ensureRemote(d.id, d.info); mpFeed(`🟢 ${d.info.name} katıldı`); AudioSys.tone(880, 0.12, 0.12, 'sine'); return; }
+  if (d.t === 'leave') { const r = MP.remotes.get(d.id); if (r) mpFeed(`🔴 ${r.info.name} ayrıldı`); removeRemote(d.id); return; }
+  if (d.t === 'world') { applyWorld(d); return; }
+  if (d.t === 'full') { mpLost('Oda dolu (8/8)'); return; }
+  applyPacket(d);
+}
+function applyWorld(d) {
+  if (typeof d.time === 'number' && Math.abs(wrapA((d.time - state.time) / 24 * Math.PI * 2)) > 0.03) state.time = d.time;
+  if (d.weather && d.weather !== state.weather && WEATHERS[d.weather]) setWeather(d.weather, false);
+}
+function mpSend(msg) {
+  if (!MP.on) return;
+  if (MP.host) mpBroadcast(msg); else if (MP.hostConn && MP.hostConn.open) { try { MP.hostConn.send(msg); } catch (e) { } }
+}
+function mpLost(reason) {
+  if (!MP.on) return;
+  showBig('BAĞLANTI KOPTU', '#ff5050', 3, reason + ' · tek oyunculu devam ediyorsun');
+  mpLeave(true);
+}
+function mpLeave(silent) {
+  for (const id of [...MP.remotes.keys()]) removeRemote(id);
+  for (const c of MP.conns.values()) { try { c.close(); } catch (e) { } }
+  MP.conns.clear();
+  try { MP.hostConn && MP.hostConn.close(); } catch (e) { }
+  try { MP.peer && MP.peer.destroy(); } catch (e) { }
+  Object.assign(MP, { on: false, host: false, peer: null, hostConn: null, myId: null, code: null });
+  document.body.classList.remove('online'); $('mpList').style.display = 'none'; $('chatPanel').style.display = 'none';
+  if (!silent) floatText('🌐 Odadan ayrıldın');
+}
+// ---------------- packets
+function applyPacket(d) {
+  const r = MP.remotes.get(d.id); if (!r) return;
+  if (d.t === 'st') { d.rt = mpNow(); r.snaps.push(d); if (r.snaps.length > 30) r.snaps.shift(); return; }
+  const dist = Math.hypot(r.x - player.pos.x, r.z - player.pos.z), vol = clamp(1 - dist / 120, 0, 1);
+  if (d.t === 'shot') {
+    if (dist < 200) { for (let k = 0; k < (d.n || 1); k++) FX.tracer(d.a[0], d.a[1], d.a[2], d.b[0] + (k ? MR(-1.5, 1.5) : 0), d.b[1], d.b[2] + (k ? MR(-1.5, 1.5) : 0)); FX.add.spawn(d.a[0], d.a[1], d.a[2], 0, 0, 0, 0.06, 1.2, 0, 3, 2.2, 0.8, 1, 0); }
+    if (vol > 0) AudioSys.shot(vol * (WEAPONS[d.w] ? WEAPONS[d.w].vol : 1));
+    r.aimT = 0.6;
+  } else if (d.t === 'fx' && d.k === 'boom') fxBoom(d.p[0], d.p[1], d.p[2], vol);
+  else if (d.t === 'chat') { const txt = String(d.m).slice(0, 40); r.bubble = txt; r.bubbleT = 4.5; mpFeed(`<b style="color:${r.info.color}">${esc(r.info.name)}:</b> ${esc(txt)}`); AudioSys.tone(1200, 0.06, 0.08, 'sine'); }
+  else if (d.t === 'emote') { r.emote = d.e; r.emoteT = 0; if (d.e === 'honk' && vol > 0) honkSound(vol); }
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function fxBoom(x, y, z, vol = 1) {
+  for (let k = 0; k < 50; k++) FX.add.spawn(x, y, z, MR(-8, 8), MR(2, 12), MR(-8, 8), MR(0.4, 1.1), MR(1.5, 3), 3, 3, MR(0.8, 1.6), 0.2, 1, 4);
+  for (let k = 0; k < 30; k++) FX.norm.spawn(x + MR(-1, 1), y + MR(0, 2), z + MR(-1, 1), MR(-3, 3), MR(2, 7), MR(-3, 3), MR(2, 4), MR(2, 3), 6, 0.12, 0.11, 0.1, 0.8, -0.5);
+  M.flash.position.set(x, y + 2, z); M.flash.intensity = 3000 * vol + 500;
+  if (vol > 0) { AudioSys.burst(1.4, 300, 1.1 * vol); AudioSys.tone(70, 1.1, 0.7 * vol, 'sine', 0.3); }
+}
+function honkSound(vol = 1) { AudioSys.tone(415, 0.35, 0.22 * vol, 'square'); AudioSys.tone(523, 0.35, 0.16 * vol, 'square'); }
+// ---------------- remote players
+function ensureRemote(id, info) {
+  info = Object.assign({ name: 'Oyuncu', color: '#e8443a', look: { ...DEFAULT_LOOK } }, info || {});
+  info.name = String(info.name || 'Oyuncu').slice(0, 14);
+  let r = MP.remotes.get(id);
+  if (!r) { r = { id, info, snaps: [], human: null, veh: null, vehKey: '', tag: null, tagKey: '', bubble: '', bubbleT: 0, x: 0, y: 0, z: 0, r: 0, sp: 0, aimT: 0, emote: null, emoteT: 0, hp: 100, wn: 0 }; MP.remotes.set(id, r); }
+  else { r.info = info; if (r.human) { disposeHuman(r.human); r.human = null; } }
+  r.human = makeHuman({ ...(info.look || DEFAULT_LOOK), gun: true }); r.human.g.visible = false;
+  if (!r.tag) { const tex = new THREE.CanvasTexture(document.createElement('canvas')); r.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); r.tag.renderOrder = 20; r.tag.scale.set(2.6, 1.3, 1); scene.add(r.tag); }
+  r.tagKey = ''; updateOnlineHUD();
+  return r;
+}
+function disposeHuman(h) { h.g.parent && h.g.parent.remove(h.g); h.g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+function removeRemote(id) {
+  const r = MP.remotes.get(id); if (!r) return;
+  if (r.human) disposeHuman(r.human);
+  if (r.veh) scene.remove(r.veh.group);
+  if (r.tag) { scene.remove(r.tag); r.tag.material.map.dispose(); r.tag.material.dispose(); }
+  MP.remotes.delete(id); updateOnlineHUD();
+}
+function vehVisual(kind, color) {
+  if (!CAR_SPECS[kind]) kind = 'sedan';
+  const c = kind === 'bike' ? createBike(color, 0, -9999, 0, 'free') : kind === 'boat' ? createBoat(color, 0, -9999, 0) : kind === 'heli' ? createHeli(color, 0, 0, -9999, 0) : createCar(kind, color, 0, -9999, 0, 'free');
+  const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1);
+  c.remote = true; return c;
+}
+function drawTag(r) {
+  const key = `${r.info.name}|${r.hp}|${r.wn}|${r.bubbleT > 0 ? r.bubble : ''}`;
+  if (key === r.tagKey) return; r.tagKey = key;
+  const cv = r.tag.material.map.image; cv.width = 256; cv.height = 128; const g = cv.getContext('2d');
+  g.clearRect(0, 0, 256, 128); g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (r.bubbleT > 0 && r.bubble) {
+    g.font = 'bold 22px Arial'; const w = Math.min(250, g.measureText(r.bubble).width + 24);
+    g.fillStyle = 'rgba(255,255,255,0.95)'; g.beginPath(); g.roundRect(128 - w / 2, 2, w, 34, 12); g.fill();
+    g.beginPath(); g.moveTo(120, 36); g.lineTo(136, 36); g.lineTo(128, 44); g.fill();
+    g.fillStyle = '#111'; g.fillText(r.bubble, 128, 20);
+  }
+  g.font = 'bold 26px Arial'; g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(r.info.name, 128, 66); g.fillStyle = r.info.color; g.fillText(r.info.name, 128, 66);
+  g.fillStyle = 'rgba(0,0,0,0.7)'; g.fillRect(68, 84, 120, 10); g.fillStyle = r.hp > 30 ? '#2ee66b' : '#ff4040'; g.fillRect(70, 86, 116 * clamp(r.hp / 100, 0, 1), 6);
+  if (r.wn > 0) { g.font = 'bold 20px Arial'; g.fillStyle = '#ffd23a'; g.strokeStyle = '#000'; g.lineWidth = 4; const s = '★'.repeat(r.wn); g.strokeText(s, 128, 112); g.fillText(s, 128, 112); }
+  r.tag.material.map.needsUpdate = true;
+}
+function sampleRemote(r) {
+  const S = r.snaps; if (!S.length) return null;
+  const rt = mpNow() - MP_DELAY;
+  while (S.length > 2 && S[1].rt <= rt) S.shift();
+  const a = S[0], b = S[1];
+  if (!b || rt <= a.rt) return { ...a, k: 0 };
+  const k = clamp((rt - a.rt) / Math.max(0.001, b.rt - a.rt), 0, 1);
+  return { ...b, x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), z: lerp(a.z, b.z, k), r: a.r + wrapA(b.r - a.r) * k, px: lerp(a.px || 0, b.px || 0, k), rz: lerp(a.rz || 0, b.rz || 0, k) };
+}
+function updateRemotes(dt) {
+  for (const r of MP.remotes.values()) {
+    const s = sampleRemote(r); if (!s) continue;
+    const ox = r.x, oz = r.z;
+    r.x = s.x; r.y = s.y; r.z = s.z; r.r = s.r; r.hp = s.hp; r.wn = s.wn || 0;
+    const mv = Math.hypot(r.x - ox, r.z - oz) / Math.max(dt, 1e-3);
+    const far = Math.hypot(r.x - player.pos.x, r.z - player.pos.z) > 320;
+    const h = r.human;
+    // vehicle visual
+    const key = s.v ? s.v + s.vc : '';
+    if (key !== r.vehKey) { if (r.veh) { if (h.g.parent === r.veh.group) scene.add(h.g); scene.remove(r.veh.group); r.veh = null; } if (s.v) r.veh = vehVisual(s.v, s.vc); r.vehKey = key; }
+    if (r.veh) {
+      const c = r.veh, gp = c.group;
+      gp.visible = !far; gp.position.set(r.x, r.y, r.z); gp.rotation.set(s.px || 0, r.r, s.rz || 0);
+      c.spin += (s.sp || 0) * dt / c.spec.wr; for (const sp of c.spinners) if (c.spec.bike) sp.rotation.x = c.spin; else sp.rotation.z = -c.spin;
+      for (const f of c.fronts) f.rotation.y = -(s.st || 0);
+      if (c.rotor) { c.rotorA += 30 * dt; c.rotor.rotation.y = c.rotorA; c.tailRotor.rotation.x = c.rotorA * 1.6; }
+      if (c.spec.bike) { if (h.g.parent !== gp) { gp.add(h.g); h.g.position.set(0, 0.45, -0.28); h.g.rotation.set(0.32, 0, 0); } h.g.visible = true; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.kneeL.rotation.x = h.kneeR.rotation.x = 1.5; h.armL.rotation.x = h.armR.rotation.x = -1.15; }
+      else h.g.visible = false;
+    } else {
+      if (h.g.parent !== scene) scene.add(h.g);
+      h.g.visible = !far; h.g.position.set(r.x, r.y, r.z); h.g.rotation.set(s.dead ? -Math.PI / 2 : 0, r.r, 0);
+      if (!s.dead && h.g.visible) {
+        r.aimT -= dt; animHuman(h, Math.min(mv, 8), dt, r.aimT > 0 || s.aim);
+        if (r.emote) { r.emoteT += dt; applyEmote(h, r.emote, r.emoteT); if (r.emoteT > 3.5 || mv > 1) r.emote = null; }
+      }
+    }
+    if (r.bubbleT > 0) r.bubbleT -= dt;
+    drawTag(r);
+    r.tag.visible = !far; r.tag.position.set(r.x, r.y + (r.veh ? (r.veh.spec.heli ? 4 : r.veh.spec.bike ? 2.6 : 3) : 2.35), r.z);
+  }
+}
+function applyEmote(h, e, t) {
+  if (e === 'wave') { h.armR.rotation.x = -2.7 + Math.sin(t * 10) * 0.25; h.armR.rotation.z = -0.5 + Math.sin(t * 10) * 0.3; h.elbowR.rotation.x = -0.4; }
+  else if (e === 'cheer') { for (const [a, el, sg] of [[h.armL, h.elbowL, 1], [h.armR, h.elbowR, -1]]) { a.rotation.x = -2.9 + Math.sin(t * 9) * 0.2; a.rotation.z = sg * 0.35; el.rotation.x = -0.2; } h.g.children[4].position.y = Math.abs(Math.sin(t * 9)) * 0.06; }
+  else if (e === 'dance') {
+    const b = Math.sin(t * 8);
+    h.armL.rotation.x = -1.6 + b * 0.9; h.armR.rotation.x = -1.6 - b * 0.9; h.elbowL.rotation.x = h.elbowR.rotation.x = -0.9;
+    h.legL.rotation.x = b * 0.35; h.legR.rotation.x = -b * 0.35; h.kneeL.rotation.x = Math.max(0, b) * 0.6; h.kneeR.rotation.x = Math.max(0, -b) * 0.6;
+    h.g.children[4].position.y = Math.abs(b) * 0.07;
+  } else if (e === 'honk') { h.armR.rotation.x = h.armL.rotation.x = -1.3; h.elbowL.rotation.x = h.elbowR.rotation.x = -1.2; }
+}
+// ---------------- local tick + HUD
+function myState() {
+  const c = state.inCar, p = c ? c.group.position : player.pos, f2 = v => Math.round(v * 100) / 100;
+  const o = { t: 'st', x: f2(p.x), y: f2(c ? c.y : player.pos.y), z: f2(p.z), r: Math.round((c ? c.h : player.yaw) * 1000) / 1000, sp: f2(c ? carFwd(c) : player.speed), hp: Math.max(0, Math.round(state.health)), wn: state.wanted, w: state.weapon, aim: player.aimT > 0 ? 1 : 0, dead: state.dead ? 1 : 0 };
+  if (c) { o.v = c.kind; o.vc = '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace); o.px = f2(c.group.rotation.x); o.rz = f2(c.group.rotation.z); o.st = f2(c.steer); }
+  return o;
+}
+function mpUpdate(rdt) {
+  if (!MP.on) return;
+  MP.acc += rdt;
+  if (MP.acc >= MP_TICK) { MP.acc = Math.min(MP.acc - MP_TICK, MP_TICK); mpSend(myState()); }
+  if (MP.host) { MP.worldT += rdt; if (MP.worldT > 5) { MP.worldT = 0; mpBroadcast({ t: 'world', time: state.time, weather: state.weather }); } }
+  updateRemotes(rdt);
+  if (state.emote) { state.emote.t += rdt; if (state.emote.t > 3.5 || player.speed > 1 || state.inCar) state.emote = null; }
+}
+function updateOnlineHUD() {
+  if (!MP.on) return;
+  document.body.classList.add('online');
+  $('mpPill').textContent = `🌐 ${MP.pub ? 'Genel oda' : 'Oda ' + MP.code} · 👥 ${MP.remotes.size + 1}/${MP_MAX}`;
+  if ($('mpList').style.display === 'block') renderMpList();
+}
+function renderMpList() {
+  const rows = [`<div class="mpRow"><i style="background:${MP.color}"></i><b>${esc(MP.name)} (sen)</b><span>${MP.host ? '👑 Oda sahibi' : ''}</span></div>`];
+  for (const r of MP.remotes.values()) rows.push(`<div class="mpRow"><i style="background:${r.info.color}"></i><b>${esc(r.info.name)}</b><span>${r.id === 'h' ? '👑' : ''} ${Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z))} m</span></div>`);
+  $('mpList').innerHTML = `<div class="mpHead">🌐 ${MP.pub ? 'Genel oda' : 'Oda kodu: <b>' + MP.code + '</b>'}</div>${rows.join('')}
+    <div class="mpBtns">${MP.pub ? '' : '<button data-mp="copy">📋 Kodu kopyala</button>'}<button data-mp="leave" class="red">🚪 Odadan ayrıl</button></div>`;
+}
+function mpFeed(html) {
+  const f = $('chatFeed'), el = document.createElement('div'); el.innerHTML = html; f.appendChild(el);
+  while (f.children.length > 5) f.firstChild.remove();
+  setTimeout(() => { el.style.opacity = 0; setTimeout(() => el.remove(), 600); }, 7000);
+}
+function sendChat(i) {
+  if (state.now - MP.chatT < 0.8) return; MP.chatT = state.now;
+  const m = QUICK_MSGS[i]; mpSend({ t: 'chat', m }); mpFeed(`<b style="color:${MP.color}">${esc(MP.name)}:</b> ${esc(m)}`);
+  $('chatPanel').style.display = 'none';
+}
+function doEmote(e) {
+  if (e === 'honk') honkSound(1); else if (!state.inCar) state.emote = { type: e, t: 0 };
+  mpSend({ t: 'emote', e }); $('chatPanel').style.display = 'none'; haptic(20);
+}
+function copyCode() { const t = MP.code; try { navigator.clipboard.writeText(t).then(() => floatText('📋 Kod kopyalandı: ' + t)); } catch (e) { floatText('Kod: ' + t); } }
+function initOnlineUI() {
+  const cp = $('chatPanel');
+  cp.innerHTML = `<div class="cpGrid">${QUICK_MSGS.map((m, i) => `<button data-chat="${i}">${m}</button>`).join('')}</div><div class="cpEm">${EMOTES.map(([k, ic, n]) => `<button data-emote="${k}">${ic}<small>${n}</small></button>`).join('')}</div>`;
+  const tapHandler = (el, fn) => { el.addEventListener('click', e => { e.stopPropagation(); fn(e); }); el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); fn(e); }, { passive: false }); };
+  tapHandler(cp, e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.chat) sendChat(+b.dataset.chat); else if (b.dataset.emote) doEmote(b.dataset.emote); });
+  tapHandler($('bChat'), () => { cp.style.display = cp.style.display === 'block' ? 'none' : 'block'; $('mpList').style.display = 'none'; });
+  tapHandler($('mpPill'), () => { const l = $('mpList'); l.style.display = l.style.display === 'block' ? 'none' : 'block'; cp.style.display = 'none'; if (l.style.display === 'block') renderMpList(); });
+  tapHandler($('mpList'), e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.mp === 'copy') copyCode(); if (b.dataset.mp === 'leave') mpLeave(false); });
+}
+// ---------------- lobby (start screen)
+function initLobby() {
+  try { Object.assign(MP, JSON.parse(localStorage.getItem('vistabay_mp') || '{}')); } catch (e) { }
+  if (!MP.name) MP.name = 'Oyuncu' + Math.floor(10 + Math.random() * 90);
+  $('mpName').value = MP.name;
+  $('mpColors').innerHTML = MP_COLORS.map(c => `<button data-c="${c}" style="background:${c}" class="${c === MP.color ? 'on' : ''}"></button>`).join('');
+  $('mpCostumes').innerHTML = MP_COSTUMES.map((c, i) => `<button data-k="${i}" class="${i === MP.costume ? 'on' : ''}">${c.name}</button>`).join('');
+  $('mpColors').onclick = e => { const b = e.target.closest('button'); if (!b) return; MP.color = b.dataset.c; [...$('mpColors').children].forEach(x => x.classList.toggle('on', x === b)); };
+  $('mpCostumes').onclick = e => { const b = e.target.closest('button'); if (!b) return; MP.costume = +b.dataset.k; [...$('mpCostumes').children].forEach(x => x.classList.toggle('on', x === b)); };
+  $('onlineBtn').onclick = () => { $('lobby').style.display = 'block'; $('modeBtns').style.display = 'none'; };
+  $('mpBack').onclick = () => { $('lobby').style.display = 'none'; $('modeBtns').style.display = 'flex'; };
+  const status = (t, err) => { const s = $('mpStatus'); s.textContent = t; s.style.color = err ? '#ff8a8a' : '#fff'; };
+  const busy = b => document.querySelectorAll('#lobby button').forEach(x => x.disabled = b);
+  const go = async (fn) => {
+    MP.name = ($('mpName').value || '').trim().slice(0, 14) || MP.name;
+    try { localStorage.setItem('vistabay_mp', JSON.stringify({ name: MP.name, color: MP.color, costume: MP.costume })); } catch (e) { }
+    busy(true);
+    try { status('Ağ kütüphanesi yükleniyor…'); await loadPeerJS(); await fn(); startGame(true); }
+    catch (e) { console.warn(e); status('❌ ' + (e.message || e.type || 'Bağlantı hatası'), true); try { MP.peer && MP.peer.destroy(); } catch (x) { } MP.peer = null; MP.on = false; busy(false); }
+  };
+  $('mpHostBtn').onclick = () => go(async () => { status('Oda kuruluyor…'); await mpHost(); });
+  $('mpJoinBtn').onclick = () => { const code = ($('mpCode').value || '').replace(/\D/g, ''); if (code.length !== 4) { status('4 haneli oda kodunu gir', true); return; } go(async () => { status('Odaya bağlanılıyor…'); await mpJoin(code); }); };
+  $('mpQuickBtn').onclick = () => go(async () => { await mpQuickJoin(t => status(t)); });
+}
+function mpAfterStart() {
+  const cos = MP_COSTUMES[MP.costume] || MP_COSTUMES[0];
+  Object.assign(state.look, { shirt: MP.color, cap: cos.cap, glasses: cos.glasses, shorts: cos.shorts }); applyLook(); saveGame();
+  if (MP.hostConn && MP.hostConn.open) MP.hostConn.send({ t: 'hello', info: myInfo() });
+  updateOnlineHUD();
+  if (MP.host) showBig(MP.pub ? '🌐 GENEL ODA AÇILDI' : `🌐 ODA KODU: ${MP.code}`, '#7dff9a', 5, MP.pub ? 'Hızlı Katıl ile gelen oyuncular buraya düşer' : 'Arkadaşların bu kodla katılabilir · 👥 düğmesinden kopyala');
+}
+
 // ============================================================ RADIO (procedural synthwave)
 const Radio = {
   timer: null, step: 0, next: 0, gain: null, on: false,
@@ -3601,6 +4141,7 @@ function loop(now) {
   state.realDt = dt; state.timeScale = damp(state.timeScale, state.timeTarget, 6, dt); dt *= state.timeScale;
   if (state.hidden) return;
   updatePerf(state.realDt);
+  mpUpdate(state.realDt);
   if (state.shopOpen || state.dialog) { if (composer) composer.render(); else renderer.render(scene, camera); return; }
   if (state.photo) { updatePhoto(dt); return; }
   state.now += dt; frame++;
@@ -3635,6 +4176,7 @@ function loop(now) {
   updateGang(dt);
   updateTurfs(dt);
   updateStoryGiver(dt);
+  updateInteriors(dt);
   updateEvents(dt);
   updatePackages(dt);
   recyclePopulation(dt);
@@ -3668,3 +4210,6 @@ function loop(now) {
   if (composer) composer.render(); else renderer.render(scene, camera);
 }
 
+
+initLobby();
+addEventListener('beforeunload', () => { if (MP.on) mpLeave(true); });
