@@ -32,7 +32,10 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🏁 Stunt atlayışları**: 7 rampa (sahil + parklar); hızla atlayınca ağır çekim sinematik kamera, başarılı inişte STUNT BONUS (ilk atlayış x2)
 - **📖 Hikaye modu**: 2 perde, 9 bölüm (Rico, Nina, Victor Kral ve Kartel patronu Marisol) — mor "S" halkasından başlar, sinematik diyaloglar; araba, polis takibi, tekne, helikopter ve son patron savaşı
 - **🚌 Şehir otobüsü**: trafikte dolaşan ve durakta park halinde otobüsler, 4 otobüs durağı
-- **🚪 Her binaya girilebilir**: 245 binanın kapısı var; içeride bina türüne göre oluşturulan market/kafe/butik, ofis lobisi, ev ve depo (aynı binada herkes aynı odayı görür)
+- **🚪 Her binaya girilebilir**: 250 binanın kapısı var; içeride bina türüne göre oluşturulan market/kafe/butik, ofis lobisi, ev ve depo (aynı binada herkes aynı odayı görür)
+- **🏢 Çok katlı binalar**: bina yüksekliğine göre en fazla 8 kat; yürünebilir merdivenler (zikzak merdiven boşluğu, korkuluklar) ve 🛗 asansör (kat seçici + çatı). Katlara göre etkileşimler: 💰 dükkan kasasını soy, 💻 ofiste bilgisayar hackle, 🔐 yönetim katında kasayı kır (4 sn), 🧳 dairelerde çekmeceleri karıştır, 📦 depoda stok, 🛏 dinlen, 🔭 en üst katta gözetle (gizli paketler haritada)
+- **🏙 Çatılar**: düz çatılı binalarda merdiven kulübesi — içeriden "Çatıya çık", çatıdan "Merdivenden in". Helikopterle çatıya inip araçtan çıkınca artık yere ışınlanmazsın, çatıda yürürsün; çatı kenarı seni durdurur (atlamak için ZIPLA), yüksekten düşmek can yakar
+- **✈ Vista Bay Havalimanı** (şehrin güneyi): bağlantı yolu + otopark, cam cepheli Yolcu Terminali (içeride check-in bankoları ve kalkış tablosu), 3 köprü, 3 kemerli hangar, girilebilir 4 katlı Kontrol Kulesi (tepede radar: tüm şehrin paketleri haritada), 730 m pist (şeritler, eşik çizgileri, gece pist/taksi ışıkları), taksi yolu, apron, tel çit, rüzgâr tulumu; mini haritada ✈
 - **🎯 Nişangâh**: mermi tam nişangâhın gösterdiği yere gider (mobilde hafif nişan yardımı)
 - **🚪 Özel iç mekanlar**: dans eden kalabalık ve müzikli Gece Kulübü; Lüks Villa içi (yatakta uyu & kaydet, gardırop)
 - **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir

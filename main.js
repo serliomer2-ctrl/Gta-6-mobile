@@ -328,6 +328,8 @@ function init() {
   buildMaterials();
   buildGround();
   buildCity();
+  M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
+  buildAirport();
   buildDoorMeshes();
   buildOcean();
   buildProps();
@@ -346,6 +348,7 @@ function init() {
   if (state.spawnProp) { const [x, z] = spawnPoint(); player.pos.set(x, 0.25, z); }
   buildStarts();
   buildDockAndPads();
+  buildRoofAccess();
   buildSpecialVehicles();
   buildGang();
   buildStuntRamps();
@@ -483,7 +486,7 @@ function buildCity() {
     const y0 = o.y0 ?? 0.25, uo = RI(0, 7) / 8, rc = col(pick(roofC, rnd)), c = col(tint);
     C.get(style).box(C.get('roof'), x, y0, z, w, h, d, c, { uo, topCol: rc });
     b.bld.push({ x0: x - w / 2 - 0.3, x1: x + w / 2 + 0.3, z0: z - d / 2 - 0.3, z1: z + d / 2 + 0.3, h: y0 + h });
-    aoRect(x, z, w, d, y0); registerDoor(b, x, z, w, d, y0, o.store ? 'shop' : style);
+    aoRect(x, z, w, d, y0); registerDoor(b, x, z, w, d, y0, o.store ? 'shop' : style, undefined, 0, h);
     let top = y0 + h;
     const floors = Math.floor(h / 4);
     if (o.store) {
@@ -516,8 +519,8 @@ function buildCity() {
   const addHouse = (b, C, x, z, w, d, floors, tint, roofTint) => {
     const y0 = 0.31, h = floors * 4, c = col(tint), rc = col(roofTint);
     C.get('house').box(null, x, y0, z, w, h, d, c, { uo: RI(0, 7) / 8 });
-    b.bld.push({ x0: x - w / 2 - 0.2, x1: x + w / 2 + 0.2, z0: z - d / 2 - 0.2, z1: z + d / 2 + 0.2, h: y0 + h + d * 0.4 });
-    aoRect(x, z, w, d, y0); registerDoor(b, x, z, w, d, y0, 'house', 0, w * 0.22);
+    b.bld.push({ x0: x - w / 2 - 0.2, x1: x + w / 2 + 0.2, z0: z - d / 2 - 0.2, z1: z + d / 2 + 0.2, h: y0 + h + d * 0.4, pitch: { y: y0 + h, rh: d * 0.36, cz: z, half: d / 2 + 0.6 } });
+    aoRect(x, z, w, d, y0); registerDoor(b, x, z, w, d, y0, 'house', 0, w * 0.22, h);
     const o = 0.6, rh = d * 0.36, yE = y0 + h, half = d / 2 + o, sl = Math.hypot(half, rh), uy = rh / sl, uz = half / sl;
     const rg = C.get('tiles');
     rg.face(x, yE + rh / 2 - uy * 0.0, z + half / 2, 1, 0, 0, 0, uy, -uz, w / 2 + o, sl / 2, 0, 0, 4, 4, rc);
@@ -709,7 +712,7 @@ function buildProps() {
       lamps.push([b.cx - e, b.cz + f * BLOCK * 0.8, -Math.PI / 2], [b.cx + e, b.cz + f * BLOCK * 0.8, Math.PI / 2]);
     }
   }
-  M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
+  M.lampHead = M.lampHead || new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
   M.pool = new THREE.MeshBasicMaterial({ map: glowTex(), color: 0xffb060, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
   const poolGeo = new THREE.PlaneGeometry(13, 13).rotateX(-Math.PI / 2);
   const pI = new THREE.InstancedMesh(pole, new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.7, roughness: 0.4 }), lamps.length);
@@ -769,30 +772,35 @@ function groundY(x, z) {
   return g;
 }
 const hitRes = { x: 0, z: 0, nx: 0, nz: 0, hit: false };
-function collide(x, z, r, y = 0) {
-  hitRes.hit = false; hitRes.nx = hitRes.nz = 0;
-  const i0 = Math.floor((x - r - OFF) / CELL), i1 = Math.floor((x + r - OFF) / CELL), j0 = Math.floor((z - r - OFF) / CELL), j1 = Math.floor((z + r - OFF) / CELL);
-  for (let i = Math.max(0, i0); i <= Math.min(N - 1, i1); i++) for (let j = Math.max(0, j0); j <= Math.min(N - 1, j1); j++) {
-    for (const b of blocks[i][j].bld) {
-      if (y > b.h) continue;
-      const cx = clamp(x, b.x0, b.x1), cz = clamp(z, b.z0, b.z1);
-      let dx = x - cx, dz = z - cz; const d2 = dx * dx + dz * dz;
-      if (d2 >= r * r) continue;
-      if (d2 > 1e-8) { const d = Math.sqrt(d2); dx /= d; dz /= d; x = cx + dx * r; z = cz + dz * r; }
-      else { // inside: push via min axis
-        const l = x - b.x0, rr = b.x1 - x, t = z - b.z0, bb = b.z1 - z, m = Math.min(l, rr, t, bb);
-        if (m === l) { dx = -1; dz = 0; x = b.x0 - r; } else if (m === rr) { dx = 1; dz = 0; x = b.x1 + r; } else if (m === t) { dx = 0; dz = -1; z = b.z0 - r; } else { dx = 0; dz = 1; z = b.z1 + r; }
-      }
-      hitRes.hit = true; hitRes.nx += dx; hitRes.nz += dz;
-    }
+let _cx = 0, _cz = 0;
+function pushOut(b, r) {
+  const cx = clamp(_cx, b.x0, b.x1), cz = clamp(_cz, b.z0, b.z1);
+  let dx = _cx - cx, dz = _cz - cz; const d2 = dx * dx + dz * dz;
+  if (d2 >= r * r) return;
+  if (d2 > 1e-8) { const d = Math.sqrt(d2); dx /= d; dz /= d; _cx = cx + dx * r; _cz = cz + dz * r; }
+  else { // inside: push via min axis
+    const l = _cx - b.x0, rr = b.x1 - _cx, t = _cz - b.z0, bb = b.z1 - _cz, m = Math.min(l, rr, t, bb);
+    if (m === l) { dx = -1; dz = 0; _cx = b.x0 - r; } else if (m === rr) { dx = 1; dz = 0; _cx = b.x1 + r; } else if (m === t) { dx = 0; dz = -1; _cz = b.z0 - r; } else { dx = 0; dz = 1; _cz = b.z1 + r; }
   }
+  hitRes.hit = true; hitRes.nx += dx; hitRes.nz += dz;
+}
+function collide(x, z, r, y = 0, bounds = true) {
+  hitRes.hit = false; hitRes.nx = hitRes.nz = 0; _cx = x; _cz = z;
+  const i0 = Math.floor((x - r - OFF) / CELL), i1 = Math.floor((x + r - OFF) / CELL), j0 = Math.floor((z - r - OFF) / CELL), j1 = Math.floor((z + r - OFF) / CELL);
+  for (let i = Math.max(0, i0); i <= Math.min(N - 1, i1); i++) for (let j = Math.max(0, j0); j <= Math.min(N - 1, j1); j++)
+    for (const b of blocks[i][j].bld) { if (y > b.h) continue; pushOut(b, r); }
+  if (nearAir(z)) for (const b of EXTRA_BLD) { if (y > b.h || (b.y0 && y + 1.7 < b.y0)) continue; pushOut(b, r); }
+  x = _cx; z = _cz;
   // world bounds
-  if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
-  if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; }
+  if (bounds) {
+    if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
+    if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; }
+  }
   const nl = Math.hypot(hitRes.nx, hitRes.nz) || 1; hitRes.nx /= nl; hitRes.nz /= nl;
   hitRes.x = x; hitRes.z = z; return hitRes;
 }
 function insideBuilding(x, y, z) {
+  if (nearAir(z)) for (const o of EXTRA_BLD) if (y < o.h && y > (o.y0 || -1) && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true;
   const b = blockAt(x, z); if (!b) return false;
   for (const o of b.bld) if (y < o.h && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true;
   return false;
@@ -803,6 +811,214 @@ function los(ax, ay, az, bx, by, bz) {
   return true;
 }
 const nearestNode = (x, z) => [clamp(Math.round((x - OFF) / CELL), 0, N), clamp(Math.round((z - OFF) / CELL), 0, N)];
+
+// ============================================================ HEIGHTS: walkable roofs, pitched / arched roofs, structures outside the grid
+const EXTRA_BLD = [];        // airport & other off-grid structures (same AABB format as block.bld, optional y0 = underside)
+const AIR = { x0: -430, x1: 350, z0: 452, z1: 830 };
+const inAirport = (x, z) => x > AIR.x0 && x < AIR.x1 && z > AIR.z0 && z < AIR.z1;
+const nearAir = z => z > AIR.z0 - 20;
+// actual top surface of a collision box at (x,z): flat roof, pitched house roof or arched hangar roof
+function bldTop(o, x, z) {
+  if (o.arch) { const a = o.arch, d = x - a.cx; return a.base + a.k * Math.sqrt(Math.max(0, a.r * a.r - d * d)); }
+  if (o.pitch) { const p = o.pitch; return p.y + p.rh * Math.max(0, 1 - Math.abs(z - p.cz) / p.half); }
+  return o.h;
+}
+// highest walkable surface under (x,z) that is not above the feet (+ a step of 0.6 m)
+function surfaceY(x, z, yRef) {
+  if (state.interior) return interiorSurface(INTERIORS[state.interior], x, z, yRef);
+  let s = groundY(x, z);
+  const lim = yRef + 0.6, b = blockAt(x, z);
+  if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) { const t = bldTop(o, x, z); if (t <= lim && t > s) s = t; }
+  if (nearAir(z)) for (const o of EXTRA_BLD) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) { const t = bldTop(o, x, z); if (t <= lim && t > s) s = t; }
+  return s;
+}
+// find a free spot next to a vehicle at the vehicle's own height (roof / helipad / ground) — no more teleport to y=0
+function exitSpot(c) {
+  const p = c.group.position, base = c.y ?? p.y, dist = c.spec.heli ? 2.8 : c.spec.plane ? 3.4 : 1.9;
+  const ch = Math.cos(c.h), sh = Math.sin(c.h);
+  const dirs = [[ch, -sh], [-ch, sh], [sh * 1.3, ch * 1.3], [-sh * 1.4, -ch * 1.4]];
+  for (let pass = 0; pass < 2; pass++) for (const [dx, dz] of dirs) {
+    const x = p.x + dx * dist, z = p.z + dz * dist, r = collide(x, z, 0.4, base + 0.3);
+    if (pass === 0 && r.hit && Math.hypot(r.x - x, r.z - z) > 0.6) continue;
+    const s = surfaceY(r.x, r.z, base + 0.4);
+    if (base - s < 1.2) return [r.x, s, r.z];
+  }
+  return [p.x, surfaceY(p.x, p.z, base + 0.4), p.z];
+}
+function interiorSurface(I, x, z, yRef) {
+  if (!I || !I.FH) return 0;
+  let s = 0;
+  for (const L of I.levels) { if (L.y > yRef + 0.6) break; const h = L.hole; if (x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1) continue; s = L.y; }
+  for (const st of I.stairs) if (x > st.x0 && x < st.x1 && z >= st.za && z <= st.zb2) { const y = st.y + clamp((z - st.zb) / (st.zt - st.zb), 0, 1) * I.FH; if (y <= yRef + 0.6 && y > s) s = y; }
+  return s;
+}
+function interiorBlocked(x, y, z) {
+  const I = INTERIORS[state.interior]; if (!I) return false;
+  if (x < I.x0 || x > I.x1 || z < I.z0 || z > I.z1) return true;
+  for (const b of I.boxes) if (b.wall && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y > b.y0 && y < b.y1) return true;
+  return false;
+}
+const camBlocked = (x, y, z) => state.interior ? interiorBlocked(x, y, z) : insideBuilding(x, y, z);
+
+// ============================================================ AIRPORT (south of the city: road, parking, terminal, apron, hangars, tower, runway)
+const AIRPORT = {
+  blk: { cx: 0, cz: 640, bld: EXTRA_BLD, doors: [] }, group: null, lightMat: null, beaconMat: null, glassMat: null, signMat: null,
+  rwy: { x0: -400, x1: 330, z: 770, w: 50 }, taxi: { x0: -380, x1: 320, z0: 690, z1: 712 }, apron: { x0: -360, x1: 320, z0: 576, z1: 690 },
+  terminal: { x0: -110, x1: 50, z0: 534, z1: 576, h: 15.2 }, tower: { x: -238, z: 611 }, gates: [-90, -40, 10], hangars: [], icon: [-30, 548]
+};
+function buildAirport() {
+  const A = AIRPORT, grp = new THREE.Group(); A.group = grp; scene.add(grp);
+  BOUNDS.z1 = AIR.z1 + 20;
+  const L = new Map(), add = (mat, geo) => { if (!L.has(mat)) L.set(mat, []); L.get(mat).push(geo); };
+  const rep = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
+  const S = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...o });
+  const asphalt = new THREE.MeshStandardMaterial({ map: rep(noiseTex('#3b3d41', ['#33353a', '#45474b', '#2d2f33', '#4a4c50'], 256, 7000, 1, 3)), roughness: 0.88 });
+  const concrete = new THREE.MeshStandardMaterial({ map: rep(noiseTex('#7e7c77', ['#74726d', '#8a8883', '#787671', '#908e88'], 256, 6000, 1, 4)), roughness: 0.95 });
+  const paintW = S(0xe6e6e0), paintY = S(0xe0a820), wall = S(0xdcd8d0), dark = S(0x3a3e44, { roughness: 0.5, metalness: 0.4 }), metal = S(0xb8bec4, { metalness: 0.55, roughness: 0.45 });
+  const hangarM = new THREE.MeshStandardMaterial({ map: rep(canvasTex(128, 128, g => { g.fillStyle = '#b4bac0'; g.fillRect(0, 0, 128, 128); for (let x = 0; x < 128; x += 8) { g.fillStyle = 'rgba(0,0,0,0.14)'; g.fillRect(x, 0, 2, 128); g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(x + 2, 0, 1, 128); } })), metalness: 0.45, roughness: 0.5 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x5a7890, metalness: 0.75, roughness: 0.08, emissive: 0xffe2b0, emissiveIntensity: 0 }); A.glassMat = glass;
+  const flat = (x0, x1, z0, z1, y, mat, uv = 8) => { const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0); g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, y, (z0 + z1) / 2); const p = g.attributes.position, u = g.attributes.uv; for (let i = 0; i < u.count; i++) u.setXY(i, p.getX(i) / uv, p.getZ(i) / uv); add(mat, g); };
+  const bx = (x, y, z, w, h, d, mat) => add(mat, new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z));
+  const cy = (x, y, z, r, h, mat, seg = 12, r2 = r) => add(mat, new THREE.CylinderGeometry(r, r2, h, seg).translate(x, y + h / 2, z));
+  const coll = (x0, x1, z0, z1, h, extra = {}) => { const o = { x0, x1, z0, z1, h, ...extra }; EXTRA_BLD.push(o); return o; };
+  const edgeZ = HALF + ROAD / 2;
+  // ---- paved surfaces
+  flat(-9, 9, edgeZ - 0.5, 470, 0.045, asphalt);                                   // access road
+  flat(-12.5, -9, edgeZ, 470, 0.06, concrete, 4); flat(9, 12.5, edgeZ, 470, 0.06, concrete, 4); // sidewalks
+  flat(-120, 60, 470, 534, 0.045, asphalt);                                        // parking + drop-off
+  flat(60, 76, 470, 582, 0.047, asphalt);                                          // service road to the apron gate
+  flat(A.apron.x0, A.apron.x1, A.apron.z0, A.apron.z1, 0.04, concrete);            // apron
+  flat(A.taxi.x0, A.taxi.x1, A.taxi.z0, A.taxi.z1, 0.05, asphalt);                 // parallel taxiway
+  for (const x of [-380, -60, 298]) flat(x, x + 22, 712, 745, 0.05, asphalt);      // runway connectors
+  // ---- markings
+  for (let z = edgeZ + 2; z < 468; z += 6) flat(-0.12, 0.12, z, z + 3, 0.052, paintW, 1);
+  for (const [z0, z1] of [[480, 491], [503, 514]]) for (let x = -114; x <= 54; x += 3) flat(x - 0.06, x + 0.06, z0, z1, 0.052, paintW, 1);
+  flat(-118, 58, 522, 522.3, 0.052, paintW, 1);
+  for (const gx of A.gates) { flat(gx - 0.15, gx + 0.15, 580, 684, 0.046, paintY, 1); flat(gx - 3, gx + 3, 604, 604.4, 0.046, paintY, 1); }
+  flat(A.taxi.x0, A.taxi.x1, 700.8, 701.2, 0.056, paintY, 1);
+  for (const x of [-380, -60, 298]) { flat(x + 10.8, x + 11.2, 701, 745, 0.056, paintY, 1); for (const o of [0, 0.9]) flat(x, x + 22, 716 + o, 716.3 + o, 0.056, paintY, 1); }
+  flat(A.apron.x0, A.apron.x1, 689.6, 690, 0.046, paintY, 1);
+  // ---- runway with painted markings
+  const RW = A.rwy.x1 - A.rwy.x0;
+  const rwyTex = canvasTex(4096, 280, g => {
+    const W = 4096, H = 280, sx = W / RW, sz = H / A.rwy.w;
+    g.fillStyle = '#3a3c40'; g.fillRect(0, 0, W, H); speckle(g, W, H, 40000, ['#34363a', '#44464a', '#2e3034', '#4c4e52'], 1, 3);
+    g.fillStyle = 'rgba(18,18,20,0.35)'; for (const x0 of [55, RW - 175]) for (let i = 0; i < 70; i++) g.fillRect((x0 + Math.random() * 120) * sx, (25 + (Math.random() - 0.5) * 12) * sz, (8 + Math.random() * 30) * sx, 0.45 * sz);
+    g.fillStyle = '#e8e8e2';
+    g.fillRect(0, 1.2 * sz, W, 0.9 * sz); g.fillRect(0, H - 2.1 * sz, W, 0.9 * sz);
+    for (let x = 75; x < RW - 75; x += 50) g.fillRect(x * sx, 24.55 * sz, 30 * sx, 0.9 * sz);
+    for (let i = 0; i < 8; i++) for (const s of [-1, 1]) { const zz = (25 + s * (4.5 + i * 2.4) - 0.6) * sz; g.fillRect(6 * sx, zz, 30 * sx, 1.2 * sz); g.fillRect((RW - 36) * sx, zz, 30 * sx, 1.2 * sz); }
+    for (const x of [130, 175, RW - 155, RW - 200]) for (const s of [-1, 1]) g.fillRect(x * sx, (25 + s * 8 - 1) * sz, 22 * sx, 2 * sz);
+    g.font = `bold ${Math.round(14 * sz)}px Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.save(); g.translate(56 * sx, 25 * sz); g.rotate(Math.PI / 2); g.fillText('09', 0, 0); g.restore();
+    g.save(); g.translate((RW - 56) * sx, 25 * sz); g.rotate(-Math.PI / 2); g.fillText('27', 0, 0); g.restore();
+  });
+  rwyTex.anisotropy = 8;
+  const rwy = new THREE.Mesh(new THREE.PlaneGeometry(RW, A.rwy.w).rotateX(-Math.PI / 2).translate((A.rwy.x0 + A.rwy.x1) / 2, 0.055, A.rwy.z), new THREE.MeshStandardMaterial({ map: rwyTex, roughness: 0.85 }));
+  rwy.receiveShadow = true; grp.add(rwy);
+  // ---- terminal
+  const T = A.terminal, tcx = (T.x0 + T.x1) / 2, tcz = (T.z0 + T.z1) / 2;
+  bx(tcx, 0, tcz + 0.2, T.x1 - T.x0, 14, T.z1 - T.z0 - 0.4, wall);
+  bx(tcx, 1.0, T.z0 + 0.12, T.x1 - T.x0 - 6, 11.5, 0.24, glass);                                          // glass curtain wall
+  for (let x = T.x0 + 3; x <= T.x1 - 3; x += 5) bx(x, 0.4, T.z0 - 0.04, 0.22, 12.4, 0.16, dark);        // mullions
+  for (const y of [3.2, 6.5, 12.4]) bx(tcx, y, T.z0 - 0.04, T.x1 - T.x0 - 6, 0.22, 0.16, dark);
+  bx(tcx, 14, (516 + 580) / 2, T.x1 - T.x0 + 12, 1.2, 64, metal);                                         // canopy roof
+  for (let x = T.x0 - 4; x <= T.x1 + 4; x += 20) cy(x, 0, 519, 0.45, 14, metal, 10);
+  for (let x = T.x0 + 8; x < T.x1 - 6; x += 22) bx(x, 0, 524.5, 1.6, 0.45, 0.6, dark);                  // benches at the kerb
+  coll(T.x0, T.x1, T.z0, T.z1, T.h);
+  coll(T.x0 - 6, T.x1 + 6, 516, T.z0, 15.2, { y0: 14 });
+  for (let x = T.x0 - 4; x <= T.x1 + 4; x += 20) coll(x - 0.45, x + 0.45, 518.55, 519.45, 14);
+  const signM = new THREE.MeshBasicMaterial({ map: canvasTex(2048, 64, g => { g.fillStyle = '#10161e'; g.fillRect(0, 0, 2048, 64); g.fillStyle = '#ffffff'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✈  VISTA BAY ULUSLARARASI HAVALİMANI  ✈', 1024, 34); }), toneMapped: false }); A.signMat = signM;
+  { const s = new THREE.Mesh(new THREE.PlaneGeometry(96, 3), signM); s.rotation.y = Math.PI; s.position.set(tcx, 14.6, 515.9); grp.add(s); }
+  registerDoor(A.blk, tcx, tcz, T.x1 - T.x0, T.z1 - T.z0, 0, 'terminal', 1, 0, T.h);
+  Object.assign(DOORS[DOORS.length - 1], { name: 'Yolcu Terminali', bld: EXTRA_BLD[0] });
+  // jet bridges
+  for (const gx of A.gates) {
+    bx(gx, 3.4, 588, 3.2, 2.6, 24, metal); bx(gx, 3.2, 598.5, 4.4, 3.2, 3.2, dark);
+    for (const s of [-1, 1]) cy(gx + s * 1.1, 0, 597, 0.22, 3.3, dark, 8);
+    coll(gx - 2.2, gx + 2.2, T.z1, 600.1, 6.4, { y0: 3.2 }); coll(gx - 1.4, gx + 1.4, 596.7, 597.3, 3.3);
+  }
+  // ---- hangars (arched roofs)
+  for (let i = 0; i < 3; i++) {
+    const hx = 160 + i * 58, z0 = 596, z1 = 646, w = 52, r = w / 2, base = 10, k = 0.32;
+    bx(hx, 0, (z0 + z1) / 2, w, base, z1 - z0, hangarM);
+    add(hangarM, new THREE.CylinderGeometry(r, r, z1 - z0, 22, 1, false, -Math.PI / 2, Math.PI).rotateX(-Math.PI / 2).scale(1, k, 1).translate(hx, base, (z0 + z1) / 2));
+    const doorM = new THREE.MeshStandardMaterial({ map: canvasTex(256, 128, g => { g.fillStyle = '#5e646c'; g.fillRect(0, 0, 256, 128); g.fillStyle = 'rgba(0,0,0,0.25)'; for (let y = 0; y < 128; y += 10) g.fillRect(0, y, 256, 2); for (let x = 0; x < 256; x += 32) g.fillRect(x, 0, 2, 128); g.fillStyle = '#ffd23a'; g.font = 'bold 54px Arial'; g.textAlign = 'center'; g.fillText('H' + (i + 1), 128, 80); }), metalness: 0.4, roughness: 0.5 });
+    const d = new THREE.Mesh(new THREE.BoxGeometry(42, 9.4, 0.3).translate(hx - 3, 4.7, z1 + 0.1), doorM); d.receiveShadow = true; grp.add(d);
+    const o = coll(hx - r, hx + r, z0, z1 + 0.3, base + r * k, { arch: { cx: hx, r, base, k } });
+    registerDoor(A.blk, hx, (z0 + z1) / 2, w, z1 - z0, 0, 'warehouse', 0, 21, base);
+    Object.assign(DOORS[DOORS.length - 1], { name: `Hangar ${i + 1}`, bld: o, noRoof: true });
+    A.hangars.push({ x: hx, z0, z1 });
+  }
+  // ---- control tower (enterable, roof = top of the cab)
+  { const { x, z } = A.tower;
+    bx(x, 0, z, 14, 9, 14, wall); cy(x, 9, z, 3, 25, wall, 16);
+    cy(x, 33.4, z, 7.4, 0.5, metal, 8); cy(x, 33.9, z, 7, 5, glass, 8, 6.3); cy(x, 38.9, z, 7.6, 0.9, metal, 8); cy(x + 4.6, 39.8, z + 4.6, 0.12, 7, dark, 6);
+    coll(x - 7, x + 7, z - 7, z + 7, 9); coll(x - 3, x + 3, z - 3, z + 3, 34); const cab = coll(x - 7, x + 7, z - 7, z + 7, 39.8, { y0: 33.4 });
+    registerDoor(A.blk, x, z, 14, 14, 0, 'tower', 1, 0, 39.8);
+    Object.assign(DOORS[DOORS.length - 1], { name: 'Kontrol Kulesi', bld: cab });
+    A.beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2020 });
+    const bcn = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), A.beaconMat); bcn.position.set(x + 4.6, 47, z + 4.6); grp.add(bcn);
+  }
+  // ---- perimeter fence (airside)
+  const fenceTex = rep(canvasTex(64, 64, g => { g.strokeStyle = 'rgba(205,210,215,0.95)'; g.lineWidth = 3; g.beginPath(); for (let i = -64; i < 128; i += 16) { g.moveTo(i, 0); g.lineTo(i + 64, 64); g.moveTo(i, 64); g.lineTo(i + 64, 0); } g.stroke(); g.fillStyle = '#9aa0a6'; g.fillRect(0, 0, 64, 5); }));
+  const fenceM = new THREE.MeshStandardMaterial({ map: fenceTex, alphaTest: 0.4, side: THREE.DoubleSide, metalness: 0.5, roughness: 0.5 });
+  const segs = [[-420, 580, 60, 580], [76, 580, 340, 580], [-420, 815, 340, 815], [-420, 580, -420, 815], [340, 580, 340, 815]];
+  for (const [ax, az, bx2, bz] of segs) {
+    const len = Math.hypot(bx2 - ax, bz - az), alongX = az === bz, g = new THREE.PlaneGeometry(len, 2.4);
+    const u = g.attributes.uv, p = g.attributes.position; for (let i = 0; i < u.count; i++) u.setXY(i, p.getX(i) / 2.4, p.getY(i) / 2.4);
+    if (!alongX) g.rotateY(Math.PI / 2); g.translate((ax + bx2) / 2, 1.3, (az + bz) / 2); add(fenceM, g);
+    for (let t = 0; t <= len; t += 4) { const fx = ax + (bx2 - ax) * t / len, fz = az + (bz - az) * t / len; bx(fx, 0, fz, 0.1, 2.7, 0.1, metal); }
+    if (alongX) coll(Math.min(ax, bx2), Math.max(ax, bx2), az - 0.15, az + 0.15, 2.6); else coll(ax - 0.15, ax + 0.15, Math.min(az, bz), Math.max(az, bz), 2.6);
+  }
+  bx(62, 0, 579.6, 0.4, 1.1, 0.4, dark); add(S(0xd83030), new THREE.BoxGeometry(0.16, 6, 0.16).translate(62, 4.1, 579.6));   // raised gate barrier
+  // ---- lights: runway edge (white), thresholds (green / red), taxiway edge (blue)
+  const lp = [];
+  for (let x = A.rwy.x0; x <= A.rwy.x1; x += 30) for (const s of [-1, 1]) lp.push([x, A.rwy.z + s * 25.6, 0xfff2d0]);
+  for (let z = A.rwy.z - 23; z <= A.rwy.z + 23; z += 4) { lp.push([A.rwy.x0 - 1, z, 0x30ff60]); lp.push([A.rwy.x1 + 1, z, 0xff3030]); }
+  for (let x = A.taxi.x0; x <= A.taxi.x1; x += 30) for (const z of [A.taxi.z0 + 0.5, A.taxi.z1 - 0.5]) lp.push([x, z, 0x3a6aff]);
+  A.lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const li = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.2, 0.4, 6).translate(0, 0.2, 0), A.lightMat, lp.length), mm = new THREE.Matrix4();
+  lp.forEach(([x, z, c], i) => { li.setMatrixAt(i, mm.makeTranslation(x, 0, z)); li.setColorAt(i, new THREE.Color(c)); }); grp.add(li);
+  // ---- street lamps, apron masts, windsock, sign, palms
+  const lamp = (x, z, rot, h = 9) => { cy(x, 0, z, 0.12, h, dark, 8, 0.16); const ax = Math.sin(rot), az = Math.cos(rot); add(dark, new THREE.BoxGeometry(0.12, 0.12, 2).rotateY(rot).translate(x + ax, h, z + az)); add(M.lampHead, new THREE.BoxGeometry(0.5, 0.1, 0.9).rotateY(rot).translate(x + ax * 1.9, h - 0.08, z + az * 1.9)); };
+  for (let z = edgeZ + 12; z < 468; z += 30) { lamp(-11, z, Math.PI / 2); lamp(11, z, -Math.PI / 2); }
+  for (const x of [-100, -60, -20, 20]) lamp(x, 497, 0);
+  for (const x of [-330, -200, 120, 300]) { cy(x, 0, 586, 0.35, 22, metal, 8, 0.45); bx(x, 22, 586.6, 3.4, 0.5, 1, M.lampHead); bx(x, 22.4, 586, 3.6, 0.3, 1.4, dark); }
+  cy(310, 0, 735, 0.08, 6, metal, 6);
+  add(S(0xff7a1a), new THREE.ConeGeometry(0.55, 2.6, 10, 1, true).rotateZ(-Math.PI / 2).translate(311.3, 5.7, 735));
+  for (const s of [-1, 1]) cy(13 + s * 2.8, 0, 380, 0.1, 5.6, metal, 6);
+  bx(13, 4, 380, 6.4, 2.4, 0.18, S(0x1d5a3a));
+  { const sm = new THREE.Mesh(new THREE.PlaneGeometry(6, 2.2), new THREE.MeshBasicMaterial({ map: canvasTex(256, 96, g => { g.fillStyle = '#1d5a3a'; g.fillRect(0, 0, 256, 96); g.strokeStyle = '#fff'; g.lineWidth = 4; g.strokeRect(6, 6, 244, 84); g.fillStyle = '#fff'; g.font = 'bold 40px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✈ HAVALİMANI', 128, 50); }) })); sm.rotation.y = Math.PI; sm.position.set(13, 5.2, 379.89); grp.add(sm); }
+  for (let z = edgeZ + 20; z < 466; z += 14) PALMS.push([-15, 0.02, z], [15, 0.02, z + 7]);
+  for (let x = -110; x <= 50; x += 20) PALMS.push([x, 0.02, 467]);
+  // ---- merge everything per material
+  const shadows = QUALITY !== 'low';
+  for (const [mat, list] of L) {
+    const m = new THREE.Mesh(merge(list), mat); m.receiveShadow = true;
+    m.castShadow = shadows && mat !== asphalt && mat !== concrete && mat !== paintW && mat !== paintY && mat !== fenceM; grp.add(m);
+  }
+}
+function updateAirport(dt) {
+  if (state.scoutT > 0) state.scoutT -= dt;
+  const A = AIRPORT; if (!A.group) return;
+  const cx = camera.position.x, cz = camera.position.z, dx = Math.max(AIR.x0 - cx, 0, cx - AIR.x1), dz = Math.max(AIR.z0 - 90 - cz, 0, cz - AIR.z1);
+  A.group.visible = !state.interior && Math.hypot(dx, dz) < (QUALITY === 'low' ? 420 : 800) + Math.max(0, camera.position.y) * 3;
+  if (!A.group.visible) return;
+  A.lightMat.color.setScalar(0.3 + nightF * 2.8);
+  A.beaconMat.color.setRGB(Math.sin(state.now * 4) > 0.55 ? 4 : 0.25, 0.02, 0.02);
+  A.glassMat.emissiveIntensity = nightF * 0.35;
+  A.signMat.color.setScalar(0.75 + nightF * 0.6);
+}
+function drawAirportMap(g, X, Z, k) {
+  const A = AIRPORT, rect = (x0, x1, z0, z1) => g.fillRect(X(x0), Z(z0), (x1 - x0) * k, (z1 - z0) * k);
+  g.fillStyle = '#5c6068'; rect(-9, 9, HALF, 470); rect(-120, 60, 470, 534); rect(60, 76, 470, 582);
+  g.fillStyle = '#86868a'; rect(A.apron.x0, A.apron.x1, A.apron.z0, A.apron.z1);
+  g.fillStyle = '#50535a'; rect(A.taxi.x0, A.taxi.x1, A.taxi.z0, A.taxi.z1); for (const x of [-380, -60, 298]) rect(x, x + 22, 712, 745);
+  g.fillStyle = '#2e3034'; rect(A.rwy.x0, A.rwy.x1, A.rwy.z - A.rwy.w / 2, A.rwy.z + A.rwy.w / 2);
+  g.fillStyle = '#e8e8e2'; for (let x = A.rwy.x0 + 75; x < A.rwy.x1 - 75; x += 50) rect(x, x + 30, A.rwy.z - 0.8, A.rwy.z + 0.8);
+  for (const o of EXTRA_BLD) { const thin = o.x1 - o.x0 < 1 || o.z1 - o.z0 < 1; g.fillStyle = thin ? '#a8b0b8' : '#454a54'; rect(o.x0, Math.max(o.x1, o.x0 + 0.8), o.z0, Math.max(o.z1, o.z0 + 0.8)); }
+}
 
 // ============================================================ HUMANS
 function makeHuman(look) {
@@ -1122,9 +1338,7 @@ function exitCar(forced) {
   const sp = carSpeed(c);
   c.mode = c.dead ? 'dead' : 'free'; c.driver = false; state.inCar = null;
   if (NW.client && c.wIdx >= 0) netCarRelease(c);
-  let x = c.group.position.x + Math.cos(c.h) * 1.9, z = c.group.position.z - Math.sin(c.h) * 1.9; // driver (left) side
-  const r = collide(x, z, 0.4, 0.5); x = r.x; z = r.z;
-  player.pos.set(x, groundY(x, z), z); player.vy = 0;
+  { const [x, y, z] = exitSpot(c); player.pos.set(x, y, z); player.vy = 0; player.onGround = true; } // driver side, at the vehicle's height
   if (c.spec.boat) {
     const bx = c.group.position.x, bz = c.group.position.z;
     if (bx < DOCK.x1 + 8 && Math.abs(bz - DOCK.z) < 12) player.pos.set(clamp(bx, DOCK.x0 + 1, DOCK.x1 - 1), DOCK.y, DOCK.z);
@@ -1148,13 +1362,24 @@ function updatePlayerFoot(dt) {
   if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; if (player.aimT <= 0) player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-12 * dt))); }
   else { mx = Math.sin(player.yaw); mz = Math.cos(player.yaw); }
   let x = player.pos.x + mx * player.speed * dt, z = player.pos.z + mz * player.speed * dt;
-  // jump & gravity
-  const g = groundY(x, z);
+  // roof edge: the parapet stops you — jump to go over it
+  if (player.onGround && !state.interior && player.pos.y > 2 && !input.jump && surfaceY(x, z, player.pos.y) < player.pos.y - 1.5) {
+    x = player.pos.x; z = player.pos.z; player.speed *= 0.5;
+    if (!(state.now - (updatePlayerFoot.edgeT || -9) < 3)) { updatePlayerFoot.edgeT = state.now; floatText('⚠ Çatı kenarı · atlamak için ZIPLA'); }
+  }
+  const r = state.interior ? interiorCollide(x, z, 0.38, player.pos.y) : collide(x, z, 0.38, player.pos.y + 0.2); x = r.x; z = r.z;
+  // jump & gravity on the highest surface below the feet (ground, roof, stairs, storey)
+  const g = surfaceY(x, z, player.pos.y);
   if (input.jump && player.onGround) { player.vy = 5.8; player.onGround = false; }
   player.vy -= 18 * dt; player.pos.y += player.vy * dt;
-  if (player.pos.y <= g) { if (g - player.pos.y < 0.6 || !player.onGround) { player.pos.y = g; player.vy = 0; player.onGround = true; } }
+  if (player.pos.y <= g) {
+    if (g - player.pos.y < 0.6 || !player.onGround) {
+      const vLand = player.vy, wasAir = !player.onGround;
+      player.pos.y = g; player.vy = 0; player.onGround = true;
+      if (wasAir && vLand < -13 && !state.dead) { const dmg = (-vLand - 13) * 7; state.health -= dmg; state.shake = Math.max(state.shake, Math.min(1, dmg / 60)); AudioSys.crash(Math.min(1, dmg / 80)); haptic(80); if (dmg > 20) floatText('🦴 Sert düşüş!'); }
+    }
+  } else if (player.onGround && player.vy <= 0 && player.pos.y - g < 0.45) { player.pos.y = g; player.vy = 0; }   // stick to stairs / ramps going down
   else if (player.pos.y > g + 0.05) player.onGround = false;
-  const r = state.interior ? interiorCollide(x, z, 0.38) : collide(x, z, 0.38, player.pos.y + 0.2); x = r.x; z = r.z;
   // cars push
   for (const c of cars) {
     if (!c.active) continue;
@@ -1886,6 +2111,7 @@ function updateSky(dt) {
   if (state.interior) { scene.fog.near = 300; scene.fog.far = 2000; }
   sunLight.intensity *= 1 - 0.8 * rain;
   hemi.intensity = hemi.intensity * (1 - 0.25 * rain) + state.lightning * 3;
+  if (state.interior === 'gen') { sunLight.intensity *= 0.18; hemi.intensity *= 0.7; }   // indoors: daylight only through the windows
   renderer.toneMappingExposure = (0.85 + night * 0.1) * (1 - 0.12 * rain);
   stars.material.opacity = night;
   for (const k in M.fac) M.fac[k].emissiveIntensity = night * (k === 'glass' ? 0.45 : 0.6);
@@ -1938,10 +2164,10 @@ function updateCamera(dt) {
   camDist = damp(camDist, dist, 4, dt);
   const cp = Math.cos(camPitch), dx = Math.sin(camYaw) * cp, dy = Math.sin(camPitch), dz = Math.cos(camYaw) * cp;
   let d = camDist;
-  for (let k = 1; k <= 14; k++) { const t = k / 14 * camDist; if (insideBuilding(tx + dx * t, ty + dy * t, tz + dz * t)) { d = Math.max(1.2, t - 0.6); break; } }
+  for (let k = 1; k <= 14; k++) { const t = k / 14 * camDist; if (camBlocked(tx + dx * t, ty + dy * t, tz + dz * t)) { d = Math.max(1.2, t - 0.6); break; } }
   let cx = tx + dx * d, cy = ty + dy * d, cz = tz + dz * d;
   cy = Math.max(cy, groundY(cx, cz) + 0.4);
-  if (state.interior) { const I = INTERIORS[state.interior]; cx = clamp(cx, I.x0 + 0.35, I.x1 - 0.35); cz = clamp(cz, I.z0 + 0.35, I.z1 - 0.35); cy = clamp(cy, 0.5, I.h - 0.35); }
+  if (state.interior) { const I = INTERIORS[state.interior]; cx = clamp(cx, I.x0 + 0.35, I.x1 - 0.35); cz = clamp(cz, I.z0 + 0.35, I.z1 - 0.35); if (I.FH) { const fy = genFloorOf(I) * I.FH; cy = clamp(cy, fy + 0.45, fy + I.FH - 0.35); } else cy = clamp(cy, 0.5, I.h - 0.35); }
   if (state.shake > 0) { const s = state.shake * 0.35; cx += MR(-s, s); cy += MR(-s, s); cz += MR(-s, s); state.shake = Math.max(0, state.shake - dt * 2.2); }
   camera.position.set(cx, cy, cz);
   camera.lookAt(tx, ty + 0.2, tz);
@@ -2054,9 +2280,9 @@ function floatText(t) {
   $('hud').appendChild(el); requestAnimationFrame(() => { el.style.transform = 'translateY(-40px)'; el.style.opacity = 0; }); setTimeout(() => el.remove(), 1300);
 }
 let mapBase, mapCtx, lastStars = -1;
-const MAP = { x0: -HALF - 150, x1: WATERLINE + 160 }; MAP.size = MAP.x1 - MAP.x0;
+const MAP = { x0: -HALF - 150, x1: WATERLINE + 160, z0: -HALF - 150, z1: AIR.z1 + 70 }; MAP.size = Math.max(MAP.x1 - MAP.x0, MAP.z1 - MAP.z0);
 function buildMinimapBase() {
-  const S = 1024, k = S / MAP.size, X = x => (x - MAP.x0) * k, Z = z => (z - MAP.x0 - (MAP.size - (MAP.x1 - MAP.x0)) / 2) * k;
+  const S = Math.round(MAP.size * 0.887), k = S / MAP.size, X = x => (x - MAP.x0) * k, Z = z => (z - MAP.z0) * k;
   mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = S;
   const g = mapBase.getContext('2d');
   g.fillStyle = '#2c4a2a'; g.fillRect(0, 0, S, S);
@@ -2067,11 +2293,12 @@ function buildMinimapBase() {
     g.fillStyle = b.park ? '#3d8a44' : '#2a2d33'; g.fillRect(X(b.cx - BLOCK / 2), Z(b.cz - BLOCK / 2), BLOCK * k, BLOCK * k);
     g.fillStyle = '#454a54'; for (const o of b.bld) g.fillRect(X(o.x0), Z(o.z0), (o.x1 - o.x0) * k, (o.z1 - o.z0) * k);
   }
+  drawAirportMap(g, X, Z, k);
   MAP.k = k; MAP.S = S; MAP.X = X; MAP.Z = Z;
   mapCtx = $('minimap').getContext('2d');
 }
 function drawMinimap() {
-  if (state.interior) { const g = mapCtx; g.clearRect(0, 0, 300, 300); g.fillStyle = '#1a1420'; g.fillRect(0, 0, 300, 300); g.fillStyle = '#fff'; g.font = 'bold 30px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillText('İÇ MEKAN', 150, 140); g.font = '20px sans-serif'; g.fillText(INTERIORS[state.interior].name, 150, 175); return; }
+  if (state.interior) { const g = mapCtx; g.clearRect(0, 0, 300, 300); g.fillStyle = '#1a1420'; g.fillRect(0, 0, 300, 300); g.fillStyle = '#fff'; g.font = 'bold 30px Rajdhani, sans-serif'; g.textAlign = 'center'; g.fillText('İÇ MEKAN', 150, 140); g.font = '20px sans-serif'; { const I = INTERIORS[state.interior]; g.fillText(I.name, 150, 175); if (I.nF > 1) { g.fillStyle = '#ffd23a'; g.font = 'bold 26px Rajdhani, sans-serif'; g.fillText(`${floorLabel(I, genFloorOf(I))} / ${I.nF}`, 150, 212); g.fillStyle = '#ccc'; g.font = '17px sans-serif'; g.fillText(I.floorNames[genFloorOf(I)] || '', 150, 240); } } return; }
   const g = mapCtx, W = 300, r = W / 2, zoom = 1.5;  // canvas px per map px
   g.save(); g.clearRect(0, 0, W, W);
   g.translate(r, r); g.rotate(camYaw);
@@ -2105,6 +2332,8 @@ function drawMinimap() {
   if (state.heist) { let [px, py] = toMap(state.heist.x, state.heist.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '17px sans-serif'; g.fillText('💼', px, py + 1); }
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
+  { let [px, py] = toMap(AIRPORT.icon[0], AIRPORT.icon[1]); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 14, 0, 7); g.fill(); g.strokeStyle = '#4aa8ff'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#fff'; g.font = '17px sans-serif'; g.fillText('✈', px, py + 1); }
+  if (state.scoutT > 0) { g.font = '15px sans-serif'; for (const p of PACKAGES) if (!state.packages[p.id] && Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < (state.scoutR || 450)) { let [px, py] = toMap(p.x, p.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 12) { px = r + dx / l * (r - 12); py = r + dy / l * (r - 12); } g.fillText('🎒', px, py + 1); } }
   // player arrow
   g.save(); g.translate(r, r); g.rotate(camYaw); g.rotate(Math.PI - (state.inCar ? state.inCar.h : player.yaw));
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, -14); g.lineTo(10, 11); g.lineTo(0, 5); g.lineTo(-10, 11); g.closePath(); g.stroke(); g.fill();
@@ -2414,11 +2643,12 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'elev' ? '🛗 ASANSÖR' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
 function shopItems(type) {
+  if (type === 'elev') return elevItems();
   if (type === 'prop') return propItems();
   if (type === 'clothes') return clothesItems();
   const own = i => state.ownedW[i];
@@ -2857,7 +3087,7 @@ function waveH(x, z) {
   const t = state.now, k = smooth(WATERLINE, WATERLINE + 40, x);
   return -0.25 + k * (Math.sin(x * 0.045 + t * 0.8) * 0.35 + Math.sin(z * 0.06 - t * 0.6 + x * 0.02) * 0.25 + Math.sin((x + z) * 0.1 + t * 1.3) * 0.12);
 }
-function roofHeight(x, z) { const b = blockAt(x, z); let h = 0; if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); return h; }
+function roofHeight(x, z) { const b = blockAt(x, z); let h = 0; if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); if (nearAir(z)) for (const o of EXTRA_BLD) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); return h; }
 const heliFloor = c => Math.max(groundY(c.group.position.x, c.group.position.z), roofHeight(c.group.position.x, c.group.position.z));
 function buildDockAndPads() {
   const wood = new THREE.MeshStandardMaterial({ map: noiseTex('#8a6a48', ['#7a5a3a', '#9a7a56', '#6a4a30'], 128, 2500, 1, 6), roughness: 0.9 });
@@ -2958,9 +3188,9 @@ function heliPhysics(c, dt, fwdIn, turnIn, liftIn) {
   } else { c.vx *= Math.exp(-6 * dt); c.vz *= Math.exp(-6 * dt); if (c.power > 0.8) c.h += -turnIn * 0.9 * dt; }
   let x = p.x + c.vx * dt, z = p.z + c.vz * dt;
   c.y = Math.min(300, c.y + c.vy * dt);
-  if (Math.abs(x) < HALF + 30 && Math.abs(z) < HALF + 30) {
-    const r = collide(x, z, 2.6, c.y + 0.5);
-    if (r.hit && Math.abs(r.x) < HALF + 25 && Math.abs(r.z) < HALF + 25) { const imp = Math.hypot(c.vx, c.vz); x = r.x; z = r.z; c.vx *= -0.3; c.vz *= -0.3; if (imp > 9) { damageCar(c, imp * 2.5); state.shake = 0.6; AudioSys.crash(0.8); } }
+  if ((Math.abs(x) < HALF + 30 && Math.abs(z) < HALF + 30) || inAirport(x, z)) {
+    const r = collide(x, z, 2.6, c.y + 0.5, false);
+    if (r.hit) { const imp = Math.hypot(c.vx, c.vz); x = r.x; z = r.z; c.vx *= -0.3; c.vz *= -0.3; if (imp > 9) { damageCar(c, imp * 2.5); state.shake = 0.6; AudioSys.crash(0.8); } }
   }
   x = clamp(x, -2200, 2200); z = clamp(z, -2200, 2200);
   const nf = Math.max(groundY(x, z), roofHeight(x, z));
@@ -3656,10 +3886,11 @@ function buildInteriors() {
     sp.scale.set(1.2, 1.2, 1); sp.position.set(x, y + 2.6, z); scene.add(sp); I.extSprite = sp;
   }
 }
-function interiorCollide(x, z, r) {
+function interiorCollide(x, z, r, y = 0) {
   const I = INTERIORS[state.interior];
   x = clamp(x, I.x0 + r, I.x1 - r); z = clamp(z, I.z0 + r, I.z1 - r);
   for (const b of I.boxes) {
+    if (b.y1 !== undefined && (y + 1.7 < b.y0 || y > b.y1 - 0.1)) continue;
     const cx = clamp(x, b.x0, b.x1), cz = clamp(z, b.z0, b.z1), dx = x - cx, dz = z - cz, d2 = dx * dx + dz * dz;
     if (d2 < r * r) { if (d2 > 1e-8) { const d = Math.sqrt(d2); x = cx + dx / d * r; z = cz + dz / d * r; } else { const l = x - b.x0, rr = b.x1 - x, t = z - b.z0, bb = b.z1 - z, m = Math.min(l, rr, t, bb); if (m === l) x = b.x0 - r; else if (m === rr) x = b.x1 + r; else if (m === t) z = b.z0 - r; else z = b.z1 + r; } }
   }
@@ -3688,13 +3919,13 @@ function exitInterior() {
 function updateInteriors(dt) {
   if (!state.interior) {
     for (const id in INTERIORS) {
-      const I = INTERIORS[id], [x, z] = I.ext; I.extSprite.position.y = groundY(x, z) + 2.6 + Math.sin(state.now * 2.5) * 0.12;
+      const I = INTERIORS[id]; if (!I.extSprite) continue; const [x, z] = I.ext; I.extSprite.position.y = groundY(x, z) + 2.6 + Math.sin(state.now * 2.5) * 0.12;
       if (!state.dead && !state.mission?.boss && Math.hypot(player.pos.x - x, player.pos.z - z) < 1.6) state.interact = state.inCar ? { label: 'İçeri girmek için araçtan in', fn: null } : { label: id === 'club' ? '🚪 KULÜBE GİR' : (state.props.villa ? '🏠 EVE GİR' : '🏠 Villa satın alınınca açılır'), fn: id === 'house' && !state.props.villa ? null : () => enterInterior(id) };
     }
     return;
   }
   const I = INTERIORS[state.interior], t = state.now;
-  if (Math.hypot(player.pos.x - I.exitAt[0], player.pos.z - (I.exitAt[1] - 0.6)) < 1.1) state.interact = { label: '🚪 DIŞARI ÇIK', fn: exitInterior };
+  if (player.pos.y < 1.5 && Math.hypot(player.pos.x - I.exitAt[0], player.pos.z - (I.exitAt[1] - 0.6)) < 1.1) state.interact = { label: '🚪 DIŞARI ÇIK', fn: exitInterior };
   if (state.interior === 'gen') updateGenInterior(dt);
   if (state.interior === 'club') {
     if (Math.floor(t * 4) !== I.lastBeat) { I.lastBeat = Math.floor(t * 4); for (let k = 0; k < 36; k++) danceTiles.setColorAt(k, tmpC.setHSL((k * 0.11 + t * 0.3) % 1, 0.9, Math.random() < 0.5 ? 0.6 : 0.15).multiplyScalar(1.4)); danceTiles.instanceColor.needsUpdate = true; }
@@ -4124,8 +4355,9 @@ function exitPassenger(reason) {
   if (r) mpSend({ t: 'pas', to: r.id, on: 0 });
   state.passenger = null; document.body.classList.remove('passenger');
   let x = player.pos.x + Math.cos(h) * 2.4, z = player.pos.z - Math.sin(h) * 2.4;
-  const c = state.interior ? interiorCollide(x, z, 0.4) : collide(x, z, 0.4, 0.5); x = c.x; z = c.z;
-  player.pos.set(x, groundY(x, z), z); player.vy = 0; player.human.g.visible = true;
+  const y0 = player.pos.y, c = state.interior ? interiorCollide(x, z, 0.4, y0) : collide(x, z, 0.4, y0 + 0.3); x = c.x; z = c.z;
+  let sy = surfaceY(x, z, y0 + 0.4); if (y0 - sy > 1.2 && r) { x = r.x; z = r.z; sy = surfaceY(x, z, y0 + 0.4); }
+  player.pos.set(x, sy, z); player.vy = 0; player.onGround = true; player.human.g.visible = true;
   if (reason) floatText(reason); AudioSys.door();
 }
 function updatePassenger(dt) {
@@ -4356,7 +4588,7 @@ function worldHitT(t0, t1) {
   for (let t = t0; t < t1; t += 0.7) {
     const x = _aimO.x + _aimD.x * t, y = _aimO.y + _aimD.y * t, z = _aimO.z + _aimD.z * t;
     if (y < groundY(x, z) + 0.02) return t;
-    if (state.interior) { const I = INTERIORS[state.interior]; if (x < I.x0 || x > I.x1 || z < I.z0 || z > I.z1 || y > I.h) return t; for (const b of I.boxes) if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < 1.2) return t; }
+    if (state.interior) { const I = INTERIORS[state.interior]; if (x < I.x0 || x > I.x1 || z < I.z0 || z > I.z1 || y > I.h) return t; if (I.FH && (y < interiorSurface(I, x, z, y) + 0.02 || y > (genFloorOf(I) + 1) * I.FH - 0.2)) return t; for (const b of I.boxes) if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && (b.y1 !== undefined ? y > b.y0 && y < b.y1 : y < 1.2)) return t; }
     else if (insideBuilding(x, y, z)) return t;
   }
   return -1;
@@ -4641,22 +4873,22 @@ function garageStyleItems(c) {
 
 // ============================================================ ENTERABLE BUILDINGS (a door on every building + procedural interiors)
 const DOORS = [];
-const DOOR_TYPE = { shop: 'shop', office: 'office', glass: 'office', brick: 'apt', deco: 'apt', house: 'home', warehouse: 'ware' };
-const GEN_NAMES = { shop: ['Market', 'Kafe', 'Butik'], office: ['Ofis Lobisi'], apt: ['Apartman Dairesi'], home: ['Ev'], ware: ['Depo'] };
-function registerDoor(b, x, z, w, d, y0, style, forceSide, along = 0) {
+const DOOR_TYPE = { shop: 'shop', office: 'office', glass: 'office', brick: 'apt', deco: 'apt', house: 'home', warehouse: 'ware', terminal: 'terminal', tower: 'tower' };
+const GEN_NAMES = { shop: ['Market', 'Kafe', 'Butik'], office: ['Ofis Binası'], apt: ['Apartman'], home: ['Ev'], ware: ['Depo'], terminal: ['Yolcu Terminali'], tower: ['Kontrol Kulesi'] };
+function registerDoor(b, x, z, w, d, y0, style, forceSide, along = 0, h = 4) {
   const type = DOOR_TYPE[style] || 'apt';
   const dist = [(b.cz + BLOCK / 2) - (z + d / 2), (z - d / 2) - (b.cz - BLOCK / 2), (b.cx + BLOCK / 2) - (x + w / 2), (x - w / 2) - (b.cx - BLOCK / 2)];
   const side = forceSide ?? dist.indexOf(Math.min(...dist));
   const N = [[0, 1], [0, -1], [1, 0], [-1, 0]][side], face = side < 2 ? w : d, out = type === 'shop' ? 0.45 : 0.1;
   const fx = x + N[0] * (w / 2 + out) + (side < 2 ? along : 0), fz = z + N[1] * (d / 2 + out) + (side >= 2 ? along : 0);
-  const door = { id: DOORS.length, type, style, fx, fz, x: fx + N[0] * 1.1, z: fz + N[1] * 1.1, nx: N[0], nz: N[1], y0, face, depth: side < 2 ? d : w };
+  const door = { id: DOORS.length, type, style, fx, fz, x: fx + N[0] * 1.1, z: fz + N[1] * 1.1, nx: N[0], nz: N[1], y0, face, depth: side < 2 ? d : w, h, bld: b.bld[b.bld.length - 1], blk: b };
   DOORS.push(door); (b.doors || (b.doors = [])).push(door);
 }
 function buildDoorMeshes() {
   const wood = [], glassD = [], lamps = [];
   for (const d of DOORS) {
     const rot = Math.atan2(d.nx, d.nz), m = new THREE.Matrix4().compose(new THREE.Vector3(d.fx, d.y0, d.fz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(1, 1, 1));
-    const isGlass = d.type === 'shop' || d.type === 'office';
+    const isGlass = d.type === 'shop' || d.type === 'office' || d.type === 'terminal' || d.type === 'tower';
     (isGlass ? glassD : wood).push(new THREE.BoxGeometry(d.type === 'ware' ? 3.4 : 1.5, d.type === 'ware' ? 3.4 : 2.4, 0.1).translate(0, d.type === 'ware' ? 1.7 : 1.2, 0).applyMatrix4(m));
     wood.push(new THREE.BoxGeometry(d.type === 'ware' ? 3.7 : 1.75, 0.14, 0.16).translate(0, d.type === 'ware' ? 3.45 : 2.47, 0.02).applyMatrix4(m));
     lamps.push(new THREE.BoxGeometry(0.5, 0.08, 0.12).translate(0, d.type === 'ware' ? 3.6 : 2.65, 0.12).applyMatrix4(m));
@@ -4670,13 +4902,14 @@ function buildDoorMeshes() {
 const GM = {};
 function genMats() {
   if (GM.ready) return GM;
-  const S = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...o });
+  const S = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, envMapIntensity: 0.22, ...o });
   Object.assign(GM, { ready: true, wallW: S(0xcfc6b8), wallC: S(0xb8bcc2), wallB: S(0xa89880), floorTile: S(0xc8c6c0, { roughness: 0.45 }), floorWood: new THREE.MeshStandardMaterial({ map: noiseTex('#8a6240', ['#7a5434', '#9a7048', '#6e4a2c'], 256, 4000, 1, 10), roughness: 0.55 }),
     floorCon: new THREE.MeshStandardMaterial({ map: noiseTex('#8a8a86', ['#7a7a76', '#9a9a96'], 256, 5000, 1, 4), roughness: 0.9 }), ceil: S(0xd8d6d0), wood: S(0x6a4a30, { roughness: 0.6 }), darkWood: S(0x3a2618, { roughness: 0.5 }),
     metal: S(0xb8bcc2, { metalness: 0.7, roughness: 0.3 }), fabricA: S(0x3a5a7a, { roughness: 0.95 }), fabricB: S(0x7a3a3a, { roughness: 0.95 }), fabricC: S(0x4a6a4a, { roughness: 0.95 }), white: S(0xf6f6f2),
     black: S(0x1a1a1c, { roughness: 0.4 }), crate: new THREE.MeshStandardMaterial({ map: noiseTex('#a8844e', ['#8a6a3a', '#c09a60', '#7a5a30'], 128, 2500, 1, 10), roughness: 0.9 }), plant: S(0x3a7a3a), pot: S(0xb05a3a),
-    fridge: new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x6aa8d8, emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.3 }), screen: new THREE.MeshBasicMaterial({ color: 0x3a7ac8 }), panel: new THREE.MeshBasicMaterial({ color: 0xffe8c8 }),
+    fridge: new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x6aa8d8, emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.3 }), screen: new THREE.MeshBasicMaterial({ color: 0x3a7ac8 }), panel: new THREE.MeshBasicMaterial({ color: 0xffe8c8 }), tv: new THREE.MeshBasicMaterial({ color: 0x3a7ac8 }), win: new THREE.MeshBasicMaterial({ color: 0x9cc8ec }), stair: S(0x8a847a, { roughness: 0.7 }),
     prod: new THREE.MeshStandardMaterial({ roughness: 0.6 }) });
+  for (const k in GM) if (GM[k].isMeshStandardMaterial) GM[k].envMapIntensity = Math.min(GM[k].envMapIntensity, 0.22);
   return GM;
 }
 let genGroup = null;
@@ -4685,85 +4918,324 @@ function disposeGen() {
   genGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(genGroup);
   for (const h of (INTERIORS.gen && INTERIORS.gen.npcs) || []) disposeHuman(h);
-  genGroup = null; delete INTERIORS.gen;
+  genGroup = null; delete INTERIORS.gen; state.crack = null;
 }
+// ---------------- multi-storey procedural interiors (stairs, elevator, per-floor interactions, roof access)
+const FH = 4;                                   // storey height (matches facade floors)
+const GEN_CD = new Map();                       // looted / robbed spots → time when available again
+const cdLeft = k => Math.max(0, (GEN_CD.get(k) ?? -1e9) - state.now);
+const FLOOR_NAMES = { Market: 'Market', Kafe: 'Kafe', Butik: 'Butik', storage: 'Depo · stok', apt: 'Daire', aptLobby: 'Apartman girişi', lobby: 'Lobi', office: 'Ofis katı', exec: 'Yönetim katı · kasa', control: 'Kontrol odası', living: 'Salon', bedroom: 'Yatak odası', ware: 'Depo', terminal: 'Terminal salonu' };
+function doorFloors(d) { const cap = { office: 8, apt: 7, shop: 4, home: 3, ware: 1, tower: 4, terminal: 1 }[d.type] || 1; return clamp(Math.floor(((d.h || 4) + 0.5) / FH), 1, cap); }
+const floorLabel = (I, k) => k === 0 ? 'Zemin Kat' : `${k}. Kat`;
+const genFloorOf = I => I && I.FH ? clamp(Math.floor((player.pos.y + 0.6) / I.FH), 0, I.nF - 1) : 0;
+function doorTitle(d) { const n = doorFloors(d); return (d.name || (d.type === 'shop' ? 'Dükkan' : GEN_NAMES[d.type][0])) + (n > 1 ? ` · ${n} kat` : ''); }
 function genInteriorFor(door) {
   disposeGen(); const G = genMats(), id = door.id, rng = mulberry32(id * 7919 + 17), RR = (a, b) => a + rng() * (b - a), pk = a => a[Math.floor(rng() * a.length)];
-  const type = door.type, variant = type === 'shop' ? pk(['Market', 'Kafe', 'Butik']) : GEN_NAMES[type][0];
-  const W = clamp(Math.round(door.face * 0.8), 10, 22), D = clamp(Math.round(door.depth * 0.75), 8, 18), H = type === 'office' ? 5 : type === 'ware' ? 7 : 3.4;
+  const type = door.type, nF = doorFloors(door), multi = nF > 1, hasRoof = !!door.roof;
+  const variant = type === 'shop' ? pk(['Market', 'Kafe', 'Butik']) : null;
+  let W = clamp(Math.round(door.face * 0.8), 10, 22), D = clamp(Math.round(door.depth * 0.75), 8, 18);
+  if (multi || hasRoof) { W = Math.max(W, 15); D = Math.max(D, 13); }
+  if (type === 'terminal') { W = 44; D = 26; }
+  const FHh = multi ? FH : type === 'terminal' ? 9 : type === 'office' || type === 'tower' ? 5 : type === 'ware' ? 7 : 3.4;
   const ox = -3200 - (id % 12) * 70, oz = -2400 - Math.floor(id / 12) * 70, x0 = ox - W / 2, x1 = ox + W / 2, z0 = oz - D / 2, z1 = oz + D / 2;
-  const group = new THREE.Group(); genGroup = group; scene.add(group);
-  const I = { name: variant, x0, x1, z0, z1, h: H, boxes: [], spawn: [ox, z1 - 2.6, Math.PI], exitAt: [ox, z1 - 0.6], ext: [door.x, door.z], extOut: [door.x + door.nx * 1.2, door.z + door.nz * 1.2, Math.atan2(door.nx, door.nz)], gen: true, npcs: [], type };
+  const root = new THREE.Group(); genGroup = root; scene.add(root);
+  const I = { name: door.name || variant || GEN_NAMES[type][0], x0, x1, z0, z1, h: nF * FHh, FH: multi ? FH : 0, nF, boxes: [], spawn: [ox, z1 - 2.6, Math.PI], exitAt: [ox, z1 - 0.6], ext: [door.x, door.z], extOut: [door.x + door.nx * 1.2, door.z + door.nz * 1.2, Math.atan2(door.nx, door.nz)], gen: true, npcs: [], type, door, levels: [], stairs: [], spots: [], FG: [], floorNames: [], curF: -1 };
   INTERIORS.gen = I;
-  const box = (x, y, z, w, h, d, mat, solid = true) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y + h / 2, z); m.castShadow = m.receiveShadow = true; group.add(m); if (solid) I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 }); return m; };
-  const cyl = (x, y, z, r, h, mat, solid = true) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 14), mat); m.position.set(x, y + h / 2, z); m.castShadow = true; group.add(m); if (solid) I.boxes.push({ x0: x - r, x1: x + r, z0: z - r, z1: z + r }); return m; };
-  const plant = (x, z) => { cyl(x, 0, z, 0.25, 0.5, G.pot); const l = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), G.plant); l.position.set(x, 1.05, z); group.add(l); };
-  // shell
-  const floorM = type === 'ware' ? G.floorCon : type === 'shop' || type === 'office' ? G.floorTile : G.floorWood, wallM = type === 'ware' ? G.wallC : type === 'apt' ? G.wallB : G.wallW;
-  box(ox, -0.05, oz, W, 0.1, D, floorM, false);
-  box(ox, H, oz, W + 0.6, 0.2, D + 0.6, G.ceil, false);
-  for (const [x, z, w, d] of [[ox, z0 - 0.15, W + 0.6, 0.3], [ox, z1 + 0.15, W + 0.6, 0.3], [x0 - 0.15, oz, 0.3, D], [x1 + 0.15, oz, 0.3, D]]) box(x, 0, z, w, H, d, wallM, false);
-  box(ox, 0, z1 - 0.02, 1.6, 2.4, 0.08, G.darkWood, false);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x40e080, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(ox, 0.06, z1 - 1.2); group.add(ring);
-  for (let k = 0; k < Math.max(2, Math.floor(W / 5)); k++) box(x0 + (k + 0.5) * W / Math.max(2, Math.floor(W / 5)), H - 0.06, oz, 1.6, 0.05, 0.6, G.panel, false);
-  // furniture
-  if (type === 'shop' && variant === 'Kafe') {
-    box(x0 + 1.2, 0, oz, 1.1, 1.05, D * 0.55, G.darkWood); box(x0 + 0.5, 0, oz, 0.5, 2.2, D * 0.55, G.wood);
-    for (let a = 0; a < Math.floor((W - 5) / 3); a++) for (let c = 0; c < Math.floor((D - 4) / 3); c++) { const x = x0 + 4 + a * 3, z = z0 + 2 + c * 3; cyl(x, 0, z, 0.5, 0.75, G.darkWood); for (const [sx, sz] of [[0.9, 0], [-0.9, 0]]) box(x + sx, 0, z + sz, 0.45, 0.45, 0.45, G.fabricB, false); }
-    plant(x1 - 0.8, z0 + 0.8); plant(x1 - 0.8, z1 - 2);
-  } else if (type === 'shop') {
-    box(x0 + 1.8, 0, z1 - 3, 2.8, 1.05, 0.9, G.wood); box(x0 + 1.2, 1.05, z1 - 3, 0.4, 0.3, 0.35, G.black, false);
-    const rows = Math.max(1, Math.floor((D - 5) / 2.6)), prods = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.36, 0.25), G.prod, rows * 2 * 3 * 10); let n = 0; const m4l = new THREE.Matrix4();
-    for (let r = 0; r < rows; r++) {
-      const z = z0 + 2 + r * 2.6, len = W - 6; box(ox + 1.5, 0, z, len, 1.8, 0.6, G.metal);
-      for (let lv = 0; lv < 3; lv++) for (const sd of [-0.18, 0.18]) for (let k = 0; k < 10; k++) { m4l.makeTranslation(ox + 1.5 - len / 2 + 0.4 + k * (len - 0.8) / 9, 0.35 + lv * 0.55, z + sd); prods.setMatrixAt(n, m4l); prods.setColorAt(n++, new THREE.Color().setHSL(rng(), 0.7, 0.5)); }
+  for (let k = 0; k < nF; k++) { const g = new THREE.Group(); root.add(g); I.FG.push(g); }
+  // geometry is collected per floor & material and merged → a handful of draw calls per storey
+  const buckets = [];
+  let K = 0, Y = 0;
+  const geoAdd = (geo, mat) => { const m = buckets[K] || (buckets[K] = new Map()); if (!m.has(mat)) m.set(mat, []); m.get(mat).push(geo); };
+  const box = (x, y, z, w, h, d, mat, solid = true, wall = false) => { geoAdd(new THREE.BoxGeometry(w, h, d).translate(x, Y + y + h / 2, z), mat); if (solid) I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, y0: Y + y, y1: Y + y + h, wall }); };
+  const solidOnly = (x, z, w, d, h = 1.8) => I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, y0: Y, y1: Y + h });
+  const cyl = (x, y, z, r, h, mat, solid = true) => { geoAdd(new THREE.CylinderGeometry(r, r, h, 12).translate(x, Y + y + h / 2, z), mat); if (solid) I.boxes.push({ x0: x - r, x1: x + r, z0: z - r, z1: z + r, y0: Y + y, y1: Y + y + h }); };
+  const plant = (x, z) => { cyl(x, 0, z, 0.25, 0.5, G.pot); geoAdd(new THREE.IcosahedronGeometry(0.5, 1).translate(x, Y + 1.05, z), G.plant); };
+  const spot = (x, z, kind, extra = {}) => I.spots.push({ f: K, x, z, kind, ...extra });
+  const npc = (x, z, yaw = 0) => { if (I.npcs.length >= 5) return; const h = makeHuman(randLook()); h.g.position.set(x, Y, z); h.g.rotation.y = yaw; h.g.visible = true; h.f = K; I.npcs.push(h); };
+  // layout: stair shaft (two lanes, switch-back) against the west wall, elevator + roof door on the back wall
+  const zS = z0 + 1.8, SL = 6.4, zE = zS + SL, LA = [x0, x0 + 1.7], LB = [x0 + 1.7, x0 + 3.4];
+  const rx0 = multi ? x0 + 3.8 : x0 + 0.4, rx1 = x1 - 0.4, rz0 = multi ? z0 + 2.6 : hasRoof ? z0 + 2.4 : z0 + 0.4, rz1 = z1 - 0.4;
+  const rcx = (rx0 + rx1) / 2, rcz = (rz0 + rz1) / 2, RW = rx1 - rx0, RD = rz1 - rz0;
+  const scoutK = nF >= 3 || type === 'tower' ? nF - 1 : -1;
+  const free = (x, z, r = 1) => !(K === 0 && Math.abs(x - ox) < 1.8 + r && z > z1 - 3.6 - r) && !(K === scoutK && x > rx1 - 2.4 - r && Math.abs(z - rcz) < 1.6 + r) && !(hasRoof && K === nF - 1 && x < x0 + 8.6 + r && z < z0 + 2.4 + r);
+  for (let s = 0; s < nF - 1; s++) {
+    const A = s % 2 === 0, lane = A ? LA : LB, zb = A ? zS : zE, zt = A ? zE : zS;
+    I.stairs.push({ x0: lane[0], x1: lane[1], za: zS, zb2: zE, zb, zt, y: s * FH });
+    I.levels.push({ y: (s + 1) * FH, hole: { x0: lane[0], x1: lane[1], z0: zS, z1: zE } });
+  }
+  const floorM = type === 'ware' ? G.floorCon : type === 'shop' || type === 'office' || type === 'tower' || type === 'terminal' ? G.floorTile : G.floorWood, wallM = type === 'ware' ? G.wallC : type === 'apt' ? G.wallB : G.wallW;
+  const kindOf = k => {
+    if (type === 'terminal') return 'terminal';
+    if (type === 'ware') return 'ware';
+    if (type === 'shop') return k === 0 ? variant : k % 2 ? 'storage' : 'apt';
+    if (type === 'office' || type === 'tower') return k === 0 ? 'lobby' : k === nF - 1 && nF >= 3 ? (type === 'tower' ? 'control' : 'exec') : 'office';
+    if (type === 'apt') return k === 0 && multi ? 'aptLobby' : 'apt';
+    if (type === 'home') return !multi ? 'apt' : k === 0 ? 'living' : 'bedroom';
+    return 'apt';
+  };
+  // ---------- furniture sets (all positions inside the free region R)
+  const FURN = {
+    Market() {
+      box(rx0 + 1.5, 0, rz1 - 2.6, 2.6, 1.05, 0.9, G.wood); box(rx0 + 1.0, 1.05, rz1 - 2.6, 0.4, 0.3, 0.35, G.black, false);
+      spot(rx0 + 1.5, rz1 - 1.6, 'rob'); npc(rx0 + 1.5, rz1 - 3.5, 0);
+      const rows = Math.max(1, Math.floor((RD - 5) / 2.6)), sx = (rx0 + 3.4 + rx1) / 2, len = Math.max(3, rx1 - rx0 - 4.6);
+      const prods = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.36, 0.25), G.prod, rows * 60), m4l = new THREE.Matrix4(); let n = 0;
+      for (let r = 0; r < rows; r++) {
+        const z = rz0 + 1.8 + r * 2.6; box(sx, 0, z, len, 1.8, 0.6, G.metal);
+        for (let lv = 0; lv < 3; lv++) for (const sd of [-0.18, 0.18]) for (let k = 0; k < 10; k++) { m4l.makeTranslation(sx - len / 2 + 0.4 + k * (len - 0.8) / 9, Y + 0.35 + lv * 0.55, z + sd); prods.setMatrixAt(n, m4l); prods.setColorAt(n++, new THREE.Color().setHSL(rng(), 0.7, 0.5)); }
+      }
+      prods.count = n; I.FG[K].add(prods);
+      box(rcx, 0, rz0 + 0.4, RW - 1, 2.2, 0.7, G.fridge);
+    },
+    Kafe() {
+      box(rx0 + 0.2, 0, rcz, 0.4, 2.2, RD * 0.5, G.wood); box(rx0 + 1.9, 0, rcz, 1.0, 1.05, RD * 0.5, G.darkWood);
+      npc(rx0 + 0.9, rcz, Math.PI / 2); spot(rx0 + 3.0, rcz, 'rob');
+      for (let x = rx0 + 4.6; x < rx1 - 1; x += 3) for (let z = rz0 + 1.4; z < rz1 - 1.2; z += 3) { if (!free(x, z, 1)) continue; cyl(x, 0, z, 0.5, 0.75, G.darkWood); for (const s of [-1, 1]) box(x + s * 0.9, 0, z, 0.45, 0.45, 0.45, G.fabricB, false); }
+      plant(rx1 - 0.5, rz0 + 0.5); plant(rx1 - 0.5, rz1 - 1.6);
+    },
+    Butik() {
+      box(rx0 + 1.5, 0, rz1 - 2.6, 2.4, 1.05, 0.9, G.white); spot(rx0 + 1.5, rz1 - 1.6, 'rob'); npc(rx0 + 1.5, rz1 - 3.5, 0);
+      const cloth = [G.fabricA, G.fabricB, G.fabricC, G.wood, G.black];
+      for (let x = rx0 + 4.4; x < rx1 - 1.5; x += 3.2) for (let z = rz0 + 1.2; z < rz1 - 4; z += 2.4) {
+        if (!free(x, z, 1.5)) continue;
+        box(x, 1.55, z, 2.4, 0.05, 0.05, G.metal, false); for (const s of [-1, 1]) box(x + s * 1.15, 0, z, 0.06, 1.6, 0.4, G.metal, false);
+        for (let c = 0; c < 6; c++) box(x - 0.9 + c * 0.36, 0.55, z, 0.3, 0.95, 0.5, pk(cloth), false);
+        solidOnly(x, z, 2.4, 0.5);
+      }
+      box(rx1 - 0.1, 0.2, rz0 + 1.5, 0.05, 2.0, 1.0, G.metal, false);
+    },
+    storage() {
+      for (let i = 0; i < 10; i++) { const sz = RR(0.8, 1.4), x = RR(rx0 + 1, rx1 - 1), z = RR(rz0 + 2, rz1 - 1.2); if (!free(x, z, 1)) continue; const st = 1 + Math.floor(rng() * 3); for (let s = 0; s < st; s++) box(x, s * sz, z, sz, sz, sz, G.crate, s === 0); }
+      box(rcx, 0, rz0 + 0.35, RW - 1.5, 2.2, 0.6, G.metal); spot(rcx, rz0 + 1.3, 'stock');
+    },
+    apt(bed = true, wardrobe = true) {
+      const sx = rx0 + Math.min(3.2, RW * 0.3);
+      box(sx, 0, rz0 + 0.6, 3.2, 0.45, 0.9, G.fabricC); box(sx, 0.45, rz0 + 0.2, 3.2, 0.5, 0.3, G.fabricC, false);
+      box(sx, 0, rz0 + 2.0, 1.5, 0.4, 0.7, G.darkWood);
+      box(sx, 0, rz0 + 3.5, 2.1, 0.55, 0.45, G.black); box(sx, 0.9, rz0 + 3.5, 1.9, 1.05, 0.06, G.tv, false);
+      if (bed) { box(rx1 - 1.2, 0, rz0 + 1.5, 2.0, 0.55, 2.6, G.white); box(rx1 - 1.2, 0.55, rz0 + 0.3, 2.0, 0.5, 0.15, G.darkWood, false); box(rx1 - 1.2, 0.56, rz0 + 2.0, 2.05, 0.08, 1.5, G.fabricB, false); spot(rx1 - 1.2, rz0 + 3.3, 'bed'); }
+      box(rx1 - 0.45, 0, rz1 - 2.4, 0.8, 0.95, 2.4, G.white); box(rx1 - 0.5, 0, rz1 - 0.6, 0.85, 2.0, 0.8, G.metal);
+      if (wardrobe) { box(rcx + 1.0, 0, rz0 + 0.35, 1.8, 2.1, 0.6, G.wood); spot(rcx + 1.0, rz0 + 1.3, 'loot'); }
+      cyl(rx0 + 2.4, 0, rz1 - 2.4, 0.6, 0.76, G.wood); for (const a of [0, 1, 2, 3]) box(rx0 + 2.4 + Math.cos(a * Math.PI / 2) * 1.0, 0, rz1 - 2.4 + Math.sin(a * Math.PI / 2) * 1.0, 0.4, 0.45, 0.4, G.darkWood, false);
+      plant(rx0 + 0.5, rz1 - 0.5);
+      if (rng() < 0.5) npc(rcx, rcz + 0.5, Math.PI);
+    },
+    living() { FURN.apt(false, true); },
+    bedroom() {
+      box(rcx, 0, rz0 + 1.5, 2.0, 0.55, 2.6, G.white); box(rcx, 0.55, rz0 + 0.3, 2.0, 0.6, 0.15, G.darkWood, false); box(rcx, 0.56, rz0 + 2.0, 2.05, 0.08, 1.5, G.fabricA, false); spot(rcx, rz0 + 3.3, 'bed');
+      box(rx0 + 0.4, 0, rcz, 0.6, 2.1, 1.8, G.wood); spot(rx0 + 1.3, rcz, 'loot');
+      box(rx1 - 1.2, 0, rz1 - 1.5, 1.6, 0.76, 0.7, G.darkWood); box(rx1 - 1.2, 0.76, rz1 - 1.5, 0.5, 0.03, 0.35, G.black, false);
+      box(rcx, 0.01, rcz + 1.5, 3, 0.02, 2, G.fabricB, false); plant(rx1 - 0.5, rz0 + 0.5);
+    },
+    aptLobby() {
+      box(rx0 + 0.25, 0, rcz, 0.35, 1.7, Math.min(4, RD - 2), G.metal);
+      box(rx1 - 0.6, 0, rcz, 0.9, 0.45, 3, G.fabricA); box(rx1 - 0.2, 0.45, rcz, 0.3, 0.45, 3, G.fabricA, false);
+      box(rcx, 0.01, rcz, 3, 0.02, 4, G.fabricB, false); plant(rx1 - 0.6, rz0 + 0.6); plant(rx0 + 0.6, rz1 - 0.6);
+    },
+    lobby() {
+      box(rcx, 0, rcz - 1, 4, 1.1, 1, G.white); box(rcx, 1.1, rcz - 1, 4.2, 0.06, 1.2, G.darkWood, false); npc(rcx, rcz - 1.9, 0);
+      for (const s of [-1, 1]) { box(rcx + s * (RW / 2 - 1.0), 0, rcz + 1.5, 1, 0.45, 3, G.fabricA); plant(rcx + s * (RW / 2 - 0.6), rz1 - 1.2); }
+      box(rcx + (multi ? 2.5 : 0), 2.2, z0 + 0.05, 3.4, 0.9, 0.06, G.screen, false);
+    },
+    office() {
+      let first = true, wk = 0;
+      for (let x = rx0 + 1.2; x < rx1 - 1; x += 2.8) for (let z = rz0 + 0.8; z < rz1 - 1.4; z += 2.6) {
+        if (!free(x, z, 1)) continue;
+        box(x, 0, z, 1.6, 0.75, 0.8, G.white); box(x, 0.75, z - 0.2, 0.62, 0.42, 0.05, G.screen, false); box(x, 0, z + 0.7, 0.5, 0.5, 0.5, G.fabricA, false);
+        if (first) { spot(x, z + 1.15, 'hack'); first = false; } else if (wk++ === 2) npc(x, z + 0.75, Math.PI);
+      }
+      plant(rx1 - 0.5, rz1 - 0.5); cyl(rx0 + 0.4, 0, rz1 - 0.5, 0.25, 1.2, G.white);
+    },
+    exec() {
+      box(rcx, 0, rcz - 0.5, 3.2, 0.78, 1.4, G.darkWood); box(rcx, 0, rcz + 0.6, 0.7, 1.1, 0.7, G.black, false);
+      box(rx0 + 0.3, 0, rcz, 0.4, 2.2, 4, G.wood); box(rcx, 0, rz1 - 1, 3, 0.45, 0.9, G.fabricA); box(rcx, 0.45, rz1 - 0.6, 3, 0.45, 0.25, G.fabricA, false);
+      box(rx1 - 0.6, 0, rz0 + 0.6, 0.9, 1.2, 0.85, G.black); geoAdd(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 12).rotateX(Math.PI / 2).translate(rx1 - 0.6, Y + 0.75, rz0 + 1.05), G.metal);
+      spot(rx1 - 0.6, rz0 + 1.6, 'safe'); plant(rx0 + 0.6, rz1 - 0.6); npc(rcx, rcz - 1.6, 0);
+    },
+    control() {
+      for (let x = rx0 + 1; x < rx1 - 1; x += 2.2) { box(x, 0, rz1 - 0.6, 2, 1, 0.9, G.black); box(x, 1.0, rz1 - 0.35, 1.8, 0.5, 0.06, G.screen, false); }
+      box(rcx, 0, rcz - 0.5, 2.4, 0.78, 1.2, G.white); box(ox, 0.9, z1 - 0.03, W - 1, 2.6, 0.05, G.win, false); npc(rcx, rcz + 0.4, Math.PI);
+    },
+    ware() {
+      for (let k = 0; k < 12; k++) { const sz = RR(0.9, 1.6), x = RR(rx0 + 1.6, rx1 - 1.6), z = RR(rz0 + 2.2, rz1 - 4); if (!free(x, z, 1.5)) continue; const st = 1 + Math.floor(rng() * 3); for (let s = 0; s < st; s++) box(x, s * sz, z, sz, sz, sz, G.crate, s === 0); }
+      for (const s of [-1, 1]) box(ox + s * (W / 2 - 0.8), 0, oz + 1, 1, 4.5, D - 5, G.metal);
+      for (let k = 0; k < 4; k++) cyl(RR(rx0 + 2, rx1 - 2), 0, rz1 - 4 + RR(-1, 1), 0.35, 0.95, k % 2 ? G.fabricB : G.fabricA);
+      box(rcx + 2, 0, rz0 + 0.5, 3, 0.95, 0.9, G.wood); spot(rcx + 2, rz0 + 1.5, 'stock');
+      if (rng() < 0.5) npc(rcx - 2, rz0 + 1.5, 0);
+    },
+    terminal() {
+      for (let x = rx0 + 5; x < rx1 - 3; x += 4.6) { box(x, 0, rz0 + 2.6, 3, 1.05, 1, G.white); box(x, 1.5, rz0 + 1.6, 3, 1.1, 0.08, G.screen, false); box(x + 1.8, 0, rz0 + 2.6, 0.6, 0.5, 1, G.black); if (x < rx0 + 20) npc(x, rz0 + 1.9, 0); }
+      for (let x = rx0 + 3; x < rx1 - 3; x += 7) for (let z = rcz + 1; z < rz1 - 4; z += 2.4) { if (!free(x, z, 3)) continue; box(x, 0, z, 6, 0.45, 0.6, G.fabricA); box(x, 0.45, z + 0.27, 6, 0.45, 0.08, G.fabricA, false); }
+      for (const [x, z] of [[ox - 11, rcz - 1], [ox + 11, rcz - 1], [ox - 11, rz1 - 5], [ox + 11, rz1 - 5]]) cyl(x, 0, z, 0.5, FHh, G.white);
+      cyl(ox, 0, rcz - 1.5, 1.4, 1.1, G.darkWood); npc(ox, rcz - 1.5 + 0.1, Math.PI);
+      for (const s of [-1, 1]) { box(ox + s * (W / 2 - 0.03), 1.6, oz, 0.05, 5, D - 6, G.win, false); plant(ox + s * 4, rz1 - 1.2); }
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(12, 4), new THREE.MeshBasicMaterial({ map: canvasTex(768, 256, g => {
+        g.fillStyle = '#0b0f16'; g.fillRect(0, 0, 768, 256); g.fillStyle = '#ffd23a'; g.font = 'bold 34px Arial'; g.fillText('✈ KALKIŞLAR', 20, 42);
+        g.font = 'bold 26px monospace'; const rows = [['VB101', 'PALMİYE ADASI', '14:20', 'ZAMANINDA'], ['VB204', 'FENER ADASI', '15:05', 'BİNİŞ'], ['VB330', 'MERCAN KOYU', '16:40', 'ZAMANINDA'], ['VB415', 'KUZEY BURNU', '18:10', 'RÖTAR']];
+        rows.forEach((r, i) => { const y = 92 + i * 42; g.fillStyle = '#e8e8e8'; g.fillText(r[0], 20, y); g.fillText(r[1], 130, y); g.fillText(r[2], 470, y); g.fillStyle = r[3] === 'RÖTAR' ? '#ff6a4a' : '#6aff8a'; g.fillText(r[3], 580, y); });
+      }), toneMapped: false }));
+      board.position.set(ox + 4, Y + 5.2, z0 + 0.1); I.FG[K].add(board); I.board = board;
     }
-    prods.count = n; group.add(prods);
-    box(ox, 0, z0 + 0.45, W - 2, 2.2, 0.7, G.fridge);
-  } else if (type === 'office') {
-    box(ox, 0, oz - D * 0.15, 4, 1.1, 1, G.white); box(ox, 1.1, oz - D * 0.15, 4.2, 0.06, 1.2, G.darkWood, false);
-    for (const s of [-1, 1]) { box(ox + s * (W / 2 - 1.5), 0, oz + 1, 1, 0.45, 3, G.fabricA); box(ox + s * (W / 2 - 1.1), 0.45, oz + 1, 0.3, 0.45, 3, G.fabricA); plant(ox + s * (W / 2 - 0.8), z1 - 1.5); }
-    for (const s of [-1, 1]) box(ox + s * 1.6, 0, z0 + 0.1, 1.4, 2.6, 0.12, G.metal, false);
-    box(ox, 2.9, z0 + 0.1, 3.4, 0.9, 0.06, G.screen, false);
-  } else if (type === 'ware') {
-    for (let k = 0; k < 12; k++) { const sz = RR(0.9, 1.6), x = RR(x0 + 2, x1 - 2), z = RR(z0 + 1.5, z1 - 4); if (Math.abs(x - ox) < 2 && z > z1 - 6) continue; const st = Math.floor(RR(1, 3.9)); for (let s = 0; s < st; s++) box(x, s * sz, z, sz, sz, sz, G.crate, s === 0); }
-    for (const s of [-1, 1]) box(ox + s * (W / 2 - 0.8), 0, oz, 1, 4.5, D - 3, G.metal);
-    for (let k = 0; k < 4; k++) cyl(RR(x0 + 2, x1 - 2), 0, z1 - 4 + RR(-1, 1), 0.35, 0.95, k % 2 ? G.fabricB : G.fabricA);
-  } else { // apartment / house
-    box(ox - W * 0.2, 0, z0 + 1.2, 3.4, 0.45, 1, G.fabricC); box(ox - W * 0.2, 0.45, z0 + 0.85, 3.4, 0.5, 0.3, G.fabricC, false);
-    box(ox - W * 0.2, 0, z0 + 2.8, 1.6, 0.4, 0.8, G.darkWood);
-    const tv = box(ox - W * 0.2, 0.9, oz + 1, 2, 1.1, 0.06, G.screen, false); box(ox - W * 0.2, 0, oz + 1, 2.2, 0.55, 0.45, G.black); I.tv = tv;
-    box(x1 - 1.4, 0, z0 + 1.6, 2.1, 0.55, 2.8, G.white); box(x1 - 1.4, 0.55, z0 + 0.5, 1.9, 0.15, 0.5, G.white, false);
-    cyl(ox + W * 0.15, 0, oz + 0.5, 0.65, 0.76, G.wood); for (const a of [0, 1, 2, 3]) box(ox + W * 0.15 + Math.cos(a * Math.PI / 2) * 1.05, 0, oz + 0.5 + Math.sin(a * Math.PI / 2) * 1.05, 0.42, 0.45, 0.42, G.darkWood, false);
-    box(x0 + 0.35, 0, oz, 0.5, 2.1, 2.4, G.wood); plant(x1 - 0.7, z1 - 1.6);
-    I.bed = [x1 - 1.4, z0 + 2.4];
+  };
+  // ---------- per floor shell + content
+  for (let k = 0; k < nF; k++) {
+    K = k; Y = k * FHh;
+    if (k === 0) box(ox, -0.05, oz, W, 0.1, D, floorM, false);
+    else {
+      const h = I.levels[k - 1].hole, parts = [[x0, x1, z0, h.z0], [x0, x1, h.z1, z1], [h.x1, x1, h.z0, h.z1], [x0, h.x0, h.z0, h.z1]];
+      for (const [a, b, c, d] of parts) if (b - a > 0.01 && d - c > 0.01) { box((a + b) / 2, -0.2, (c + d) / 2, b - a, 0.18, d - c, floorM, false); box((a + b) / 2, -0.22, (c + d) / 2, b - a, 0.02, d - c, G.ceil, false); }
+    }
+    if (k === nF - 1) box(ox, FHh, oz, W + 0.6, 0.2, D + 0.6, G.ceil, false);
+    for (const [x, z, w, d] of [[ox, z0 - 0.15, W + 0.6, 0.3], [ox, z1 + 0.15, W + 0.6, 0.3], [x0 - 0.15, oz, 0.3, D], [x1 + 0.15, oz, 0.3, D]]) box(x, 0, z, w, FHh, d, wallM, false);
+    const np = Math.max(2, Math.floor(W / 5)); for (let p = 0; p < np; p++) box(x0 + (p + 0.5) * W / np, FHh - 0.06, oz + (multi ? 2 : 0), 1.6, 0.05, 0.6, G.panel, false);
+    if (k > 0 || type === 'apt' || type === 'home' || type === 'office' || type === 'tower') { for (const s of [-1, 1]) box(x1 - 0.02, 1.0, oz + s * D / 4, 0.04, 1.6, D / 3.2, G.win, false); if (k > 0) for (const s of [-1, 1]) box(ox + s * W / 4, 1.0, z1 - 0.02, W / 4, 1.6, 0.04, G.win, false); }
+    if (multi) {
+      // shaft walls (divider between the two flights + wall to the room)
+      box(x0 + 1.7, 0, (zS + zE) / 2, 0.12, FH, SL, wallM, true, true); box(x0 + 3.4, 0, (zS + zE) / 2, 0.14, FH, SL, wallM, true, true);
+      // elevator
+      box(x0 + 4.7, 0, z0 + 0.13, 2.2, 2.6, 0.26, G.metal, true, true); box(x0 + 4.7, 0.05, z0 + 0.28, 0.04, 2.3, 0.04, G.black, false); box(x0 + 4.7, 2.75, z0 + 0.2, 0.6, 0.25, 0.08, G.panel, false);
+      spot(x0 + 4.7, z0 + 1.25, 'elev');
+    }
+    if (hasRoof && k === nF - 1) {
+      if (multi) { box(x0 + 7.2, 0, z0 + 0.06, 1.2, 2.3, 0.1, G.darkWood, false); box(x0 + 7.2, 2.5, z0 + 0.08, 0.9, 0.3, 0.05, G.panel, false); spot(x0 + 7.2, z0 + 1.0, 'roof'); }
+      else { for (const s of [-1, 1]) box(x0 + 7.2 + s * 0.4, 0, z0 + 0.15, 0.06, FHh, 0.06, G.metal, false); for (let y = 0.35; y < FHh; y += 0.35) box(x0 + 7.2, y, z0 + 0.15, 0.8, 0.04, 0.04, G.metal, false); spot(x0 + 7.2, z0 + 1.0, 'roof', { ladder: true }); }
+      I.roofAt = [x0 + 7.2, z0 + 1.1, k * FHh];
+    }
+    const kind = kindOf(k); FURN[kind](); I.floorNames[k] = FLOOR_NAMES[kind];
+    if (k === scoutK) { box(x1 - 0.03, 0.8, rcz, 0.05, 2.4, Math.min(8, D - 3), G.win, false); spot(x1 - 1.0, rcz, 'scout'); I.floorNames[k] += ' · manzara'; }
   }
-  // a person working there
-  if (type !== 'ware' || rng() < 0.5) {
-    const h = makeHuman(randLook()); const [hx, hz] = type === 'shop' ? [x0 + 1.8, z1 - 3.9] : type === 'office' ? [ox, oz - D * 0.15 - 0.9] : [x0 + 2.5, oz + 2];
-    h.g.position.set(hx, 0, hz); h.g.rotation.y = 0; h.g.visible = true; I.npcs.push(h);
+  // stairs: solid flights, a block under the high end and a rail at the stairwell opening above
+  for (let s = 0; s < nF - 1; s++) {
+    const st = I.stairs[s], dir = Math.sign(st.zt - st.zb), cx = (st.x0 + st.x1) / 2, n = 16;
+    K = s; Y = s * FH;
+    for (let i = 0; i < n; i++) box(cx, 0, st.zb + dir * (i + 0.5) * SL / n, 1.66, (i + 1) * FH / n, SL / n + 0.02, G.stair, false);
+    const a = st.zb + dir * 1.6, b = st.zt; I.boxes.push({ x0: st.x0, x1: st.x1, z0: Math.min(a, b), z1: Math.max(a, b), y0: Y, y1: Y + 0.7 });
+    K = s + 1; Y = (s + 1) * FH;
+    box(cx, 0, st.zb + dir * 0.06, 1.7, 1.05, 0.12, G.metal, true);
   }
+  // entrance door + exit ring (ground floor)
+  K = 0; Y = 0;
+  box(ox, 0, z1 - 0.02, 1.6, 2.4, 0.08, G.darkWood, false);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x40e080, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(ox, 0.06, z1 - 1.2); I.FG[0].add(ring);
+  if (multi) I.elev = [x0 + 4.7, z0 + 1.4];
+  for (let k = 0; k < buckets.length; k++) if (buckets[k]) for (const [mat, list] of buckets[k]) { const m = new THREE.Mesh(merge(list), mat); m.receiveShadow = true; I.FG[k].add(m); for (const g of list) g.dispose(); }
   return I;
 }
-function enterGeneric(door) {
+function genSetFloor(I) {
+  const f = genFloorOf(I); if (f === I.curF) return; I.curF = f;
+  I.FG.forEach((g, k) => g.visible = Math.abs(k - f) <= 1);
+  for (const h of I.npcs) h.g.visible = Math.abs(h.f - f) <= 1;
+  const fy = f * (I.FH || 0), fh = I.FH || I.h;
+  interiorLight.position.set((I.x0 + I.x1) / 2, fy + fh - 0.6, (I.z0 + I.z1) / 2);
+  interiorLight.color.set(I.type === 'ware' ? 0xfff0d8 : 0xfff4e6);
+  interiorLight.intensity = I.type === 'ware' ? 24 : I.type === 'terminal' ? 45 : 14;
+}
+function enterGeneric(door, fromRoof) {
   const f = $('fade'); f.style.opacity = 1;
   setTimeout(() => {
     const I = genInteriorFor(door);
-    state.interior = 'gen'; player.pos.set(I.spawn[0], 0, I.spawn[1]); player.yaw = I.spawn[2]; camYaw = player.yaw + Math.PI; camDist = 3;
-    interiorLight.position.set((I.x0 + I.x1) / 2, I.h - 0.6, (I.z0 + I.z1) / 2); interiorLight.color.set(I.type === 'ware' ? 0xfff0d8 : 0xfff4e6); interiorLight.intensity = I.type === 'ware' ? 22 : 9;
-    f.style.opacity = 0; floatText(`🚪 ${I.name}`);
+    state.interior = 'gen';
+    if (fromRoof && I.roofAt) { player.pos.set(I.roofAt[0], I.roofAt[2], I.roofAt[1]); player.yaw = 0; }
+    else { player.pos.set(I.spawn[0], 0, I.spawn[1]); player.yaw = I.spawn[2]; }
+    player.vy = 0; player.onGround = true; camYaw = player.yaw + Math.PI; camDist = 3;
+    genSetFloor(I);
+    f.style.opacity = 0; floatText(`🚪 ${I.name}${I.nF > 1 ? ' · ' + floorLabel(I, I.curF) : ''}`);
   }, 300);
 }
+function elevTo(I, k) {
+  const f = $('fade'); f.style.opacity = 1; AudioSys.tone(660, 0.12, 0.15, 'sine');
+  setTimeout(() => {
+    if (INTERIORS.gen !== I || state.interior !== 'gen') { f.style.opacity = 0; return; }
+    player.pos.set(I.elev[0], k * I.FH, I.elev[1]); player.vy = 0; player.onGround = true; player.yaw = 0; camYaw = Math.PI;
+    genSetFloor(I); f.style.opacity = 0; AudioSys.tone(990, 0.18, 0.15, 'sine'); floatText(`🛗 ${floorLabel(I, k)} · ${I.floorNames[k]}`);
+  }, 450);
+}
+function goRoof(door) {
+  const R = door.roof; if (!R) return;
+  const f = $('fade'); f.style.opacity = 1; state.crack = null;
+  setTimeout(() => {
+    state.interior = null; interiorLight.intensity = 0; disposeGen();
+    player.pos.set(R.sx, R.y, R.sz); player.vy = 0; player.onGround = true; player.yaw = R.yaw; camYaw = R.yaw + Math.PI; camDist = 4.6;
+    f.style.opacity = 0; floatText(`🏙 Çatı · ${Math.round(R.y)} m`);
+  }, 350);
+}
+function elevItems() {
+  const I = INTERIORS.gen; if (!I || !I.elev) return [];
+  const it = [{ sec: `${I.name} · ${I.nF} kat` }];
+  if (I.door.roof) it.push({ name: '🏙 Çatı', desc: `Açık hava · ${Math.round(I.door.roof.y)} m · helikopter iniş alanı`, price: 0, btn: 'ÇIK', close: true, buy: () => goRoof(I.door) });
+  for (let k = I.nF - 1; k >= 0; k--) it.push({ name: floorLabel(I, k), desc: I.floorNames[k], price: 0, btn: 'GİT', dis: k === I.curF ? 'BURADASIN' : null, close: true, buy: () => elevTo(I, k) });
+  return it;
+}
+// ---------- interaction points inside buildings
+const cdKey = (I, s) => `${I.door.id}:${s.kind}:${s.f}`;
+const cdTag = (I, s, label) => { const l = cdLeft(cdKey(I, s)); return l > 0 ? `${label.split(' ')[0]} BOŞ · ${Math.ceil(l)} sn sonra` : label; };
+function genReward(I, s, cd, range, heat, chance, label) {
+  const key = cdKey(I, s); if (cdLeft(key) > 0) { floatText('⏳ Burası yakın zamanda boşaltıldı'); AudioSys.fail(); return false; }
+  GEN_CD.set(key, state.now + cd);
+  const amt = Math.round(MR(range[0], range[1]) / 10) * 10; earn(amt, label); AudioSys.cash(); haptic(30); floatText(`${label} +$${amt}`);
+  if (heat && Math.random() < chance) { addHeat(heat); setTimeout(() => floatText('🚨 Polis haberdar edildi!'), 700); }
+  return true;
+}
+const SPOTS = {
+  bed: { label: () => '🛏 DİNLEN', fn: () => { state.health = 100; floatText('😴 Dinlendin · can doldu'); } },
+  elev: { label: () => '🛗 ASANSÖR', fn: () => openShop('elev') },
+  roof: { label: s => s.ladder ? '🪜 ÇATIYA ÇIK' : '🏙 ÇATIYA ÇIK', fn: (s, I) => goRoof(I.door) },
+  rob: { label: (s, I) => cdTag(I, s, '💰 KASAYI SOY'), fn: (s, I) => { if (genReward(I, s, 480, [250, 900], 2, 1, '💰 Kasa soygunu')) S().robberies++; } },
+  hack: { label: (s, I) => cdTag(I, s, '💻 BİLGİSAYARI HACKLE'), fn: (s, I) => genReward(I, s, 300, [300, 900], 1, 0.35, '💻 Veri satışı') },
+  loot: { label: (s, I) => cdTag(I, s, '🧳 ÇEKMECELERİ KARIŞTIR'), fn: (s, I) => genReward(I, s, 240, [40, 260], 1, 0.3, '🧳 Ev hırsızlığı') },
+  stock: { label: (s, I) => cdTag(I, s, '📦 STOKLARI KARIŞTIR'), fn: (s, I) => { if (genReward(I, s, 300, [60, 220], 0, 0, '📦 Stok satışı') && state.ownedW[1]) { state.ammo[1] += 30; floatText('🔫 +30 mermi bulundu'); } } },
+  safe: { label: (s, I) => cdTag(I, s, '🔐 KASAYI KIR · 4 sn bekle'), fn: (s, I) => { if (cdLeft(cdKey(I, s)) > 0) { floatText('⏳ Kasa boş'); AudioSys.fail(); return; } state.crack = { s, t: 0, tick: -1 }; } },
+  scout: { label: (s, I) => cdTag(I, s, '🔭 GÖZETLE'), fn: (s, I) => { const key = cdKey(I, s); if (cdLeft(key) > 0) return; GEN_CD.set(key, state.now + 60); const tw = I.type === 'tower'; state.scoutT = tw ? 90 : 45; state.scoutR = tw ? 3000 : 450; showBig('🔭 GÖZETLEME', '#7dd8ff', 2.5, tw ? 'Tüm şehir radarda · gizli paketler haritada' : 'Yakındaki gizli paketler haritada işaretlendi'); AudioSys.pickup(); } },
+};
 function updateDoors() {
   if (state.interior || state.inCar || state.dead || state.interact || state.passenger) return;
-  const b = blockAt(player.pos.x, player.pos.z); if (!b || !b.doors) return;
-  for (const d of b.doors) if (Math.hypot(player.pos.x - d.x, player.pos.z - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${d.type === 'shop' ? 'Dükkan' : GEN_NAMES[d.type][0]}`, fn: () => enterGeneric(d) }; return; }
+  const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
+  const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
+  for (const d of b.doors) {
+    if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
+    if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
+  }
 }
 function updateGenInterior(dt) {
   const I = INTERIORS.gen; if (!I) return;
-  for (const h of I.npcs) { animHuman(h, 0, dt, false); h.g.rotation.y = Math.atan2(player.pos.x - h.g.position.x, player.pos.z - h.g.position.z); }
-  if (I.tv) I.tv.material.color.setHSL(0.58 + Math.sin(state.now * 0.7) * 0.05, 0.6, 0.35 + Math.sin(state.now * 3.1) * 0.08);
-  if (I.bed && Math.hypot(player.pos.x - I.bed[0], player.pos.z - I.bed[1]) < 1.8 && !state.interact) state.interact = { label: '🛏 DİNLEN', fn: () => { state.health = 100; floatText('😴 Dinlendin · can doldu'); } };
+  genSetFloor(I);
+  for (const h of I.npcs) if (h.f === I.curF) { animHuman(h, 0, dt, false); h.g.rotation.y = Math.atan2(player.pos.x - h.g.position.x, player.pos.z - h.g.position.z); }
+  GM.tv.color.setHSL(0.58 + Math.sin(state.now * 0.7) * 0.05, 0.6, 0.35 + Math.sin(state.now * 3.1) * 0.08);
+  const day = 1 - nightF; GM.win.color.setRGB(lerp(0.05, 0.62, day), lerp(0.07, 0.78, day), lerp(0.14, 0.92, day));
+  if (state.crack) {
+    const c = state.crack;
+    if (c.s.f !== I.curF || Math.hypot(player.pos.x - c.s.x, player.pos.z - c.s.z) > 1.8) { state.crack = null; floatText('🔐 Kasa kırma yarıda kaldı'); }
+    else {
+      c.t += dt; state.interact = { label: `🔐 KASA AÇILIYOR… %${Math.floor(Math.min(1, c.t / 4) * 100)}`, fn: null };
+      const tk = Math.floor(c.t * 4); if (tk !== c.tick) { c.tick = tk; AudioSys.tone(1400 + (tk % 3) * 200, 0.04, 0.08, 'square'); }
+      if (c.t >= 4) { state.crack = null; if (genReward(I, c.s, 900, [2500, 6000], 3, 1, '🔐 Kasa soygunu')) { S().robberies++; showBig('KASA AÇILDI!', '#ffd23a', 2.5, '🚨 Alarm çaldı — polis yolda'); } }
+      return;
+    }
+  }
+  if (state.interact) return;
+  for (const s of I.spots) if (s.f === I.curF && Math.abs(player.pos.y - s.f * (I.FH || 0)) < 1.6 && Math.hypot(player.pos.x - s.x, player.pos.z - s.z) < 1.3) { const d = SPOTS[s.kind]; state.interact = { label: d.label(s, I), fn: d.fn ? () => d.fn(s, I) : null }; return; }
+}
+// stair huts with a door on flat roofs → walk down into the top floor
+function buildRoofAccess() {
+  const parts = [], doors = [], q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+  for (const d of DOORS) {
+    const o = d.bld; if (!o || o.pitch || o.arch || d.type === 'home' || d.noRoof) continue;
+    const span = d.nz ? o.z1 - o.z0 : o.x1 - o.x0, along = d.nz ? o.x1 - o.x0 : o.z1 - o.z0;
+    if (span < 11 || along < 7) continue;
+    if (HELIPADS.some(p => p[1] > 1 && p[0] > o.x0 - 4 && p[0] < o.x1 + 4 && p[2] > o.z0 - 4 && p[2] < o.z1 + 4)) continue;
+    const ex = d.nx > 0 ? o.x1 : d.nx < 0 ? o.x0 : clamp(d.fx, o.x0 + 2.5, o.x1 - 2.5), ez = d.nz > 0 ? o.z1 : d.nz < 0 ? o.z0 : clamp(d.fz, o.z0 + 2.5, o.z1 - 2.5);
+    const at = k => [ex - d.nx * k, ez - d.nz * k], [hx, hz] = at(2.9), [ix, iz] = at(5.0), [sx, sz] = at(5.6), y = o.h;
+    if (roofHeight(sx, sz) > y + 0.1 || roofHeight(ix, iz) > y + 0.1 || roofHeight(hx, hz) > y + 0.1) continue;
+    d.roof = { y, ix, iz, sx, sz, yaw: Math.atan2(-d.nx, -d.nz) };
+    const hw = d.nz ? 2.8 : 2.4, hd = d.nz ? 2.4 : 2.8;
+    (d.blk ? d.blk.bld : EXTRA_BLD).push({ x0: hx - hw / 2, x1: hx + hw / 2, z0: hz - hd / 2, z1: hz + hd / 2, h: y + 2.7, hut: true });
+    parts.push(new THREE.BoxGeometry(hw, 2.7, hd).translate(hx, y + 1.35, hz), new THREE.BoxGeometry(hw + 0.3, 0.15, hd + 0.3).translate(hx, y + 2.77, hz));
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(hx - d.nx * 1.22, y, hz - d.nz * 1.22), q.setFromAxisAngle(up, Math.atan2(-d.nx, -d.nz)), one);
+    doors.push(new THREE.BoxGeometry(1.1, 2.2, 0.06).translate(0, 1.1, 0).applyMatrix4(m), new THREE.BoxGeometry(0.4, 0.06, 0.1).translate(0, 2.4, 0.03).applyMatrix4(m));
+  }
+  if (!parts.length) return;
+  const hut = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({ color: 0xb4b0a8, roughness: 0.9 })); hut.castShadow = QUALITY !== 'low'; hut.receiveShadow = true; scene.add(hut);
+  const dm = new THREE.Mesh(merge(doors), new THREE.MeshStandardMaterial({ color: 0x4a3426, roughness: 0.7 })); scene.add(dm);
 }
 
 // ============================================================ RADIO (procedural synthwave)
@@ -4865,6 +5337,7 @@ function loop(now) {
   updateStage2(dt);
   updateStage3(dt);
   updateDoors();
+  updateAirport(dt);
   updateNetWorld(dt);
   updateCrosshair(dt);
   cullChunks(dt);
