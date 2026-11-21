@@ -31,6 +31,7 @@
   <div class="startInner">
     <div class="logo">VISTA BAY</div>
     <div class="tag">AÇIK DÜNYA · SAHİL ŞEHRİ · SUÇ</div>
+    <div id="authBox"></div>
     <div id="modeBtns"><button id="playBtn">TEK OYUNCULU</button><button id="onlineBtn">🌐 ONLINE</button></div>
     <div id="lobby">
       <div class="lbRow"><label>Takma ad</label><input id="mpName" maxlength="14" autocomplete="off" spellcheck="false"></div>
@@ -52,10 +53,11 @@
     </div>
     <div class="help">
       <b>Mobil:</b> Sol taraf = hareket joystick · Sağ taraf kaydır = kamera · Butonlar = ateş / silah değiştir / zıpla / araca-motora bin / 📻 radyo<br>
-      <b>PC:</b> WASD hareket · Fare kamera · Sol tık ateş · F araca bin/in · Space zıpla/el freni · Shift koş · 1-5 / X / tekerlek silah · E mağaza/garaj · P/Tab telefon · R ses · L skor tablosu · Helikopter: Space yüksel / C alçal · Uçak: Space/C gaz, W-S burun, A-D yatış, G iniş takımı
+      <b>PC:</b> WASD hareket · Fare kamera · Sol tık ateş · F araca bin/in · Space zıpla/el freni · Shift koş · 1-5 / X / tekerlek silah · E mağaza/garaj · P/Tab telefon · R ses · L skor tablosu · F10 admin paneli · Helikopter: Space yüksel / C alçal · Uçak: Space/C gaz, W-S burun, A-D yatış, G iniş takımı
     </div>
     <div id="rotateHint">📱 Telefonu yatay çevir</div>
   </div>
+  <div id="authPanel"></div>
   <div id="loading">Şehir inşa ediliyor...</div>
 </div>
 
@@ -127,8 +129,11 @@
 <div id="invite"></div>
 <div id="flightCine"></div>
 <div id="mpModal"></div>
+<div id="admBtn" title="Admin paneli (F10)">🛡</div>
+<div id="admPanel"></div>
 <div id="modeHud"></div>
 
+<script src="api-config.js"></script>
 <script type="module" src="main.js"></script>
 </body>
 </html>

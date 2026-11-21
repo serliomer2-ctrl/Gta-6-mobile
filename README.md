@@ -87,6 +87,30 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 
 Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
 
+## 🔐 Hesaplar & Admin paneli
+
+- **Giriş / Kayıt / Misafir**: başlangıç ekranında (ve ONLINE'a basınca) kullanıcı adı + şifre ile giriş yap ya da kayıt ol. Paran, silahların, araçların, mülklerin, kıyafetlerin, belgelerin hesabına kaydedilir ve başka cihazdan girince geri gelir (ilk girişte o cihazdaki ilerleme hesaba taşınır). Misafirler eskisi gibi sadece cihazda kayıt tutar
+- **Admin** (`admin` hesabı): 🛡 butonu ya da **F10** → Admin Paneli
+  - Tanrı modu, sınırsız para, uçma / duvardan geçme (WASD + Space/C, Shift hızlı), tüm silahlar, süper araç, aranmayı sil
+  - Odadaki oyuncular: yanına git, yanına çek, iyileştir, para / silah / araç ver, odadan at, yasakla
+  - Sunucudaki tüm hesaplar: para ekle, yasakla / yasağı kaldır (yasaklı hesap giriş yapamaz, odalara giremez)
+  - Hava durumu, saat (03:00 dahil) ve etkinlikler: sokak yarışı, kovalamaca, zırhlı kamyon, Deathmatch, Altın Çanta, 🌙 gece etkinliği
+- **Güvenlik**: şifreler sunucuda scrypt ile tuzlanıp saklanır; admin rolü yalnızca sunucuda tutulur. Online'da her oyuncu sunucudan o odaya özel, 15 dk geçerli imzalı bir bilet alır; oda sahibi bu bileti sunucuya doğrulatmadan hesabı tanımaz ve hiçbir admin komutunu uygulamaz. Oyuncular admin etkilerini sadece oda sahibinden kabul eder. Misafirler "admin" adını kullanamaz
+
+### Hesap sunucusunu çalıştırma
+
+GitHub Pages sadece statik dosya yayınlar; hesaplar için `server/server.js` bir Node.js (18+) sunucusunda çalışmalı. Ek paket gerekmez:
+
+```bash
+ADMIN_PASSWORD='güçlü-bir-şifre' TICKET_SECRET='uzun-rastgele-bir-metin' node server/server.js
+```
+
+- Sunucu oyunu da yayınlar: `http://sunucu-adresin:8787` açınca oyun + hesaplar birlikte çalışır
+- Oyunu GitHub Pages'ten yayınlamaya devam edeceksen `api-config.js` içine sunucunun adresini yaz: `window.VB_API = 'https://...';` ve sunucuda `ALLOWED_ORIGINS=https://vista.serli.net` ayarla
+- ⚠ `ADMIN_PASSWORD` verilmezse admin şifresi `admin` olur — herkese açık bir sunucuda mutlaka değiştir
+- Kayıtlar `server/data/db.json` dosyasında tutulur (`DATA_DIR` ile değiştirilebilir, repoya eklenmez)
+- Sunucuya ulaşılamazsa oyun otomatik olarak misafir modunda çalışır
+
 ## Kontroller
 | | Mobil | PC |
 |---|---|---|

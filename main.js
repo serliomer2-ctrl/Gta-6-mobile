@@ -2562,7 +2562,7 @@ function playerDown(title, sub) {
   showBig(title, '#ff3b3b', 3.5, sub);
   $('fade').style.opacity = 0.6;
 }
-function busted() { if (state.dead) return; const loss = Math.min(state.money, 250); state.money -= loss; playerDown('YAKALANDIN', `Rüşvet: -$${loss}`); }
+function busted() { if (state.dead || state.god) return; const loss = Math.min(state.money, 250); state.money -= loss; playerDown('YAKALANDIN', `Rüşvet: -$${loss}`); }
 function respawn() {
   if (state.cabin) { disposeAirliner(state.cabin.g); leaveCabin(); }
   state.sky = null; if (chuteMesh) chuteMesh.visible = false;
@@ -2911,6 +2911,7 @@ function saveGame() {
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
       props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute
     }));
+    accountSaved();
   } catch (e) { }
 }
 function loadGame() {
@@ -5078,6 +5079,7 @@ function hostRecv(id, d) {
     const players = [{ id: 'h', info: myInfo() }]; for (const [rid, rr] of MP.remotes) if (rid !== id) players.push({ id: rid, info: rr.info });
     MP.conns.get(id).send({ t: 'welcome', id, players, time: state.time, weather: state.weather, code: MP.code, ...worldManifest() });
     mpBroadcast({ t: 'join', id, info: r.info }, id);
+    hostVerify(id, d.tk, d.info);
     mpFeed(`🟢 ${r.info.name} katıldı`); AudioSys.tone(880, 0.12, 0.12, 'sine');
     return;
   }
@@ -5202,6 +5204,7 @@ function handleNet3(d) {
   return false;
 }
 function applyPacket(d) {
+  if (handleAccount(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
   if (handleStreet(d)) return;
@@ -5255,7 +5258,7 @@ function vehVisual(kind, color) {
   c.remote = true; return c;
 }
 function drawTag(r) {
-  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = crewTag(r.info.crew) + r.info.name;
+  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + crewTag(r.info.crew) + r.info.name;
   const key = `${nm}|${r.hp}|${r.wn}|${r.bounty || 0}|${r.bubbleT > 0 ? r.bubble : ''}|${bagC}|${sameCrew(r)}`;
   if (key === r.tagKey) return; r.tagKey = key;
   const cv = r.tag.material.map.image; cv.width = 256; cv.height = 128; const g = cv.getContext('2d');
@@ -5387,6 +5390,7 @@ function initOnlineUI() {
 }
 // ---------------- lobby (start screen)
 function initLobby() {
+  initAccountUI();
   loadCrew();
   try { Object.assign(MP, JSON.parse(localStorage.getItem('vistabay_mp') || '{}')); } catch (e) { }
   if (!MP.name) MP.name = 'Oyuncu' + Math.floor(10 + Math.random() * 90);
@@ -5395,12 +5399,13 @@ function initLobby() {
   $('mpCostumes').innerHTML = MP_COSTUMES.map((c, i) => `<button data-k="${i}" class="${i === MP.costume ? 'on' : ''}">${c.name}</button>`).join('');
   $('mpColors').onclick = e => { const b = e.target.closest('button'); if (!b) return; MP.color = b.dataset.c; [...$('mpColors').children].forEach(x => x.classList.toggle('on', x === b)); };
   $('mpCostumes').onclick = e => { const b = e.target.closest('button'); if (!b) return; MP.costume = +b.dataset.k; [...$('mpCostumes').children].forEach(x => x.classList.toggle('on', x === b)); };
-  $('onlineBtn').onclick = () => { $('lobby').style.display = 'block'; $('modeBtns').style.display = 'none'; };
+  $('onlineBtn').onclick = () => { const show = () => { $('lobby').style.display = 'block'; $('modeBtns').style.display = 'none'; }; if (ACC.ok && !loggedIn()) openAuth(show); else show(); };
   $('mpBack').onclick = () => { $('lobby').style.display = 'none'; $('modeBtns').style.display = 'flex'; };
   const status = (t, err) => { const s = $('mpStatus'); s.textContent = t; s.style.color = err ? '#ff8a8a' : '#fff'; };
   const busy = b => document.querySelectorAll('#lobby button').forEach(x => x.disabled = b);
   const go = async (fn) => {
-    MP.name = ($('mpName').value || '').trim().slice(0, 14) || MP.name;
+    MP.name = loggedIn() ? ACC.user : ($('mpName').value || '').trim().slice(0, 14) || MP.name;
+    if (!loggedIn() && /adm[iı]n/i.test(MP.name)) MP.name = 'Misafir' + Math.floor(10 + Math.random() * 90);
     try { localStorage.setItem('vistabay_mp', JSON.stringify({ name: MP.name, color: MP.color, costume: MP.costume })); } catch (e) { }
     busy(true);
     try { status('Ağ kütüphanesi yükleniyor…'); await loadPeerJS(); await fn(); startGame(true); }
@@ -5413,7 +5418,7 @@ function initLobby() {
 function mpAfterStart() {
   const cos = MP_COSTUMES[MP.costume] || MP_COSTUMES[0];
   Object.assign(state.look, { shirt: MP.color, cap: cos.cap, glasses: cos.glasses, shorts: cos.shorts }); applyLook(); saveGame();
-  if (MP.hostConn && MP.hostConn.open) MP.hostConn.send({ t: 'hello', info: myInfo() });
+  if (MP.hostConn && MP.hostConn.open) sendHello();
   updateOnlineHUD();
   if (MP.host) showBig(MP.pub ? '🌐 GENEL ODA AÇILDI' : `🌐 ODA KODU: ${MP.code}`, '#7dff9a', 5, MP.pub ? 'Hızlı Katıl ile gelen oyuncular buraya düşer' : 'Arkadaşların bu kodla katılabilir · 👥 düğmesinden kopyala');
 }
@@ -6412,6 +6417,231 @@ function applyModesManifest(d) {
 }
 function endModesLocal() { MODES.dm = null; MODES.ctf = null; if (MODES.grp) MODES.grp.visible = false; if (MODES.bag) MODES.bag.visible = false; $('modeHud').style.display = 'none'; updateModes.t = ''; }
 
+
+// ============================================================ ACCOUNTS (cloud save) + ADMIN PANEL
+// The account server (server/server.js) hashes passwords, stores saves, holds roles and bans and signs short
+// "room tickets". In multiplayer the room host verifies every ticket with the server before trusting a
+// player's account name or executing an admin command; clients only accept admin effects relayed by the host.
+const ACC = { token: null, user: null, role: 'guest', ok: false, dirty: false, saveT: 0, verified: new Map(), sessionBans: new Set(), ticket: null };
+const apiBase = () => { const q = new URLSearchParams(location.search).get('api'); return String(q ?? window.VB_API ?? '').replace(/\/$/, ''); };
+async function api(p, b) {
+  const r = await fetch(apiBase() + '/api' + p, { method: b ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...(ACC.token ? { Authorization: 'Bearer ' + ACC.token } : {}) }, body: b ? JSON.stringify(b) : undefined });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Sunucu hatası (' + r.status + ')'); return j;
+}
+const isAdmin = () => ACC.role === 'admin';
+const loggedIn = () => !!ACC.user;
+async function initAccount() {
+  try { const r = await Promise.race([api('/health'), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 4000))]); ACC.ok = !!r.ok; } catch (e) { ACC.ok = false; }
+  const t = (() => { try { return localStorage.getItem('vistabay_token'); } catch (e) { return null; } })();
+  if (ACC.ok && t) { ACC.token = t; try { applyProfile(await api('/me')); } catch (e) { ACC.token = null; try { localStorage.removeItem('vistabay_token'); } catch (x) { } } }
+  renderAuthBox(); document.body.classList.toggle('admin', isAdmin());
+}
+function applyProfile(p) {
+  ACC.user = p.user; ACC.role = p.role;
+  try {
+    if (p.data) localStorage.setItem(SAVE_KEY, JSON.stringify(p.data));       // the account's progress replaces this device's
+    else { ACC.dirty = true; flushSave(); }                                    // first login: the device's progress moves into the account
+  } catch (e) { }
+  MP.name = p.user; $('mpName').value = p.user; $('mpName').disabled = true;
+}
+function renderAuthBox() {
+  const b = $('authBox');
+  if (!ACC.ok) { b.innerHTML = `<span>☁ Hesap sunucusuna ulaşılamadı · misafir olarak oynanıyor</span>`; return; }
+  b.innerHTML = loggedIn()
+    ? `<span>👤 <b>${esc(ACC.user)}</b>${isAdmin() ? ' <i class="admTag">ADMIN</i>' : ''} · ilerlemen hesabına kaydediliyor</span><button data-auth="logout">Çıkış</button>`
+    : `<span>👤 Misafir · ilerleme sadece bu cihazda</span><button data-auth="open">Giriş / Kayıt</button>`;
+}
+function openAuth(then) {
+  ACC.after = then || null;
+  const p = $('authPanel'); p.style.display = 'flex';
+  p.innerHTML = `<div class="authBox2"><b>👤 Vista Bay Hesabı</b><small>Paran, araçların, mülklerin ve kıyafetlerin hesabına kaydedilir</small>
+    <input id="authUser" maxlength="14" placeholder="Kullanıcı adı" autocomplete="username" spellcheck="false">
+    <input id="authPass" type="password" maxlength="64" placeholder="Şifre" autocomplete="current-password">
+    <div class="authBtns"><button data-auth="login">GİRİŞ YAP</button><button data-auth="register" class="alt">KAYIT OL</button></div>
+    <button data-auth="guest" class="ghost">Misafir olarak devam et</button><div id="authMsg"></div></div>`;
+  if (!ACC.ok) $('authMsg').textContent = '☁ Hesap sunucusuna ulaşılamıyor · sadece misafir girişi';
+  setTimeout(() => { try { $('authUser').focus(); } catch (e) { } }, 50);
+}
+function closeAuth(goOn) { $('authPanel').style.display = 'none'; const f = ACC.after; ACC.after = null; if (goOn && f) f(); }
+async function authAction(kind) {
+  const msg = t => { const m = $('authMsg'); if (m) m.textContent = t; };
+  if (kind === 'guest') { closeAuth(true); return; }
+  if (kind === 'open') { openAuth(); return; }
+  if (kind === 'logout') { try { await api('/logout', {}); } catch (e) { } ACC.token = ACC.user = null; ACC.role = 'guest'; try { localStorage.removeItem('vistabay_token'); } catch (e) { } $('mpName').disabled = false; renderAuthBox(); document.body.classList.remove('admin'); return; }
+  const user = ($('authUser').value || '').trim(), pass = $('authPass').value || '';
+  if (!user || !pass) { msg('Kullanıcı adı ve şifre gir'); return; }
+  msg(kind === 'login' ? 'Giriş yapılıyor…' : 'Hesap oluşturuluyor…');
+  try {
+    const p = await api('/' + kind, { user, pass });
+    ACC.token = p.token; try { localStorage.setItem('vistabay_token', p.token); } catch (e) { }
+    applyProfile(p); renderAuthBox(); document.body.classList.toggle('admin', isAdmin()); closeAuth(true);
+  } catch (e) { msg('❌ ' + e.message); }
+}
+// ---------------- cloud save
+function accountSaved() { if (loggedIn()) ACC.dirty = true; }
+async function flushSave(keepalive) {
+  if (!loggedIn() || !ACC.dirty || !ACC.token) return;
+  let data = null; try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { }
+  if (!data) return;
+  ACC.dirty = false;
+  try { await fetch(apiBase() + '/api/save', { method: 'POST', keepalive: !!keepalive, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ACC.token }, body: JSON.stringify({ data }) }); } catch (e) { ACC.dirty = true; }
+}
+// ---------------- room tickets (proof of account for the room host)
+async function getTicket(aud) { if (!loggedIn()) return null; try { return (await api('/ticket', { aud: String(aud) })).ticket; } catch (e) { return null; } }
+async function sendHello() {
+  const tk = await getTicket(MP.code);
+  if (MP.hostConn && MP.hostConn.open) MP.hostConn.send({ t: 'hello', info: myInfo(), tk });
+}
+async function hostVerify(id, tk, info) {
+  const name = String(info && info.name || '').toLowerCase();
+  if (ACC.sessionBans.has('n:' + name)) { kickPlayer(id, 'Bu odadan yasaklandın'); return; }
+  if (!tk) { ACC.verified.set(id, { user: null, role: 'guest' }); return; }
+  try {
+    const v = await api('/verify', { ticket: tk, aud: String(MP.code) });
+    if (v.banned || ACC.sessionBans.has('u:' + String(v.user).toLowerCase())) { kickPlayer(id, 'Hesabın yasaklı'); return; }
+    if (!v.ok) { ACC.verified.set(id, { user: null, role: 'guest' }); return; }
+    ACC.verified.set(id, { user: v.user, role: v.role });
+    const msg = { t: 'acct', aid: id, user: v.user, role: v.role }; onAcct(msg); mpSend(msg);
+    if (loggedIn()) mpSend({ t: 'acct', to: id, aid: 'h', user: ACC.user, role: ACC.role });
+    for (const [oid, a] of ACC.verified) if (oid !== id && a.user) mpSend({ t: 'acct', to: id, aid: oid, user: a.user, role: a.role });
+  } catch (e) { ACC.verified.set(id, { user: null, role: 'guest' }); }
+}
+function onAcct(d) { const r = MP.remotes.get(d.aid); if (r) { r.acct = { user: d.user, role: d.role }; r.tagKey = ''; } }
+function kickPlayer(id, reason) {
+  mpSend({ t: 'admx', to: id, cmd: 'kick', reason });
+  setTimeout(() => { const c = MP.conns.get(id); try { c && c.close(); } catch (e) { } dropPlayer(id); }, 400);
+}
+// ---------------- admin commands
+function admCmd(cmd, target, args = {}) {
+  if (!isAdmin()) return;
+  if (!MP.on || MP.host) { hostAdmin({ id: 'h', cmd, target, ...args }); return; }
+  mpSend({ t: 'adm', to: 'h', cmd, target, ...args });
+}
+function applyAdmEffect(d) {
+  switch (d.cmd) {
+    case 'kick': showBig('🚫 ODADAN ATILDIN', '#ff5050', 4, d.reason || 'Admin tarafından'); mpLeave(true); break;
+    case 'tp': if (state.inCar) exitCar(true); player.pos.set(d.x, d.y, d.z); player.vy = 0; floatText('🛡 Admin seni yanına çekti'); break;
+    case 'money': earn(d.amt, '🛡 Admin hediyesi'); showBig('💵 ADMİN HEDİYESİ', '#7dff9a', 2.5, `+$${d.amt.toLocaleString('tr-TR')}`); break;
+    case 'weapons': for (let i = 1; i < WEAPONS.length; i++) { state.ownedW[i] = true; state.ammo[i] += [0, 300, 600, 60, 20][i] || 100; } showBig('🔫 SİLAHLAR', '#7dff9a', 2.5, 'Admin tüm silahları verdi'); break;
+    case 'veh': { const a = player.yaw, x = player.pos.x + Math.sin(a) * 6, z = player.pos.z + Math.cos(a) * 6, r = collide(x, z, 1.5, 0.5); const c = createCar(d.kind || 'super', '#d4af37', r.x, r.z, a, 'free'); c.owned = true; c.up.armor = 1; floatText('🚗 Admin sana araç verdi'); saveGame(); break; }
+    case 'heal': state.health = 100; state.armor = 100; state.heat = 0; floatText('❤ Admin seni iyileştirdi'); break;
+  }
+}
+function hostAdmin(d) {
+  if (MP.on && d.id !== 'h') { const v = ACC.verified.get(d.id); if (!v || v.role !== 'admin') { mpSend({ t: 'admx', to: d.id, cmd: 'denied' }); return; } }
+  if (!MP.on && !isAdmin()) return;
+  const t = d.target, toTarget = msg => { if (t === 'h' || !MP.on) applyAdmEffect(msg); else mpSend({ ...msg, t: 'admx', to: t }); };
+  switch (d.cmd) {
+    case 'kick': if (t && t !== 'h') kickPlayer(t, 'Admin seni odadan attı'); break;
+    case 'ban': if (t && t !== 'h') { const r = MP.remotes.get(t), a = ACC.verified.get(t); if (a && a.user) ACC.sessionBans.add('u:' + a.user.toLowerCase()); if (r) ACC.sessionBans.add('n:' + r.info.name.toLowerCase()); kickPlayer(t, 'Admin seni yasakladı'); } break;
+    case 'tp': case 'money': case 'weapons': case 'veh': case 'heal': toTarget({ cmd: d.cmd, x: d.x, y: d.y, z: d.z, amt: Math.max(0, Math.min(1e8, Math.round(+d.amt || 0))), kind: CAR_SPECS[d.kind] && !CAR_SPECS[d.kind].plane ? d.kind : 'super' }); break;
+    case 'weather': if (WEATHERS[d.w]) { setWeather(d.w, true); if (MP.on) mpBroadcast({ t: 'world', time: state.time, weather: state.weather }); } break;
+    case 'time': state.time = clamp(+d.h, 0, 23.99); if (MP.on) mpBroadcast({ t: 'world', time: state.time, weather: state.weather }); break;
+    case 'event':
+      if (d.k === 'race' || d.k === 'chase') { if (!SEV.cur) startStreetEvent(d.k); }
+      else if (d.k === 'truck') state.eventT = 0;
+      else if (d.k === 'dm' || d.k === 'ctf') { if (MP.on) hostStartMode(d.k, d.x ?? player.pos.x, d.z ?? player.pos.z); }
+      else if (d.k === 'night') {
+        state.time = 23.2; if (MP.on) mpBroadcast({ t: 'world', time: state.time, weather: state.weather });
+        if (!SEV.cur) startStreetEvent('race'); state.eventT = 0;
+        const msg = { t: 'admx', cmd: 'night' }; showBig('🌙 GECE ETKİNLİĞİ', '#a060ff', 4, 'Sokak yarışı + zırhlı kamyon · iyi eğlenceler!'); if (MP.on) mpSend(msg);
+      }
+      break;
+  }
+}
+function handleAccount(d) {
+  switch (d.t) {
+    case 'acct': if (!MP.host || d.id === 'h') onAcct(d); return true;
+    case 'adm': if (MP.host) hostAdmin(d); return true;
+    case 'admx':
+      if (d.id !== 'h') return true;                 // admin effects are only accepted from the room host
+      if (d.cmd === 'denied') floatText('🛡 Admin yetkin sunucuda doğrulanamadı');
+      else if (d.cmd === 'night') showBig('🌙 GECE ETKİNLİĞİ', '#a060ff', 4, 'Sokak yarışı + zırhlı kamyon · iyi eğlenceler!');
+      else applyAdmEffect(d);
+      return true;
+  }
+  return false;
+}
+// ---------------- admin powers: god mode, unlimited money, fly / noclip
+function updateAdmin(dt) {
+  ACC.saveT += dt; if (ACC.saveT > 20) { ACC.saveT = 0; flushSave(); }
+  if (!isAdmin()) return;
+  if (state.god) { state.health = 100; state.armor = 100; if (state.dead) { state.dead = false; player.human.g.rotation.x = 0; $('fade').style.opacity = 0; } }
+  if (state.richMode && state.money < 99999999) { state.money = 99999999; }
+}
+function updateFly(dt) {
+  const sp = (keys.ShiftLeft || keys.ShiftRight ? 70 : 22) * dt;
+  const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
+  const up = (input.jump || keys.TUp ? 1 : 0) - (keys.KeyC || keys.ControlLeft || keys.TDown ? 1 : 0);
+  player.pos.x += (fx * input.my + rx * input.mx) * sp; player.pos.z += (fz * input.my + rz * input.mx) * sp; player.pos.y = Math.max(-1, player.pos.y + up * sp);
+  if (Math.hypot(input.mx, input.my) > 0.1) player.yaw = Math.atan2(fx * input.my + rx * input.mx, fz * input.my + rz * input.mx);
+  player.vy = 0; player.onGround = false;
+  const h = player.human; h.g.visible = true; h.g.position.copy(player.pos); h.g.rotation.set(Math.hypot(input.mx, input.my) > 0.1 ? -1.1 : 0, player.yaw, 0);
+  h.armR.rotation.x = -2.9; h.armL.rotation.x = 0.2; h.legL.rotation.x = h.legR.rotation.x = 0;
+}
+function toggleFly() { state.fly = !state.fly; document.body.classList.toggle('flying', state.fly); if (!state.fly) { player.human.g.rotation.x = 0; player.onGround = false; } floatText(state.fly ? '🕊 Uçma modu · WASD + Space/C · Shift hızlı' : '🕊 Uçma kapalı'); }
+// ---------------- admin panel UI
+const ADM_TIMES = [[6, '06:00'], [12, '12:00'], [18, '18:00'], [21, '21:00'], [0, '00:00'], [3, '03:00']];
+async function renderAdmin() {
+  const p = $('admPanel'), tg = (k, l) => `<button data-adm="tg:${k}" class="${state[k] ? 'on' : ''}">${l}</button>`;
+  let players = '';
+  if (MP.on) {
+    players = [...MP.remotes.values()].map(r => { const a = r.acct || ACC.verified.get(r.id); return `<div class="admRow"><span><i style="background:${r.info.color}"></i>${esc(r.info.name)} <small>${a && a.user ? (a.role === 'admin' ? '🛡 admin' : '👤 hesap') : 'misafir'} · ${Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z))} m</small></span>
+      <button data-adm="goto:${esc(r.id)}">Git</button><button data-adm="bring:${esc(r.id)}">Çek</button><button data-adm="heal:${esc(r.id)}">❤</button><button data-adm="money:${esc(r.id)}">💵</button><button data-adm="weapons:${esc(r.id)}">🔫</button><button data-adm="veh:${esc(r.id)}">🚗</button><button data-adm="kick:${esc(r.id)}" class="red">At</button><button data-adm="ban:${esc(r.id)}" class="red">Yasakla</button></div>`; }).join('') || '<div class="admRow"><span>Odada başka oyuncu yok</span></div>';
+  } else players = '<div class="admRow"><span>Oyuncu yönetimi için online bir oda kur ya da katıl</span></div>';
+  p.innerHTML = `<div class="admBox"><div class="admHead"><b>🛡 ADMİN PANELİ</b><small>${esc(ACC.user)}${MP.on ? ' · ' + (MP.host ? 'oda sahibi' : 'oda: ' + MP.code) : ''}</small><button data-adm="close">✕</button></div>
+    <div class="admSec">Güçler</div><div class="admGrid">${tg('god', '🛡 Tanrı modu')}${tg('richMode', '💰 Sınırsız para')}${tg('fly', '🕊 Uçma / duvardan geçme')}<button data-adm="self:weapons">🔫 Tüm silahlar</button><button data-adm="self:veh">🚗 Süper araç</button><button data-adm="self:wanted">⭐ Aranmayı sil</button></div>
+    <div class="admSec">Hava durumu</div><div class="admGrid">${Object.keys(WEATHERS).map(w => `<button data-adm="weather:${w}" class="${state.weather === w ? 'on' : ''}">${WEATHERS[w].icon} ${WEATHERS[w].name}</button>`).join('')}</div>
+    <div class="admSec">Saat</div><div class="admGrid">${ADM_TIMES.map(([h, l]) => `<button data-adm="time:${h}">${l}</button>`).join('')}</div>
+    <div class="admSec">Etkinlikler</div><div class="admGrid"><button data-adm="event:race">🏁 Sokak yarışı</button><button data-adm="event:chase">🚨 Kovalamaca</button><button data-adm="event:truck">💰 Zırhlı kamyon</button><button data-adm="event:dm" ${MP.on ? '' : 'disabled'}>⚔ Deathmatch</button><button data-adm="event:ctf" ${MP.on ? '' : 'disabled'}>💰 Altın Çanta</button><button data-adm="event:night">🌙 Gece etkinliği</button></div>
+    <div class="admSec">Oyuncular</div>${players}
+    <div class="admSec">Hesaplar (sunucu)</div><div id="admUsers"><div class="admRow"><span>Yükleniyor…</span></div></div>
+    <div class="admRow"><input id="admAmt" type="number" min="1" value="10000"><span><small>💵 butonlarında verilecek miktar</small></span></div></div>`;
+  p.style.display = 'flex';
+  try {
+    const { users } = await api('/admin/users');
+    const el = $('admUsers'); if (!el) return;
+    el.innerHTML = users.map(u => `<div class="admRow"><span>${u.role === 'admin' ? '🛡' : '👤'} ${esc(u.user)} <small>$${(u.money || 0).toLocaleString('tr-TR')}${u.banned ? ' · <b class="bad">YASAKLI</b>' : ''}</small></span>${u.role === 'admin' ? '' : `<button data-adm="acmoney:${esc(u.user)}">💵</button><button data-adm="acban:${esc(u.user)}:${u.banned ? 0 : 1}" class="${u.banned ? '' : 'red'}">${u.banned ? 'Yasağı kaldır' : 'Yasakla'}</button>`}</div>`).join('');
+  } catch (e) { const el = $('admUsers'); if (el) el.innerHTML = `<div class="admRow"><span>❌ ${esc(e.message)}</span></div>`; }
+}
+function toggleAdmin() { if (!isAdmin()) return; const p = $('admPanel'); if (p.style.display === 'flex') p.style.display = 'none'; else { try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { } renderAdmin(); } }
+async function admClick(v) {
+  const [k, a, b] = v.split(':'), amt = Math.max(1, Math.min(1e8, Math.round(+($('admAmt') || {}).value || 10000)));
+  const r = a && MP.remotes.get(a);
+  switch (k) {
+    case 'close': $('admPanel').style.display = 'none'; return;
+    case 'tg': if (a === 'fly') toggleFly(); else { state[a] = !state[a]; floatText(`${a === 'god' ? '🛡 Tanrı modu' : '💰 Sınırsız para'} ${state[a] ? 'AÇIK' : 'KAPALI'}`); } break;
+    case 'self': if (a === 'wanted') { state.heat = 0; state.wanted = 0; } else applyAdmEffect({ cmd: a, kind: 'super' }); break;
+    case 'weather': admCmd('weather', null, { w: a }); break;
+    case 'time': admCmd('time', null, { h: +a }); break;
+    case 'event': admCmd('event', null, { k: a, x: player.pos.x, z: player.pos.z }); break;
+    case 'goto': if (r) { if (state.inCar) exitCar(true); player.pos.set(r.x + 2, r.y, r.z + 2); player.vy = 0; floatText(`🛡 ${r.info.name} yanına ışınlandın`); } break;
+    case 'bring': admCmd('tp', a, { x: player.pos.x + 2, y: player.pos.y, z: player.pos.z + 2 }); break;
+    case 'money': admCmd('money', a, { amt }); floatText(`💵 $${amt} gönderildi`); break;
+    case 'weapons': case 'heal': admCmd(k, a); break;
+    case 'veh': admCmd('veh', a, { kind: 'super' }); break;
+    case 'kick': admCmd('kick', a); break;
+    case 'ban': {
+      const acc = r && (r.acct || ACC.verified.get(a));
+      if (acc && acc.user) { try { await api('/admin/ban', { user: acc.user, ban: true }); } catch (e) { floatText('❌ ' + e.message); } }
+      admCmd('ban', a); floatText(`🚫 ${r ? r.info.name : a} yasaklandı`); break;
+    }
+    case 'acban': try { await api('/admin/ban', { user: a, ban: b === '1' }); floatText(b === '1' ? `🚫 ${a} yasaklandı` : `✅ ${a} yasağı kaldırıldı`); } catch (e) { floatText('❌ ' + e.message); } break;
+    case 'acmoney': try { const res = await api('/admin/money', { user: a, amount: amt }); floatText(`💵 ${a}: $${res.money.toLocaleString('tr-TR')}`); } catch (e) { floatText('❌ ' + e.message); } break;
+  }
+  if ($('admPanel').style.display === 'flex' && k !== 'close') renderAdmin();
+}
+function initAccountUI() {
+  $('authBox').addEventListener('click', e => { const b = e.target.closest('button'); if (b) authAction(b.dataset.auth); });
+  $('authPanel').addEventListener('click', e => { const b = e.target.closest('button'); if (b) authAction(b.dataset.auth); else if (e.target === $('authPanel')) closeAuth(false); });
+  $('authPanel').addEventListener('keydown', e => { if (e.key === 'Enter') authAction('login'); });
+  $('admPanel').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled && b.dataset.adm) admClick(b.dataset.adm); });
+  $('admBtn').addEventListener('click', toggleAdmin);
+  addEventListener('keydown', e => { if (e.code === 'F10') { e.preventDefault(); toggleAdmin(); } });
+  addEventListener('pagehide', () => flushSave(true));
+  initAccount();
+}
+
 // ============================================================ MP STAGE 3: PvP, scoreboard, bounty, customization sync
 const SB = { k: 0, d: 0, streak: 0, t: 0 };          // own session score
 const BOUNTY_STREAK = 3;
@@ -6932,7 +7162,7 @@ function loop(now) {
   updateSky(dt);
   if (state.dead) { state.deadTimer -= dt; if (state.deadTimer <= 0) respawn(); }
   else {
-    if (state.cabin && !state.cabin.jumped) updateCabin(dt); else if (state.sky) updateSkydive(dt); else if (state.passenger) updatePassenger(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
+    if (state.fly && !state.inCar && isAdmin()) updateFly(dt); else if (state.cabin && !state.cabin.jumped) updateCabin(dt); else if (state.sky) updateSkydive(dt); else if (state.passenger) updatePassenger(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
     if (input.fire) fire();
   }
   if (state.fireCd > 0) state.fireCd -= dt;
@@ -6962,6 +7192,7 @@ function loop(now) {
   updateInteriors(dt);
   updateStage2(dt);
   updateStage3(dt);
+  updateAdmin(dt);
   updateModes(dt);
   updateDoors();
   updateDocOffices();
@@ -6993,6 +7224,7 @@ function loop(now) {
   state.wanted = Math.floor(state.heat);
   if (state.heat > 0 && state.heat < 1) state.heat = state.crimeTimer > 6 ? 0 : 1;
   // health
+  if (state.god && isAdmin()) state.health = 100;
   if (state.health <= 0 && !state.dead) onLocalDeath();
   if (state.wanted === 0 && state.health < 100 && !state.dead) state.health = Math.min(100, state.health + dt * 1.5);
   // sirens flash

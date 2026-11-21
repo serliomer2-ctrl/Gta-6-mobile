@@ -267,3 +267,28 @@ body.inplane .btn.plane{display:flex}
 .wCard i{font-style:normal;font-size:26px}.wCard div{flex:1}.wCard b{display:block;font-size:15px}.wCard small{opacity:.8;font-size:12px}.wCard span{font-size:18px;font-weight:700}
 body.incabin #bFire,body.incabin #bWeapon,body.incabin #bEnter,body.skydiving #bFire,body.skydiving #bWeapon,body.skydiving #bEnter{display:none}
 body.skydiving #bJump{display:flex;background:#2a7aff66;border-color:#9cc4ff}
+
+/* ---------- ACCOUNTS / ADMIN ---------- */
+#authBox{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:6px 0 12px;font:600 14px Rajdhani,sans-serif;color:#ffffffcc}
+#authBox button{background:#ffffff22;color:#fff;border:1px solid #ffffff44;border-radius:10px;padding:6px 12px;font:700 13px Rajdhani,sans-serif;cursor:pointer}
+.admTag{font-style:normal;background:#ff3a4a;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;letter-spacing:1px}
+#authPanel{display:none;position:absolute;inset:0;z-index:40;background:#000a;align-items:center;justify-content:center}
+.authBox2{width:min(340px,90vw);background:rgba(16,18,24,.97);border:1px solid #ffffff22;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;color:#fff;font-family:Rajdhani,sans-serif}
+.authBox2 b{font-size:22px}.authBox2 small{color:#ffffffaa}
+.authBox2 input{background:#ffffff12;border:1px solid #ffffff33;border-radius:10px;color:#fff;padding:11px;font:600 16px Rajdhani,sans-serif}
+.authBtns{display:flex;gap:8px}.authBtns button,.authBox2 .ghost{flex:1;border:0;border-radius:10px;padding:11px;font:700 15px Rajdhani,sans-serif;cursor:pointer;background:#2e9e52;color:#fff}
+.authBtns .alt{background:#2a6ad8}.authBox2 .ghost{background:#ffffff18}
+#authMsg{min-height:18px;color:#ffd23a;font-size:14px}
+#admBtn{display:none;position:fixed;z-index:21;right:calc(12px + env(safe-area-inset-right,0px));top:calc(170px + env(safe-area-inset-top,0px));width:44px;height:44px;border-radius:12px;background:#c8283acc;color:#fff;font-size:22px;align-items:center;justify-content:center;cursor:pointer;border:2px solid #ff8a8a}
+body.admin.playing #admBtn{display:flex}
+#admPanel{display:none;position:fixed;inset:0;z-index:72;background:#0009;align-items:center;justify-content:center}
+.admBox{width:min(620px,94vw);max-height:88vh;overflow-y:auto;background:rgba(14,16,22,.97);border:1px solid #ff3a4a66;border-radius:16px;padding:14px;color:#fff;font-family:Rajdhani,sans-serif}
+.admHead{display:flex;align-items:center;gap:10px}.admHead b{font-size:20px;color:#ff6a6a}.admHead small{flex:1;color:#ffffff88}.admHead button{background:#ffffff22;color:#fff;border:0;border-radius:8px;width:34px;height:34px;cursor:pointer}
+.admSec{margin:12px 0 6px;font-size:11px;letter-spacing:3px;color:#ffffff77;text-transform:uppercase;font-weight:700}
+.admGrid{display:flex;flex-wrap:wrap;gap:6px}
+.admBox button{background:#2a3040;color:#fff;border:1px solid #ffffff22;border-radius:8px;padding:7px 10px;font:700 13px Rajdhani,sans-serif;cursor:pointer}
+.admBox button.on{background:#2e9e52;border-color:#7dff9a}.admBox button.red{background:#8a1a24}.admBox button:disabled{opacity:.35}
+.admRow{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:6px 0;border-top:1px solid #ffffff10}
+.admRow span{flex:1;min-width:150px;display:flex;align-items:center;gap:6px}.admRow i{display:inline-block;width:10px;height:10px;border-radius:50%}.admRow small{color:#ffffff88}.admRow .bad{color:#ff5a5a}
+.admRow input{width:120px;background:#ffffff12;border:1px solid #ffffff33;border-radius:8px;color:#fff;padding:6px;font:700 14px Rajdhani,sans-serif}
+body.flying .btn.heli{display:flex}
