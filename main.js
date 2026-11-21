@@ -353,6 +353,7 @@ function init() {
   buildRoofAccess();
   buildDocOffices();
   buildHeistSites();
+  buildPoliceStation();
   buildCrewZones();
   buildSpecialVehicles();
   buildPlanes();
@@ -1501,7 +1502,7 @@ function killPed(p, byPlayer) {
   if (p.heistIdx >= 0) heistGuardKilledLocally(p);
   if (byPlayer) { if (p.npc !== 'turf') addHeat(p.npc === 'gang' ? 0.3 : p.cop ? 1.5 : 0.7); state.stats.kills++; }
 }
-function addHeat(v) { state.heat = clamp(Math.max(state.heat, 1) + (state.heat >= 1 ? v : 0), 0, 5.99); state.crimeTimer = 0; }
+function addHeat(v) { if (state.cop) return; state.heat = clamp(Math.max(state.heat, 1) + (state.heat >= 1 ? v : 0), 0, 5.99); state.crimeTimer = 0; }
 
 // ============================================================ TRAFFIC
 function spawnTraffic() {
@@ -2514,13 +2515,13 @@ function drawMinimap() {
   drawModesMap(g, toMap, r, MAP.k * zoom);
   drawCrewZonesMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
-  for (const rp of MP.remotes.values()) { dot(rp.x, rp.z, rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, rp.bounty || sameCrew(rp) ? 11 : 8, true); if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
+  for (const rp of MP.remotes.values()) { { const hunt = state.cop && rp.wn > 0; dot(rp.x, rp.z, hunt ? (Math.sin(state.now * 10) > 0 ? '#ff2040' : '#ffffff') : rp.info.cop ? '#3a7aff' : rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, hunt || rp.bounty || sameCrew(rp) ? 11 : 8, true); if (hunt) { const [px, py] = toMap(rp.x, rp.z); if (Math.hypot(px - r, py - r) < r - 12) { g.font = 'bold 11px sans-serif'; g.fillStyle = '#ffd23a'; g.fillText('★'.repeat(rp.wn), px, py - 14); } } } if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
   if (state.heist) { let [px, py] = toMap(state.heist.x, state.heist.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '17px sans-serif'; g.fillText('💼', px, py + 1); }
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
   if (state.mission) { const [mx, mz] = missionPos(); dot(mx, mz, '#' + MCOL[state.mission.type].toString(16).padStart(6, '0'), 11, true); }
   { let [px, py] = toMap(AIRPORT.icon[0], AIRPORT.icon[1]); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 14, 0, 7); g.fill(); g.strokeStyle = '#4aa8ff'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#fff'; g.font = '17px sans-serif'; g.fillText('✈', px, py + 1); }
-  for (const [x, z, ic, col] of [[DOCS_POS.x, DOCS_POS.z, '🏛', '#4a8aff'], [SCHOOL_POS.x, SCHOOL_POS.z, '🎓', '#ff9a20']]) { if (x === undefined) continue; let [px, py] = toMap(x, z); if (Math.hypot(px - r, py - r) > r - 14) continue; g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); g.font = '15px sans-serif'; g.fillStyle = '#fff'; g.fillText(ic, px, py + 1); }
+  for (const [x, z, ic, col] of [[COP.station && COP.station.x, COP.station && COP.station.z, '👮', '#3a7aff'], [DOCS_POS.x, DOCS_POS.z, '🏛', '#4a8aff'], [SCHOOL_POS.x, SCHOOL_POS.z, '🎓', '#ff9a20']]) { if (x === undefined) continue; let [px, py] = toMap(x, z); if (Math.hypot(px - r, py - r) > r - 14) continue; g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); g.font = '15px sans-serif'; g.fillStyle = '#fff'; g.fillText(ic, px, py + 1); }
   if (state.scoutT > 0) { g.font = '15px sans-serif'; for (const p of PACKAGES) if (!state.packages[p.id] && Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < (state.scoutR || 450)) { let [px, py] = toMap(p.x, p.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 12) { px = r + dx / l * (r - 12); py = r + dy / l * (r - 12); } g.fillText('🎒', px, py + 1); } }
   // player arrow
   g.save(); g.translate(r, r); g.rotate(camYaw); g.rotate(Math.PI - (state.inCar ? state.inCar.h : player.yaw));
@@ -2834,7 +2835,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2843,6 +2844,7 @@ function shopItems(type) {
   if (type === 'ticket') return ticketItems();
   if (type === 'docs') return docsItems();
   if (type === 'school') return schoolItems();
+  if (type === 'station') return stationItems();
   if (type === 'prop') return propItems();
   if (type === 'clothes') return clothesItems();
   const own = i => state.ownedW[i];
@@ -4239,7 +4241,7 @@ function canFly(c) { return hasDoc('pilot') || c.school; }
 // driving without a licence: fast driving gets caught by speed cameras
 function updateLicenceChecks(dt) {
   const c = state.inCar;
-  if (!c || hasDoc('drive') || c.spec.plane || c.spec.heli || c.spec.boat || state.lesson) return;
+  if (!c || state.cop || hasDoc('drive') || c.spec.plane || c.spec.heli || c.spec.boat || state.lesson) return;
   state.radarT = (state.radarT || 0) - dt;
   if (carSpeed(c) > 24 && state.radarT <= 0 && state.wanted === 0 && Math.random() < dt * 0.15) { state.radarT = 90; state.heat = Math.max(state.heat, 1.2); state.crimeTimer = 0; showBig('📸 RADAR!', '#ff4040', 2.5, 'Ehliyetsiz ve hızlı sürüş · Nüfus Müdürlüğü\'nden ehliyet al'); }
 }
@@ -5048,7 +5050,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -5215,6 +5217,7 @@ function handleNet3(d) {
 function applyPacket(d) {
   if (handleAccount(d)) return;
   if (handleBigHeist(d)) return;
+  if (handleCops(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
   if (handleStreet(d)) return;
@@ -5268,7 +5271,7 @@ function vehVisual(kind, color) {
   c.remote = true; return c;
 }
 function drawTag(r) {
-  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + crewTag(r.info.crew) + r.info.name;
+  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + (r.info.cop ? '👮 ' : '') + crewTag(r.info.crew) + r.info.name;
   const key = `${nm}|${r.hp}|${r.wn}|${r.bounty || 0}|${r.bubbleT > 0 ? r.bubble : ''}|${bagC}|${sameCrew(r)}`;
   if (key === r.tagKey) return; r.tagKey = key;
   const cv = r.tag.material.map.image; cv.width = 256; cv.height = 128; const g = cv.getContext('2d');
@@ -6944,6 +6947,105 @@ function handleBigHeist(d) {
   return false;
 }
 
+
+// ============================================================ COPS VS. ROBBERS: police badge at the station, arrests, state bounty
+const COP = { station: null, car: null, heli: null, arrest: null, salaryT: 0, lastWn: new Map(), look: null };
+const COP_LOOK = { shirt: '#1b2a4a', pants: '#14182a', cap: '#14182a', glasses: false };
+const ARREST_PAY = 1500, TAKEDOWN_PAY = 1000, COP_SALARY = 300, COP_SALARY_SEC = 120;
+function buildPoliceStation() {
+  // the office door nearest to the south-west of the centre becomes "Vista Bay Karakolu"
+  let best = null; for (const d of DOORS) if ((d.type === 'office' || d.type === 'apt') && !d.name && d.blk && d.blk.bld !== EXTRA_BLD) { const dd = Math.hypot(d.x + 200, d.z - 160); if (!best || dd < best.dd) best = { d, dd }; }
+  const d = best.d; d.name = 'Vista Bay Karakolu';
+  const x = d.x + d.nz * 3.2, z = d.z - d.nx * 3.2, y = groundY(x, z), g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = Math.atan2(d.nx, d.nz);
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.4, 0.15).translate(0, 1.2, 0), M.trim));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.8), new THREE.MeshBasicMaterial({ map: canvasTex(256, 84, gg => { gg.fillStyle = '#14285a'; gg.fillRect(0, 0, 256, 84); gg.fillStyle = '#fff'; gg.fillRect(0, 0, 256, 10); gg.fillStyle = '#d82020'; gg.fillRect(0, 74, 256, 10); gg.fillStyle = '#fff'; gg.font = 'bold 30px Arial'; gg.textAlign = 'center'; gg.textBaseline = 'middle'; gg.fillText('👮 KARAKOL', 128, 44); }), side: THREE.DoubleSide }));
+  sign.position.y = 2.8; g.add(sign);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.4, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3a7aff, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.y = 0.06; g.add(ring);
+  scene.add(g);
+  const [ni, nj] = nearestNode(d.x + d.nx * 14, d.z + d.nz * 14);
+  COP.station = { x, z, door: d, car: [nodeP(clamp(ni, 0, N)) + 5, nodeP(clamp(nj, 0, N)) + 5] };
+}
+function updateStation() {
+  if (state.inCar || state.interior || state.dead || state.interact || state.cabin || state.sky || !COP.station) return;
+  if (Math.hypot(player.pos.x - COP.station.x, player.pos.z - COP.station.z) < 1.6) state.interact = { label: state.cop ? '👮 KARAKOL · görev menüsü' : '👮 KARAKOL · polis rozeti', fn: () => openShop('station') };
+}
+function stationItems() {
+  const it = [{ sec: state.cop ? '👮 Görevdesin' : 'Polis teşkilatı' }];
+  if (!state.cop) it.push({ name: '👮 Polis rozetini tak', desc: `Aranan oyuncuları tutukla (★ başına $${ARREST_PAY}) ya da etkisiz hale getir (★ başına $${TAKEDOWN_PAY}) · her ${COP_SALARY_SEC / 60} dakikada $${COP_SALARY} maaş · görevdeyken aranmazsın`, price: 0, btn: 'TAK', dis: state.wanted > 0 ? 'ARANIYORSUN' : !hasDoc('id') ? 'ÖNCE KİMLİK' : BH.cur && inHeist() ? 'SOYGUNDASIN' : null, close: true, buy: () => setCop(true) });
+  else {
+    it.push({ name: '🚓 Devriye aracı', desc: 'Sirenli polis aracı karakolun önüne gelir', price: 0, btn: 'AL', close: true, buy: () => spawnCopVehicle('car') },
+      { name: '🚁 Polis helikopteri', desc: 'Havadan takip · gece projektörü', price: 0, btn: 'AL', close: true, buy: () => spawnCopVehicle('heli') },
+      { name: '🦺 Teçhizat', desc: 'Çelik yelek + tabanca ve hafif makineli mermisi', price: 0, btn: 'AL', buy: () => { state.armor = 100; state.ownedW[1] = true; state.ammo[1] += 120; floatText('🦺 Teçhizat alındı'); } },
+      { name: '🪪 Rozeti çıkar', desc: `Görev bitir · bu oturumda ${COP.arrests || 0} tutuklama, ${COP.takedowns || 0} etkisiz`, price: 0, btn: 'ÇIKAR', close: true, buy: () => setCop(false) });
+  }
+  return it;
+}
+function setCop(on) {
+  state.cop = on; document.body.classList.toggle('cop', on);
+  if (on) { COP.look = { ...state.look }; Object.assign(state.look, COP_LOOK); state.heat = 0; state.wanted = 0; showBig('👮 GÖREVDESİN', '#4a8aff', 3, MP.on ? 'Haritada kırmızı yıldızlı oyuncular aranıyor · yanına git, TUTUKLA' : 'Online\'da aranan oyuncuları yakala · kovalamaca etkinliklerinde polise yardım et'); }
+  else { if (COP.look) Object.assign(state.look, COP.look); floatText('🪪 Rozeti çıkardın'); }
+  applyLook(); sendInfo(); saveGame();
+}
+function spawnCopVehicle(kind) {
+  const old = kind === 'car' ? COP.car : COP.heli;
+  if (old && old !== state.inCar) { scene.remove(old.group); const i = cars.indexOf(old); if (i >= 0) cars.splice(i, 1); }
+  const [x, z] = COP.station.car;
+  const c = kind === 'car' ? createCar('police', '#fff', x, z, 0, 'free') : createHeli('#0e1830', x, groundY(x, z), z, 0);
+  c.home = null; c.delivery = true; c.copVeh = true; c.driver = false; c.mode = 'free';
+  if (kind === 'car') COP.car = c; else COP.heli = c;
+  floatText(kind === 'car' ? '🚓 Devriye aracın karakolun önünde' : '🚁 Polis helikoptern hazır');
+}
+// arrests: the cop holds next to a wanted player on foot; the robber's client confirms
+function updateCops(dt) {
+  if (!state.cop) { COP.arrest = null; return; }
+  COP.salaryT += dt; if (COP.salaryT >= COP_SALARY_SEC) { COP.salaryT = 0; earn(COP_SALARY, '👮 Polis maaşı'); floatText(`👮 Maaş +$${COP_SALARY}`); }
+  if (state.heat > 0) { state.heat = 0; state.wanted = 0; }
+  if (!MP.on) return;
+  // radio: wanted players reaching 3+ stars
+  for (const r of MP.remotes.values()) { const prev = COP.lastWn.get(r.id) || 0; if (r.wn >= 3 && prev < 3) { mpFeed(`📻 Telsiz: <b>${esc(r.info.name)}</b> ${'★'.repeat(r.wn)} aranıyor · haritada kırmızı`); AudioSys.tone(1200, 0.08, 0.1, 'square'); } COP.lastWn.set(r.id, r.wn); }
+  if (state.dead || state.inCar) { COP.arrest = null; return; }
+  let tgt = null, bd = 3.2;
+  for (const r of MP.remotes.values()) { if (r.wn <= 0 || r.sdead || r.vehKey) continue; const d = Math.hypot(r.x - player.pos.x, r.z - player.pos.z); if (d < bd) { bd = d; tgt = r; } }
+  if (COP.arrest) {
+    const r = MP.remotes.get(COP.arrest.id);
+    if (!r || r.wn <= 0 || r.vehKey || Math.hypot(r.x - player.pos.x, r.z - player.pos.z) > 3.8) { COP.arrest = null; floatText('🔗 Şüpheli kaçtı'); return; }
+    COP.arrest.t += dt; state.interact = { label: `🔗 KELEPÇELENİYOR… %${Math.floor(Math.min(1, COP.arrest.t / 2.5) * 100)}`, fn: null };
+    if (COP.arrest.t >= 2.5 && !COP.arrest.sent) { COP.arrest.sent = true; mpSend({ t: 'arrest', to: r.id, x: r1(player.pos.x), z: r1(player.pos.z) }); setTimeout(() => { COP.arrest = null; }, 1500); }
+    return;
+  }
+  if (tgt) state.interact = { label: `🔗 TUTUKLA · ${tgt.info.name} ${'★'.repeat(tgt.wn)}`, fn: () => { COP.arrest = { id: tgt.id, t: 0 }; } };
+  else { for (const r of MP.remotes.values()) if (r.wn > 0 && r.vehKey && Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 6 && !state.interact) state.interact = { label: `🚓 ${r.info.name} araçta · durdur ya da araçtan indir`, fn: null }; }
+}
+function onArrested(d) {
+  const cop = MP.remotes.get(d.id);
+  if (!cop || state.dead || state.wanted <= 0 || !cop.info.cop || Math.hypot(d.x - player.pos.x, d.z - player.pos.z) > 7 || state.inCar) { mpSend({ t: 'arrest_no', to: d.id }); return; }
+  const wn = state.wanted, fine = Math.min(state.money, 1000 * wn);
+  mpSend({ t: 'arrest_ok', to: d.id, wn });
+  state.money -= fine; state.shownMoney = state.money; ledger('👮 Kefalet', -fine);
+  playerDown('TUTUKLANDIN', `${cop.info.name} seni kelepçeledi · kefalet -$${fine}`);
+}
+function copKill(d) {   // called on the killer's side
+  const victim = MP.remotes.get(d.id);
+  if (state.cop) {
+    if (d.wn > 0) { const pay = TAKEDOWN_PAY * d.wn; earn(pay, '👮 Devlet primi · etkisiz'); COP.takedowns = (COP.takedowns || 0) + 1; showBig('👮 ŞÜPHELİ ETKİSİZ', '#4a8aff', 2.5, `Devlet primi +$${pay}`); }
+    else { const fine = Math.min(state.money, 1000); state.money -= fine; ledger('⚠ Görevi kötüye kullanma', -fine); showBig('⚠ YETKİSİZ GÜÇ', '#ff5050', 2.5, `Aranmayan birini vurdun · -$${fine}`); }
+  } else if (victim && victim.info.cop) { state.cop = false; addHeat(1.5); floatText('🚨 Polis memurunu vurdun!'); }
+}
+function handleCops(d) {
+  switch (d.t) {
+    case 'arrest': onArrested(d); return true;
+    case 'arrest_ok': { const r = MP.remotes.get(d.id), pay = ARREST_PAY * d.wn; earn(pay, '👮 Devlet primi · tutuklama'); COP.arrests = (COP.arrests || 0) + 1; showBig('🔗 TUTUKLANDI!', '#4a8aff', 3, `${r ? r.info.name : ''} ${'★'.repeat(d.wn)} · devlet primi +$${pay}`); AudioSys.success(); AudioSys.cash(); return true; }
+    case 'arrest_no': floatText('🔗 Tutuklama başarısız'); return true;
+  }
+  return false;
+}
+function updateCopHud() {
+  const el = $('copHud'); if (!state.cop) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+  const n = [...MP.remotes.values()].filter(r => r.wn > 0).length;
+  const t = `👮 GÖREVDE · ${MP.on ? `aranan: ${n}` : 'tek oyunculu'} · 🔗 ${COP.arrests || 0} · ☠ ${COP.takedowns || 0}`;
+  if (t !== updateCopHud.t) { updateCopHud.t = t; el.textContent = t; el.style.display = 'block'; }
+}
+
 // ============================================================ MP STAGE 3: PvP, scoreboard, bounty, customization sync
 const SB = { k: 0, d: 0, streak: 0, t: 0 };          // own session score
 const BOUNTY_STREAK = 3;
@@ -6969,7 +7071,7 @@ function onLocalDeath() {
   if (MP.on) {
     const bounty = myBounty();
     SB.d++; SB.streak = 0;
-    mpSend({ t: 'kill', killer: killer ? killer.id : null, bounty });
+    mpSend({ t: 'kill', killer: killer ? killer.id : null, bounty, wn: state.wanted });
     if (killer) { mpFeed(`☠ <b style="color:${killer.info.color}">${esc(killer.info.name)}</b> → <b style="color:${MP.color}">${esc(MP.name)}</b>`); playerDown('ÖLDÜRÜLDÜN', `${killer.info.name} seni alt etti${bounty ? ' · başındaki $' + bounty + ' ödül onun' : ''}`); }
     else playerDown('BAYILDIN', 'Hastanede uyandın');
     sendScore();
@@ -6981,7 +7083,7 @@ function onRemoteKill(d) {
   const victim = MP.remotes.get(d.id), killer = d.killer === MP.myId ? null : MP.remotes.get(d.killer);
   if (victim) { victim.dead = true; setTimeout(() => { if (victim) victim.dead = false; }, 4000); }
   if (d.killer === MP.myId) {
-    SB.k++; SB.streak++; S().kills++;
+    SB.k++; SB.streak++; S().kills++; copKill(d);
     floatText(`☠ ${victim ? victim.info.name : 'Oyuncu'} alt edildi`); AudioSys.tone(220, 0.25, 0.25, 'sawtooth', 0.5);
     if (d.bounty > 0) { earn(d.bounty, '🎯 Ödül avı'); showBig('ÖDÜL ALINDI!', '#ff3050', 3, `+$${d.bounty} · ${victim ? victim.info.name : ''}`); AudioSys.cash(); }
     if (SB.streak === BOUNTY_STREAK) showBig('BAŞINA ÖDÜL KONDU', '#ff3050', 3, `$${myBounty()} · diğer oyuncular seni avlayabilir!`);
@@ -7496,10 +7598,12 @@ function loop(now) {
   updateStage3(dt);
   updateAdmin(dt);
   updateModes(dt);
+  updateCops(dt);
   updateBigHeist(dt);
   updateCrewZones(dt);
   updateDoors();
   updateDocOffices();
+  updateStation();
   updateAirport(dt);
   updateIslands(dt);
   updateFlightJob(dt);
@@ -7544,6 +7648,7 @@ function loop(now) {
   updateCamera(dt);
   updateHUD(dt);
   updateContextButtons();
+  updateCopHud();
   AudioSys.update(dt, pd);
   if (!renderer.shadowMap.autoUpdate && frame % 2 === 0) renderer.shadowMap.needsUpdate = true;
   if (composer) composer.render(); else renderer.render(scene, camera);

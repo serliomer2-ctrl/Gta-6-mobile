@@ -294,3 +294,5 @@ body.admin.playing #admBtn{display:flex}
 body.flying .btn.heli{display:flex}
 
 #zoneHud{display:none;position:absolute;left:50%;top:calc(136px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;background:#000a;color:#fff;font:700 13px Rajdhani,sans-serif;padding:4px 12px;border-radius:9px;text-align:center;pointer-events:none;white-space:nowrap}
+
+#copHud{display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(164px + env(safe-area-inset-top,0px));white-space:nowrap;z-index:12;background:#14285add;border:1px solid #6a9aff;color:#fff;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none}
