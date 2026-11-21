@@ -73,6 +73,11 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **Ortak dünya 2**: helikopter, tekne ve uçaklar herkes için tek — biri alınca diğerlerinde kaybolur, bıraktığı yerde herkese görünür; yerdeki paralar ve silah sandıkları herkeste aynı (biri alınca herkesten silinir); zırhlı para kamyonu herkeste aynı yerde, patlatan oyuncu aranır, saçılan parayı ilk kapan alır; soyulan kasa/kasalar herkes için boşalır
 - **Ortak sokak etkinlikleri**: yarış ve kovalamaca araçları herkeste aynı yerde; herkes aynı yarışa katılır (sıralama oyuncular + yapay zekâ), kaçağı/polisi kim patlatırsa ödül onun
 - **Ortak polis**: polis birimleri oda sahibinde çalışır ve herkese aynı görünür; hangi oyuncu arandıysa onu kovalar (birden fazla aranan oyuncu varsa birimler paylaşılır), atışlar herkeste görünür, polisi kim patlatırsa aranma onun yükselir
+- **👥 Çeteler** (skor tablosu L / 🌐): isim + renk seçip çete kur, oyuncuları davet et; isim etiketinde [ETİKET], haritada çete rengi, **dost ateşi kapalı**, bir üye para kazandığında 250 m içindeki çete arkadaşlarına %25 çete payı (kazanandan düşülmez)
+- **💸 Para transferi**: skor tablosunda oyuncunun yanındaki 💸 ile $100-$5.000 gönder
+- **🚁 Yolcu**: arkadaşının sürdüğü araba, tekne, helikopter ya da uçağın yanında F / 🚗 → yolcu koltuğu, camdan ateş edebilirsin
+- **⚔ Deathmatch** (3 dk): başlatanın etrafında kırmızı bölge; bölgeye giren katılır (+120 mermi), ölen bölgede yeniden doğar, en çok indiren $5.000 kazanır
+- **💰 Altın Çanta** (4 dk): yakında doğan altın çantayı kap — taşıyan %30 yavaşlar, herkes onu ışık sütunu ve haritadan görür; ölünce çanta düşer; 60 sn tutan (ya da süre bitince en uzun tutan) $8.000 kazanır
 
 Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
 

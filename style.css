@@ -244,3 +244,20 @@ body.inplane .btn.plane{display:flex}
 .fcPlane{position:absolute;left:0;top:10px;font-size:46px;animation:fcFly 3s ease-in-out forwards}
 @keyframes fcFly{from{left:0;transform:rotate(-8deg)}to{left:calc(100% - 50px);transform:rotate(4deg)}}
 @media (max-width:700px){#planeHud{font-size:12px;bottom:auto;top:calc(56px + env(safe-area-inset-top,0px))}}
+
+/* ---------- CREWS / MODES ---------- */
+.mpSec{margin:10px 0 4px;font-size:11px;letter-spacing:3px;color:#ffffff77;text-transform:uppercase;font-weight:700}
+.mpAct{display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid #ffffff10;font-size:14px}
+.mpAct span{flex:1;display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpAct i{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+.mpAct button{background:#2a6ad8;color:#fff;border:0;border-radius:8px;padding:6px 9px;font:700 13px Rajdhani,sans-serif;cursor:pointer}
+.mpAct button.red{background:#c8283a}.mpAct button:disabled{opacity:.4}
+#mpModal{display:none;position:fixed;inset:0;z-index:70;background:#0008;align-items:center;justify-content:center}
+.mmBox{background:rgba(16,18,24,.97);border:1px solid #ffffff22;border-radius:16px;padding:16px;width:min(360px,90vw);color:#fff;font-family:Rajdhani,sans-serif;display:flex;flex-direction:column;gap:10px}
+.mmBox b{font-size:19px}.mmBox small{color:#ffffffaa;font-size:14px}.mmBox .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:middle}
+.mmBox input{background:#ffffff12;border:1px solid #ffffff33;border-radius:10px;color:#fff;padding:10px;font:600 16px Rajdhani,sans-serif}
+.mmCols{display:flex;gap:8px;flex-wrap:wrap}.mmCols button{width:32px;height:32px;border-radius:50%;border:2px solid #0000;cursor:pointer}.mmCols button.on{border-color:#fff;box-shadow:0 0 0 2px #000 inset}
+.mmBtns{display:flex;gap:8px;flex-wrap:wrap}.mmBtns button{flex:1;background:#2e9e52;color:#fff;border:0;border-radius:10px;padding:10px;font:700 15px Rajdhani,sans-serif;cursor:pointer}
+.mmBtns button.grey{background:#ffffff22}.mmBtns button:disabled{opacity:.4}
+#modeHud{display:none;position:absolute;left:50%;top:calc(104px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;background:#000b;color:#fff;font:700 14px Rajdhani,sans-serif;padding:5px 14px;border-radius:10px;text-align:center;pointer-events:none;letter-spacing:.5px}
+#mpList{max-height:72vh;overflow-y:auto}

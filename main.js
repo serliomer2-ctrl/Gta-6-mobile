@@ -1373,7 +1373,7 @@ function updatePlayerFoot(dt) {
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
   let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
   const run = input.sprint || mag > 0.92;
-  const target = mag > 0.08 ? (run ? 6.8 : 2.6 + mag * 1.5) : 0;
+  const target = (mag > 0.08 ? (run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1);
   player.speed = damp(player.speed, target, 10, dt);
   if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; if (player.aimT <= 0) player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-12 * dt))); }
   else { mx = Math.sin(player.yaw); mz = Math.cos(player.yaw); }
@@ -1426,6 +1426,7 @@ function updatePlayerCar(dt) {
   else if (c.spec.plane) { const gk = !!(keys.KeyG || keys.TGear); if (gk && !c._gk) togglePlaneGear(c); c._gk = gk; planePhysics(c, dt, { thr: (input.up || input.gas ? 1 : 0) - (input.down || input.brake ? 1 : 0), pitch: clamp(input.my, -1, 1), roll: clamp(input.mx, -1, 1) }); }
   else carPhysics(c, dt, throttle, clamp(input.mx, -1, 1), input.hand);
   if (!state.inCar) return; // crashed off bike
+  if (ctfSlow()) { const sp = Math.hypot(c.vx, c.vz), mx = c.spec.plane || c.spec.heli ? 30 : 20; if (sp > mx) { c.vx *= mx / sp; c.vz *= mx / sp; if (c.speed > mx) c.speed = mx; } }
   updateStunt(c, state.realDt);
   player.pos.copy(c.group.position);
   { const v = carSpeed(c); state.stats.dist += v * dt; state.stats.topSpeed = Math.max(state.stats.topSpeed, Math.abs(carFwd(c)) * 3.6); }
@@ -2357,6 +2358,7 @@ const keys = {};
 const touchState = { joyId: null, jx: 0, jy: 0, jdx: 0, jdy: 0, lookId: null, lx: 0, ly: 0 };
 function initInput() {
   addEventListener('keydown', e => {
+    if (e.target && e.target.tagName === 'INPUT' && e.target.id !== 'mpName') return;
     keys[e.code] = true;
     if (state.dialog) { if (['Space', 'Enter', 'KeyE', 'Escape'].includes(e.code)) { e.preventDefault(); advanceDialog(); } return; }
     if (state.photo) { if (e.code === 'Escape') endPhoto(); if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); state.photo.shot = true; } return; }
@@ -2501,8 +2503,9 @@ function drawMinimap() {
   if (state.truck && state.truck.active && !state.truck.looted) { let [px, py] = toMap(state.truck.group.position.x, state.truck.group.position.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '18px sans-serif'; g.fillText('💰', px, py + 1); }
   if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
   drawStreetEventsMap(dot);
+  drawModesMap(g, toMap, r, MAP.k * zoom);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
-  for (const rp of MP.remotes.values()) { dot(rp.x, rp.z, rp.bounty ? '#ff2a3a' : rp.info.color, rp.bounty ? 11 : 8, true); if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
+  for (const rp of MP.remotes.values()) { dot(rp.x, rp.z, rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, rp.bounty || sameCrew(rp) ? 11 : 8, true); if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
   if (state.heist) { let [px, py] = toMap(state.heist.x, state.heist.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '17px sans-serif'; g.fillText('💼', px, py + 1); }
   if (!state.mission && state.missionCooldown <= 0) for (const st of STARTS) { let [px, py] = toMap(st.x, st.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#ffc020'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.fillText(START_INFO[st.type][0], px, py + 1); }
@@ -2565,6 +2568,7 @@ function respawn() {
   player.pos.set(x, 0.25, z); player.human.g.rotation.x = 0; player.human.g.visible = true;
   $('fade').style.opacity = 0;
   for (const c of cars) if (c.police && c.active) { c.active = false; c.group.visible = false; }
+  modesRespawn();
 }
 
 // ============================================================ AUDIO (synth)
@@ -3001,7 +3005,7 @@ function propItems() {
 
 // ============================================================ ECONOMY / STATS / ACHIEVEMENTS
 const S = () => state.stats;
-function earn(amt, label) { state.money += amt; S().earned += amt; ledger(label, amt); }
+function earn(amt, label) { state.money += amt; S().earned += amt; ledger(label, amt); crewShare(amt, label); }
 function ledger(label, amt) { state.ledger.unshift({ t: clockStr(), label, amt }); if (state.ledger.length > 8) state.ledger.pop(); }
 function clockStr() { const h = Math.floor(state.time), m = Math.floor((state.time - h) * 60); return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
 const ownedCars = () => cars.filter(c => c.owned && !c.display && !c.delivery && !c.home);
@@ -4623,7 +4627,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -4757,6 +4761,7 @@ function mpLost(reason) {
   mpLeave(true);
 }
 function mpLeave(silent) {
+  endModesLocal();
   if (!MP.host) { clearEventCars(SEV.mirror); if (SEV.info) onStreetMsg({ k: 'end' }); applyPoliceUnits([]); POL.beam.visible = false; }
   if (NW.client) { for (const c of WORLD_CARS) if (c.mode === 'net') { c.mode = 'free'; c.driver = false; c.active = true; c.group.visible = true; c.vx = c.vz = 0; } for (const p of WORLD_PEDS) { p.net = null; } NW.client = false; }
   if (state.passenger) exitPassenger();
@@ -4785,6 +4790,7 @@ function handleNet3(d) {
   return false;
 }
 function applyPacket(d) {
+  if (handleModes(d)) return;
   if (handlePolice(d)) return;
   if (handleStreet(d)) return;
   if (handleShared(d)) return;
@@ -4836,7 +4842,8 @@ function vehVisual(kind, color) {
   c.remote = true; return c;
 }
 function drawTag(r) {
-  const key = `${r.info.name}|${r.hp}|${r.wn}|${r.bounty || 0}|${r.bubbleT > 0 ? r.bubble : ''}`;
+  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = crewTag(r.info.crew) + r.info.name;
+  const key = `${nm}|${r.hp}|${r.wn}|${r.bounty || 0}|${r.bubbleT > 0 ? r.bubble : ''}|${bagC}|${sameCrew(r)}`;
   if (key === r.tagKey) return; r.tagKey = key;
   const cv = r.tag.material.map.image; cv.width = 256; cv.height = 128; const g = cv.getContext('2d');
   g.clearRect(0, 0, 256, 128); g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -4846,7 +4853,8 @@ function drawTag(r) {
     g.beginPath(); g.moveTo(120, 36); g.lineTo(136, 36); g.lineTo(128, 44); g.fill();
     g.fillStyle = '#111'; g.fillText(r.bubble, 128, 20);
   }
-  g.font = 'bold 26px Arial'; g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(r.info.name, 128, 66); g.fillStyle = r.info.color; g.fillText(r.info.name, 128, 66);
+  g.font = 'bold 26px Arial'; g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.strokeText(nm, 128, 66); g.fillStyle = sameCrew(r) ? MP.crew.color : r.info.color; g.fillText(nm, 128, 66);
+  if (bagC && !(r.bubbleT > 0)) { g.font = 'bold 26px Arial'; g.fillText('💰', 128, 24); }
   g.fillStyle = 'rgba(0,0,0,0.7)'; g.fillRect(68, 84, 120, 10); g.fillStyle = r.hp > 30 ? '#2ee66b' : '#ff4040'; g.fillRect(70, 86, 116 * clamp(r.hp / 100, 0, 1), 6);
   if (r.bounty > 0 && !(r.bubbleT > 0)) { g.font = 'bold 22px Arial'; g.lineWidth = 5; g.strokeStyle = '#000'; const t = `☠ $${r.bounty}`; g.strokeText(t, 128, 22); g.fillStyle = '#ff3a4a'; g.fillText(t, 128, 22); }
   if (r.wn > 0) { g.font = 'bold 20px Arial'; g.fillStyle = '#ffd23a'; g.strokeStyle = '#000'; g.lineWidth = 4; const s = '★'.repeat(r.wn); g.strokeText(s, 128, 112); g.fillText(s, 128, 112); }
@@ -4936,7 +4944,7 @@ function renderMpList() {
   const rows = [`<div class="mpRow"><i style="background:${MP.color}"></i><b>${esc(MP.name)} (sen)</b><span>${MP.host ? '👑 Oda sahibi' : ''}</span></div>`];
   for (const r of MP.remotes.values()) rows.push(`<div class="mpRow"><i style="background:${r.info.color}"></i><b>${esc(r.info.name)}</b><span>${r.id === 'h' ? '👑' : ''} ${Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z))} m</span></div>`);
   $('mpList').innerHTML = `<div class="mpHead">🏆 Skor tablosu · ${MP.pub ? 'Genel oda' : 'Oda <b>' + MP.code + '</b>'}</div>${renderScoreboard()}
-    <div class="mpBtns">${MP.pub ? '' : '<button data-mp="copy">📋 Kodu kopyala</button>'}<button data-mp="leave" class="red">🚪 Odadan ayrıl</button></div>`;
+    ${renderMpActions()}<div class="mpBtns">${MP.pub ? '' : '<button data-mp="copy">📋 Kodu kopyala</button>'}<button data-mp="leave" class="red">🚪 Odadan ayrıl</button></div>`;
 }
 function mpFeed(html) {
   const f = $('chatFeed'), el = document.createElement('div'); el.innerHTML = html; f.appendChild(el);
@@ -4954,16 +4962,18 @@ function doEmote(e) {
 }
 function copyCode() { const t = MP.code; try { navigator.clipboard.writeText(t).then(() => floatText('📋 Kod kopyalandı: ' + t)); } catch (e) { floatText('Kod: ' + t); } }
 function initOnlineUI() {
+  initModesUI();
   const cp = $('chatPanel');
   cp.innerHTML = `<div class="cpGrid">${QUICK_MSGS.map((m, i) => `<button data-chat="${i}">${m}</button>`).join('')}</div><div class="cpEm">${EMOTES.map(([k, ic, n]) => `<button data-emote="${k}">${ic}<small>${n}</small></button>`).join('')}</div>`;
   const tapHandler = (el, fn) => { el.addEventListener('click', e => { e.stopPropagation(); fn(e); }); el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); fn(e); }, { passive: false }); };
   tapHandler(cp, e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.chat) sendChat(+b.dataset.chat); else if (b.dataset.emote) doEmote(b.dataset.emote); });
   tapHandler($('bChat'), () => { cp.style.display = cp.style.display === 'block' ? 'none' : 'block'; $('mpList').style.display = 'none'; });
   tapHandler($('mpPill'), () => { const l = $('mpList'); l.style.display = l.style.display === 'block' ? 'none' : 'block'; cp.style.display = 'none'; if (l.style.display === 'block') renderMpList(); });
-  tapHandler($('mpList'), e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.mp === 'copy') copyCode(); if (b.dataset.mp === 'leave') mpLeave(false); });
+  tapHandler($('mpList'), e => { const b = e.target.closest('button'); if (!b) return; const v = b.dataset.mp; if (b.disabled) return; if (v === 'copy') copyCode(); else if (v === 'leave') mpLeave(false); else if (v) mpListAction(v); });
 }
 // ---------------- lobby (start screen)
 function initLobby() {
+  loadCrew();
   try { Object.assign(MP, JSON.parse(localStorage.getItem('vistabay_mp') || '{}')); } catch (e) { }
   if (!MP.name) MP.name = 'Oyuncu' + Math.floor(10 + Math.random() * 90);
   $('mpName').value = MP.name;
@@ -5447,7 +5457,7 @@ function releaseWorldCar(c, d) {
   c.claimedBy = null; c.active = true; c.group.visible = true; c.mode = d && d.dead ? 'dead' : 'free'; c.driver = false; c.vx = c.vz = 0;
   if (d) { c.h = d.h; c.y = groundY(d.x, d.z); c.group.position.set(d.x, c.y, d.z); c.group.rotation.set(0, c.h, 0); if (d.dead && !c.dead) explodeCar(c); }
 }
-function releaseClaimsOf(id) { svRelease(id); for (const c of WORLD_CARS) if (c.claimedBy === id) { const r = MP.remotes.get(id); releaseWorldCar(c, r ? { x: r.x, z: r.z, h: r.r, dead: 0 } : null); } }
+function releaseClaimsOf(id) { svRelease(id); modesPlayerLeft(id); for (const c of WORLD_CARS) if (c.claimedBy === id) { const r = MP.remotes.get(id); releaseWorldCar(c, r ? { x: r.x, z: r.z, h: r.r, dead: 0 } : null); } }
 
 
 // ============================================================ SHARED WORLD 2: special vehicles, pickups, armored truck, looted spots
@@ -5518,7 +5528,7 @@ function hostStreamTruck(dt) {
 function sharedManifest() {
   return {
     sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
-    sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+    ...modesManifest(), sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
   };
 }
 function applySharedManifest(d) {
@@ -5526,6 +5536,7 @@ function applySharedManifest(d) {
   if (d.pu) { pickups.length = 0; for (const [id, x, z, amt, kind] of d.pu) puSpawnLocal(x, z, amt, false, kind, id); }
   if (d.gcd) for (const [k, t] of d.gcd) GEN_CD.set(k, state.now + t);
   if (d.sev) onStreetMsg({ ...d.sev });
+  applyModesManifest(d);
 }
 function handleShared(d) {
   switch (d.t) {
@@ -5761,18 +5772,245 @@ function drawStreetEventsMap(dot) {
   else { const list = MP.on && !MP.host ? SEV.mirror : SEV.cars; list.forEach((c, i) => { if (c && !c.dead) dot(c.group.position.x, c.group.position.z, i === 0 ? '#ff8a00' : (Math.sin(state.now * 12) > 0 ? '#ff2040' : '#2060ff'), i === 0 ? 10 : 7, i === 0); }); }
 }
 
+
+// ============================================================ CREWS, MONEY TRANSFER, DEATHMATCH, CAPTURE THE GOLDEN BAG (online)
+const crewTag = cr => cr ? `[${cr.tag}] ` : '';
+const sameCrew = r => !!(MP.crew && r && r.info && r.info.crew && r.info.crew.id === MP.crew.id);
+function saveCrew() { try { localStorage.setItem('vistabay_crew', JSON.stringify(MP.crew || null)); } catch (e) { } }
+function loadCrew() { try { MP.crew = JSON.parse(localStorage.getItem('vistabay_crew') || 'null'); } catch (e) { MP.crew = null; } }
+function sendInfo() { if (MP.on) mpSend({ t: 'info', info: myInfo() }); updateOnlineHUD(); }
+// ---------------- modal (crew create / invites / money)
+function mpModal(html) { const m = $('mpModal'); m.innerHTML = `<div class="mmBox">${html}</div>`; m.style.display = 'flex'; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { } }
+function closeModal() { $('mpModal').style.display = 'none'; state.crewInv = null; }
+function openCrewCreate() {
+  mpModal(`<b>👥 Çete kur</b><small>İsim ve renk seç · arkadaşlarını skor tablosundan davet et</small>
+    <input id="crewName" maxlength="14" placeholder="Çete adı" value="${esc(MP.name)} Çetesi" autocomplete="off" spellcheck="false">
+    <div class="mmCols">${MP_COLORS.map((c, i) => `<button data-col="${c}" style="background:${c}" class="${i ? '' : 'on'}"></button>`).join('')}</div>
+    <div class="mmBtns"><button data-act="crewMake">KUR</button><button data-act="close" class="grey">Vazgeç</button></div>`);
+}
+function openPay(id) {
+  const r = MP.remotes.get(id); if (!r) return;
+  mpModal(`<b>💸 ${esc(r.info.name)} oyuncusuna para gönder</b><small>Bakiyen: $${Math.round(state.money).toLocaleString('tr-TR')}</small>
+    <div class="mmBtns">${[100, 500, 1000, 5000].map(a => `<button data-act="pay" data-to="${esc(id)}" data-amt="${a}" ${state.money < a ? 'disabled' : ''}>$${a}</button>`).join('')}</div>
+    <div class="mmBtns"><button data-act="close" class="grey">Kapat</button></div>`);
+}
+function initModesUI() {
+  const m = $('mpModal');
+  m.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return; e.stopPropagation();
+    if (b.dataset.col) { m.querySelectorAll('[data-col]').forEach(x => x.classList.toggle('on', x === b)); return; }
+    const a = b.dataset.act;
+    if (a === 'close') closeModal();
+    if (a === 'crewMake') {
+      const name = ($('crewName').value || '').trim().slice(0, 14) || 'Çete', col = (m.querySelector('[data-col].on') || {}).dataset?.col || MP.color;
+      MP.crew = { id: myNetId() + Date.now().toString(36), name, tag: name.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü0-9]/g, '').slice(0, 4).toUpperCase() || 'ÇETE', color: col };
+      saveCrew(); sendInfo(); closeModal(); showBig('👥 ÇETE KURULDU', col, 2.5, `${crewTag(MP.crew)}${name} · dost ateşi kapalı · kazancın %25'i yakındaki arkadaşlara`);
+      if ($('mpList').style.display === 'block') renderMpList();
+    }
+    if (a === 'pay') {
+      const amt = +b.dataset.amt, r = MP.remotes.get(b.dataset.to);
+      if (!r || state.money < amt) return;
+      state.money -= amt; state.shownMoney = state.money; ledger(`💸 → ${r.info.name}`, -amt); saveGame();
+      mpSend({ t: 'money', to: r.id, amt }); floatText(`💸 $${amt} gönderildi`); AudioSys.cash(); closeModal();
+    }
+    if (a === 'crewAcc' && state.crewInv) {
+      MP.crew = state.crewInv.crew; saveCrew(); sendInfo(); mpSend({ t: 'crew_ok', to: state.crewInv.from }); showBig('👥 ÇETEYE KATILDIN', MP.crew.color, 2.5, crewTag(MP.crew) + MP.crew.name); closeModal();
+    }
+    if (a === 'crewDec') closeModal();
+  });
+}
+function mpListAction(v) {
+  if (v === 'crew') openCrewCreate();
+  else if (v === 'crewleave') { MP.crew = null; saveCrew(); sendInfo(); floatText('👥 Çeteden ayrıldın'); renderMpList(); }
+  else if (v === 'dm' || v === 'ctf') { mpSend({ t: 'mode_req', to: 'h', k: v, x: r1(player.pos.x), z: r1(player.pos.z) }); if (MP.host) hostStartMode(v, player.pos.x, player.pos.z); $('mpList').style.display = 'none'; }
+  else if (v.startsWith('pay:')) openPay(v.slice(4));
+  else if (v.startsWith('inv:')) { const r = MP.remotes.get(v.slice(4)); if (r && MP.crew) { mpSend({ t: 'crew_inv', to: r.id, crew: MP.crew }); floatText(`👥 ${r.info.name} davet edildi`); } }
+}
+function renderMpActions() {
+  let h = `<div class="mpSec">Çete</div><div class="mpAct">${MP.crew ? `<span><i style="background:${MP.crew.color}"></i>${esc(crewTag(MP.crew) + MP.crew.name)}</span><button data-mp="crewleave" class="red">Ayrıl</button>` : '<span>Çeten yok</span><button data-mp="crew">👥 Çete kur</button>'}</div>`;
+  h += `<div class="mpSec">Oyuncular</div>`;
+  for (const r of MP.remotes.values()) h += `<div class="mpAct"><span><i style="background:${sameCrew(r) ? MP.crew.color : r.info.color}"></i>${esc(crewTag(r.info.crew) + r.info.name)}</span><button data-mp="pay:${esc(r.id)}">💸</button>${MP.crew && !sameCrew(r) ? `<button data-mp="inv:${esc(r.id)}">👥 Davet</button>` : ''}</div>`;
+  if (!MP.remotes.size) h += '<div class="mpAct"><span>Odada başka oyuncu yok</span></div>';
+  h += `<div class="mpSec">Modlar</div><div class="mpAct"><button data-mp="dm" ${MODES.dm ? 'disabled' : ''}>⚔ Deathmatch · 3 dk</button><button data-mp="ctf" ${MODES.ctf ? 'disabled' : ''}>💰 Altın Çanta · 4 dk</button></div>`;
+  return h;
+}
+// ---------------- crew earnings share (bonus, not deducted)
+function crewShare(amt, label) {
+  if (!MP.on || !MP.crew || amt < 200 || /Çete payı|💸/.test(label)) return;
+  mpSend({ t: 'crew_share', c: MP.crew.id, amt: Math.round(amt * 0.25 / 10) * 10, x: r1(player.pos.x), z: r1(player.pos.z) });
+}
+// ---------------- modes
+const MODES = { dm: null, ctf: null, grp: null, bag: null };
+const DM_R = 70, CTF_GOAL = 60;
+function modeVisuals() {
+  if (MODES.grp) return;
+  const g = new THREE.Group();
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(DM_R, DM_R, 40, 64, 1, true).translate(0, 20, 0), new THREE.MeshBasicMaterial({ color: 0xff2a3a, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(DM_R - 0.6, DM_R, 96).rotateX(-Math.PI / 2).translate(0, 0.3, 0), new THREE.MeshBasicMaterial({ color: 0xff3040, transparent: true, opacity: 0.8, depthWrite: false }));
+  g.add(wall, ring); g.visible = false; scene.add(g); MODES.grp = g;
+  const bag = new THREE.Group();
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffc830, metalness: 0.9, roughness: 0.25, emissive: 0x6a4a00, emissiveIntensity: 0.6 });
+  bag.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.55, 0.26).translate(0, 0.6, 0), gold), new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.035, 6, 12, Math.PI).translate(0, 0.88, 0), gold));
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 120, 16, 1, true).translate(0, 60, 0), new THREE.MeshBasicMaterial({ color: 0xffc830, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  bag.add(beam); bag.visible = false; scene.add(bag); MODES.bag = bag; MODES.bagBeam = beam;
+}
+function hostStartMode(k, x, z) {
+  if (!MP.host || MODES[k]) return;
+  if (k === 'ctf') for (let t = 0; t < 40; t++) { const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 20, bx = x + Math.cos(a) * d, bz = z + Math.sin(a) * d; if (!insideBuilding(bx, 0.5, bz) && !collide(bx, bz, 0.8, 0.5).hit) { x = bx; z = bz; break; } }
+  const msg = k === 'dm' ? { t: 'dm', on: 1, x: r1(x), z: r1(z), dur: 180 } : { t: 'ctf', on: 1, x: r1(x), z: r1(z), dur: 240 };
+  onModeMsg({ ...msg, id: 'h' }); mpSend(msg);
+}
+function onModeMsg(d) {
+  modeVisuals();
+  if (d.t === 'dm') {
+    if (d.on) {
+      MODES.dm = { x: d.x, z: d.z, left: d.dur, scores: {}, k: 0, joined: false };
+      MODES.grp.position.set(d.x, groundY(d.x, d.z), d.z); MODES.grp.visible = true;
+      showBig('⚔ DEATHMATCH', '#ff3040', 3.5, 'Kırmızı bölgeye gir · en çok indiren $5.000 kazanır · 3 dk'); AudioSys.tone(440, 0.3, 0.25, 'sawtooth');
+    } else if (MODES.dm) {
+      const won = d.win && d.win === myNetId();
+      if (won) { earn(5000, '⚔ Deathmatch zaferi'); AudioSys.success(); }
+      showBig(won ? '🏆 DEATHMATCH ŞAMPİYONU!' : '⚔ DEATHMATCH BİTTİ', won ? '#ffd23a' : '#ff8080', 3.5, d.name ? `Kazanan: ${d.name} · ${d.k} indirme${won ? ' · +$5.000' : ''}` : 'Kimse indirme yapmadı');
+      MODES.dm = null; MODES.grp.visible = false;
+    }
+  } else if (d.t === 'ctf') {
+    if (d.on) {
+      MODES.ctf = { x: d.x, z: d.z, left: d.dur, carrier: null, held: {}, me: 0, tickT: 0 };
+      showBig('💰 ALTIN ÇANTA', '#ffc830', 3.5, `Çantayı kap ve tut · ${CTF_GOAL} sn tutan $8.000 kazanır · taşıyan yavaşlar ve herkese görünür`); AudioSys.tone(660, 0.3, 0.25, 'triangle');
+    } else if (MODES.ctf) {
+      const won = d.win && d.win === myNetId();
+      if (won) { earn(8000, '💰 Altın Çanta zaferi'); AudioSys.success(); }
+      showBig(won ? '🏆 ALTIN ÇANTA SENİN!' : '💰 ALTIN ÇANTA BİTTİ', '#ffc830', 3.5, d.name ? `Kazanan: ${d.name} · ${d.s} sn${won ? ' · +$8.000' : ''}` : 'Kimse çantayı tutamadı');
+      MODES.ctf = null; MODES.bag.visible = false;
+    }
+  }
+  if ($('mpList').style.display === 'block') renderMpList();
+}
+const nameOf = id => id === myNetId() ? MP.name : (MP.remotes.get(id) || { info: { name: 'Oyuncu' } }).info.name;
+function hostEndDm() {
+  const D = MODES.dm; let win = null, k = 0; for (const id in D.scores) if (D.scores[id] > k) { k = D.scores[id]; win = id; }
+  const msg = { t: 'dm', on: 0, win, name: win ? nameOf(win) : '', k }; onModeMsg(msg); mpSend(msg);
+}
+function hostEndCtf(winId) {
+  const C = MODES.ctf; let win = winId || null, s = winId ? C.held[winId] || CTF_GOAL : 0;
+  if (!win) for (const id in C.held) if (C.held[id] > s) { s = C.held[id]; win = id; }
+  const msg = { t: 'ctf', on: 0, win, name: win ? nameOf(win) : '', s: Math.round(s) }; onModeMsg(msg); mpSend(msg);
+}
+function setCarrier(by, x, z) {
+  const C = MODES.ctf; if (!C) return;
+  C.carrier = by || null; if (!by) { C.x = x; C.z = z; }
+  if (by === myNetId()) { showBig('💰 ÇANTA SENDE!', '#ffc830', 2, 'Hayatta kal · herkes seni görüyor'); AudioSys.pickup(); }
+  else if (by) floatText(`💰 Çanta: ${nameOf(by)}`);
+  for (const r of MP.remotes.values()) r.tagKey = '';
+}
+function dropBag(x, z) { const msg = { t: 'ctf_bag', by: null, x: r1(x), z: r1(z) }; if (MP.host) { setCarrier(null, x, z); mpSend(msg); } else mpSend({ t: 'ctf_drop', to: 'h', x: r1(x), z: r1(z) }); }
+function modesOnLocalDeath() { if (MODES.ctf && MODES.ctf.carrier === myNetId()) dropBag(player.pos.x, player.pos.z); }
+function modesOnKill(d) {
+  const D = MODES.dm; if (!D || d.killer !== myNetId() || !D.joined) return;
+  const v = MP.remotes.get(d.id); if (!v || Math.hypot(v.x - D.x, v.z - D.z) > DM_R + 5) return;
+  D.k++; D.scores[myNetId()] = D.k; mpSend({ t: 'dms', k: D.k }); floatText(`⚔ İndirme ${D.k}`);
+}
+function modesPlayerLeft(id) {
+  const C = MODES.ctf; if (MP.host && C && C.carrier === id) { const r = MP.remotes.get(id); dropBag(r ? r.x : C.x, r ? r.z : C.z); }
+}
+function modesRespawn() {
+  const D = MODES.dm; if (!D || !D.joined) return;
+  for (let k = 0; k < 20; k++) { const a = Math.random() * Math.PI * 2, rr = Math.random() * (DM_R - 12), x = D.x + Math.cos(a) * rr, z = D.z + Math.sin(a) * rr; if (!insideBuilding(x, 0.5, z) && !collide(x, z, 0.6, 0.5).hit) { player.pos.set(x, groundY(x, z), z); break; } }
+  state.armor = 100; state.spawnProt = 2; floatText('⚔ Bölgeye geri döndün');
+}
+function updateModes(dt) {
+  const hud = $('modeHud'); let txt = '';
+  const D = MODES.dm, C = MODES.ctf;
+  if (D) {
+    D.left -= dt;
+    const inside = Math.hypot(player.pos.x - D.x, player.pos.z - D.z) < DM_R;
+    if (inside && !D.joined && !state.dead) { D.joined = true; state.ownedW[1] = true; state.ammo[1] += 120; floatText('⚔ Deathmatch\'e katıldın · +120 mermi'); }
+    if (D.joined && !inside && !state.dead && Math.floor(state.now) % 4 === 0 && Math.floor(state.now - dt) % 4 !== 0) floatText('⚠ Bölgenin dışındasın · indirmeler sayılmaz');
+    let lead = null, lk = 0; for (const id in D.scores) if (D.scores[id] > lk) { lk = D.scores[id]; lead = id; }
+    txt += `⚔ DM ${Math.max(0, Math.floor(D.left / 60))}:${String(Math.max(0, Math.floor(D.left % 60))).padStart(2, '0')} · sen ${D.k}${lead ? ` · lider ${esc(nameOf(lead))} ${lk}` : ''}`;
+    if (MP.host && D.left <= 0) hostEndDm();
+  }
+  if (C) {
+    C.left -= dt;
+    const me = myNetId(), bag = MODES.bag; bag.visible = true;
+    let bx = C.x, bz = C.z, by = groundY(C.x, C.z);
+    const mine = C.carrier === me; bag.scale.setScalar(mine ? 0.5 : 1);
+    if (mine) { bx = player.pos.x; bz = player.pos.z; by = player.pos.y + 1.75; }
+    else if (C.carrier) { const r = MP.remotes.get(C.carrier); if (r) { bx = r.x; bz = r.z; by = r.y + 1.8; } }
+    bag.position.set(bx, by, bz); bag.rotation.y += dt * 1.5; MODES.bagBeam.visible = !mine;
+    if (!C.carrier && !state.dead && !state.interior && Math.hypot(player.pos.x - C.x, player.pos.z - C.z) < (state.inCar ? 3.5 : 1.8) && Math.abs(player.pos.y - by) < 3 && !C.reqT) {
+      C.reqT = 1; if (MP.host) { setCarrier(me); mpSend({ t: 'ctf_bag', by: me }); } else mpSend({ t: 'ctf_req', to: 'h' });
+    }
+    if (C.reqT) { C.reqT -= dt; if (C.reqT <= 0) C.reqT = 0; }
+    if (C.carrier === me && !state.dead) {
+      C.me += dt; C.held[me] = C.me; C.tickT += dt;
+      if (C.tickT > 1) { C.tickT = 0; mpSend({ t: 'ctf_t', s: Math.round(C.me) }); }
+      if (C.me >= CTF_GOAL && !C.sentWin) { C.sentWin = true; if (MP.host) hostEndCtf(me); else mpSend({ t: 'ctf_win', to: 'h' }); }
+    }
+    if (MODES.ctf) {
+      const who = C.carrier ? (C.carrier === me ? 'SENDE' : esc(nameOf(C.carrier)) + ` (${Math.round(C.held[C.carrier] || 0)}/${CTF_GOAL} sn)`) : 'yerde';
+      txt += `${txt ? '<br>' : ''}💰 Altın Çanta ${Math.max(0, Math.floor(C.left / 60))}:${String(Math.max(0, Math.floor(C.left % 60))).padStart(2, '0')} · çanta ${who} · sen ${Math.round(C.me)} sn`;
+      if (MP.host && C.left <= 0) hostEndCtf(null);
+    }
+  }
+  if (!MODES.ctf && MODES.bag) MODES.bag.visible = false;
+  if (txt !== updateModes.t) { updateModes.t = txt; hud.innerHTML = txt; hud.style.display = txt ? 'block' : 'none'; }
+}
+const ctfSlow = () => MODES.ctf && MODES.ctf.carrier === myNetId();
+function drawModesMap(g, toMap, r, scale) {
+  const D = MODES.dm, C = MODES.ctf;
+  if (D) { const [px, py] = toMap(D.x, D.z); g.strokeStyle = '#ff3040'; g.lineWidth = 3; g.beginPath(); g.arc(px, py, DM_R * scale, 0, 7); g.stroke(); g.fillStyle = 'rgba(255,48,64,0.12)'; g.fill(); }
+  if (C && MODES.bag) {
+    let [px, py] = toMap(MODES.bag.position.x, MODES.bag.position.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy);
+    if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); }
+    g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.strokeStyle = '#ffc830'; g.lineWidth = 3; g.stroke(); g.font = '16px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('💰', px, py + 1);
+  }
+}
+function handleModes(d) {
+  switch (d.t) {
+    case 'crew_inv': {
+      const r = MP.remotes.get(d.id); if (!r || !d.crew) return true;
+      state.crewInv = { from: d.id, crew: d.crew };
+      mpModal(`<b>👥 ${esc(r.info.name)} seni çetesine çağırıyor</b><small><i class="sw" style="background:${d.crew.color}"></i> ${esc(crewTag(d.crew) + d.crew.name)} · dost ateşi kapalı · kazanç paylaşımı</small><div class="mmBtns"><button data-act="crewAcc">KATIL</button><button data-act="crewDec" class="grey">Reddet</button></div>`);
+      AudioSys.tone(660, 0.15, 0.2, 'square'); haptic([40, 40]); return true;
+    }
+    case 'crew_ok': { const r = MP.remotes.get(d.id); if (r) mpFeed(`👥 <b>${esc(r.info.name)}</b> çetene katıldı`); return true; }
+    case 'crew_share': if (MP.crew && d.c === MP.crew.id && Math.hypot(d.x - player.pos.x, d.z - player.pos.z) < 250) { const r = MP.remotes.get(d.id); earn(d.amt, `👥 Çete payı · ${r ? r.info.name : ''}`); floatText(`👥 Çete payı +$${d.amt}`); } return true;
+    case 'money': { const r = MP.remotes.get(d.id), amt = Math.max(0, Math.min(5000, +d.amt || 0)); earn(amt, `💸 ${r ? r.info.name : 'Oyuncu'} gönderdi`); showBig('💸 PARA GELDİ', '#7dff9a', 2.5, `+$${amt} · ${r ? r.info.name : ''}`); AudioSys.cash(); return true; }
+    case 'mode_req': if (MP.host) hostStartMode(d.k, d.x, d.z); return true;
+    case 'dm': case 'ctf': onModeMsg(d); return true;
+    case 'dms': if (MODES.dm) MODES.dm.scores[d.id] = d.k; return true;
+    case 'ctf_req': if (MP.host && MODES.ctf && !MODES.ctf.carrier) { setCarrier(d.id); mpSend({ t: 'ctf_bag', by: d.id }); } return true;
+    case 'ctf_bag': setCarrier(d.by, d.x, d.z); return true;
+    case 'ctf_drop': if (MP.host && MODES.ctf && MODES.ctf.carrier === d.id) dropBag(d.x, d.z); return true;
+    case 'ctf_t': if (MODES.ctf) MODES.ctf.held[d.id] = d.s; return true;
+    case 'ctf_win': if (MP.host && MODES.ctf && MODES.ctf.carrier === d.id) hostEndCtf(d.id); return true;
+  }
+  return false;
+}
+function modesManifest() {
+  const D = MODES.dm, C = MODES.ctf;
+  return { dm: D ? { x: D.x, z: D.z, dur: Math.round(D.left), scores: D.scores } : null, ctf: C ? { x: C.x, z: C.z, dur: Math.round(C.left), carrier: C.carrier, held: C.held } : null };
+}
+function applyModesManifest(d) {
+  if (d.dm) { onModeMsg({ t: 'dm', on: 1, x: d.dm.x, z: d.dm.z, dur: d.dm.dur }); MODES.dm.scores = d.dm.scores || {}; }
+  if (d.ctf) { onModeMsg({ t: 'ctf', on: 1, x: d.ctf.x, z: d.ctf.z, dur: d.ctf.dur }); MODES.ctf.carrier = d.ctf.carrier; MODES.ctf.held = d.ctf.held || {}; }
+}
+function endModesLocal() { MODES.dm = null; MODES.ctf = null; if (MODES.grp) MODES.grp.visible = false; if (MODES.bag) MODES.bag.visible = false; $('modeHud').style.display = 'none'; updateModes.t = ''; }
+
 // ============================================================ MP STAGE 3: PvP, scoreboard, bounty, customization sync
 const SB = { k: 0, d: 0, streak: 0, t: 0 };          // own session score
 const BOUNTY_STREAK = 3;
 const myBounty = () => SB.streak >= BOUNTY_STREAK ? Math.min(10000, SB.streak * 750) : 0;
 function pvpHit(r, dmg, head) {
+  if (sameCrew(r)) { if (!(state.now - (pvpHit.ft || -9) < 2)) { pvpHit.ft = state.now; floatText('🤝 Çete arkadaşı · dost ateşi kapalı'); } return; }
   mpSend({ t: 'hit', to: r.id, dmg: Math.round(dmg), head: head ? 1 : 0 });
   r.hp = Math.max(0, (r.hp || 100) - dmg); r.tagKey = '';
   if (head) floatText('🎯 Kafadan vuruş!');
 }
 function onPvpHit(d) {
   if (state.dead || state.spawnProt > 0) return;
-  const r = MP.remotes.get(d.id);
+  const r = MP.remotes.get(d.id); if (r && sameCrew(r)) return;
   state.lastHitBy = d.id; state.lastHitT = state.now;
   if (state.inCar) { state.health -= d.dmg * 0.6; damageCar(state.inCar, d.dmg * 0.5); } else applyDamage(d.dmg);
   state.shake = Math.max(state.shake, 0.35); haptic(40);
@@ -5780,6 +6018,7 @@ function onPvpHit(d) {
 }
 // called instead of the plain "fainted" when health hits 0
 function onLocalDeath() {
+  modesOnLocalDeath();
   const killer = state.lastHitBy && state.now - (state.lastHitT || -99) < 6 && MP.remotes.get(state.lastHitBy);
   if (MP.on) {
     const bounty = myBounty();
@@ -5792,6 +6031,7 @@ function onLocalDeath() {
   state.lastHitBy = null;
 }
 function onRemoteKill(d) {
+  modesOnKill(d);
   const victim = MP.remotes.get(d.id), killer = d.killer === MP.myId ? null : MP.remotes.get(d.killer);
   if (victim) { victim.dead = true; setTimeout(() => { if (victim) victim.dead = false; }, 4000); }
   if (d.killer === MP.myId) {
@@ -5809,8 +6049,8 @@ function updateStage3(dt) {
   SB.t += dt; if (SB.t > 3) sendScore();
 }
 function renderScoreboard() {
-  const rows = [{ name: MP.name + ' (sen)', color: MP.color, k: SB.k, d: SB.d, rw: S().racesWon, m: Math.round(state.money), b: myBounty(), me: true }];
-  for (const r of MP.remotes.values()) { const s = r.sb || {}; rows.push({ name: r.info.name, color: r.info.color, k: s.k || 0, d: s.d || 0, rw: s.rw || 0, m: s.m || 0, b: s.b || 0, dist: Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z)) }); }
+  const rows = [{ name: crewTag(MP.crew) + MP.name + ' (sen)', color: MP.color, k: SB.k, d: SB.d, rw: S().racesWon, m: Math.round(state.money), b: myBounty(), me: true }];
+  for (const r of MP.remotes.values()) { const s = r.sb || {}; rows.push({ name: crewTag(r.info.crew) + r.info.name, color: r.info.color, k: s.k || 0, d: s.d || 0, rw: s.rw || 0, m: s.m || 0, b: s.b || 0, dist: Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z)) }); }
   rows.sort((a, b) => b.k - a.k || a.d - b.d);
   return `<table class="sbT"><tr><th>#</th><th>Oyuncu</th><th>☠</th><th>💀</th><th>🏁</th><th>💵</th><th>🎯</th></tr>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td><i style="background:${r.color}"></i>${esc(r.name)}${r.dist != null ? ` <small>${r.dist} m</small>` : ''}</td><td>${r.k}</td><td>${r.d}</td><td>${r.rw}</td><td>$${(r.m / 1000).toFixed(1)}k</td><td>${r.b ? '<b class="bty">☠ $' + r.b + '</b>' : '—'}</td></tr>`).join('')}</table>`;
 }
@@ -6308,6 +6548,7 @@ function loop(now) {
   updateInteriors(dt);
   updateStage2(dt);
   updateStage3(dt);
+  updateModes(dt);
   updateDoors();
   updateAirport(dt);
   updateIslands(dt);
