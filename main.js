@@ -342,6 +342,7 @@ function init() {
   const save = loadGame(); if (!save) state.money = state.shownMoney = 1500;
   spawnPlayer();
   spawnTraffic();
+  buildPoliceForce();
   buildShops(save);
   buildBusStops();
   spawnBuses();
@@ -1279,7 +1280,8 @@ function damageCar(c, amt, fromCrash) {
   if (c.dead) return;
   if (c.netTruck) { if (MP.on) mpSend({ t: 'tkd', to: 'h', a: Math.round(amt) }); return; }
   if (c.netEv !== undefined) { if (MP.on) mpSend({ t: 'evd', to: 'h', i: c.netEv, a: Math.round(amt) }); return; }
-  if (c.evSlot !== undefined && !c._rh) c.lastHit = 'h';
+  if (c.polMirror !== undefined) { if (MP.on) mpSend({ t: 'pdm', to: 'h', i: c.polMirror, a: Math.round(amt) }); return; }
+  if ((c.evSlot !== undefined || c.police) && !c._rh) c.lastHit = 'h';
   if (NW.client && c.mode === 'net') { mpSend({ t: 'cd', to: 'h', i: c.wIdx, a: Math.round(amt) }); return; }
   if (c.event === 'truck' && !c._rh) c.lastHit = 'h';
   if (c.up && c.up.armor) amt *= 0.5;
@@ -1293,7 +1295,7 @@ function explodeCar(c) {
   const p = c.group.position;
   explosion(p.x, p.y + 1, p.z);
   c.vy = 7; c.air = true;
-  if (c.police) addHeat(1.2);
+  if (c.police) policeKilled(c);
   if (state.inCar === c) { exitCar(true); state.health -= 45; }
   else if (c.svIdx !== undefined && !c._netBoom && !c.svTaken) svSend(c, false);
   setTimeout(() => {
@@ -1321,7 +1323,7 @@ function enterCar() {
   if (state.inCar) { exitCar(false); return; }
   if (MP.on && !state.interior) { const rv = nearRemoteVehicle(4.5); if (rv) { let nl = 1e9; for (const c of cars) if (c.active && !c.dead) nl = Math.min(nl, Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z)); if (Math.hypot(rv.x - player.pos.x, rv.z - player.pos.z) < nl) { enterAsPassenger(rv); return; } } }
   let best = null, bd = 5;
-  for (const c of cars) { if (!c.active || c.dead || c.evSlot !== undefined || c.netEv !== undefined || c.netTruck) continue; const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d < bd) { bd = d; best = c; } }
+  for (const c of cars) { if (!c.active || c.dead || c.evSlot !== undefined || c.netEv !== undefined || c.netTruck || c.polMirror !== undefined || c.polHeli || c.rb) continue; const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d < bd) { bd = d; best = c; } }
   if (!best) return;
   if (best.display) { floatText('Bu araç satılık — galeriden al!'); return; }
   const netCar = best.mode === 'net';
@@ -1583,65 +1585,212 @@ function bfsPath(si, sj, ti, tj) {
   while (k !== si * W + sj) { path.unshift([Math.floor(k / W), k % W]); k = prev[k]; }
   return path;
 }
-function updatePolice(dt) {
-  const want = Math.min(4, state.wanted), pc = cars.filter(c => c.police);
-  let active = pc.filter(c => c.active && c.mode === 'police');
-  // spawn
-  if (active.length < want) {
-    const c = pc.find(c => !c.active);
-    if (c) {
-      let best = null;
-      for (let t = 0; t < 30; t++) { const i = RI(0, N), j = RI(0, N), d = Math.hypot(nodeP(i) - player.pos.x, nodeP(j) - player.pos.z); if (d > 130 && d < 260) { best = [i, j]; break; } }
-      if (best) {
-        c.active = true; c.group.visible = true; c.dead = false; c.health = 100; c.paint.material = c.paintM; c.mode = 'police'; c.driver = true;
-        c.group.position.set(nodeP(best[0]), 0, nodeP(best[1])); c.y = 0; c.vx = c.vz = 0; c.air = false;
-        c.h = Math.atan2(player.pos.x - nodeP(best[0]), player.pos.z - nodeP(best[1])); c.path = null; c.pathT = 0; c.stuck = 0; c.reverseT = 0; c.idleT = 0;
-      }
+// ============================================================ POLICE FORCE (shared online, host-run) · 1-5 stars
+// 1-2★ patrol cars chase · 3★ more cars + road blocks ahead · 4★ armored SWAT vans · 5★ helicopter that shoots.
+// The host (or the single player) runs every unit against every wanted player and streams them ('pol');
+// clients mirror the units, see the same chase and receive shots / busts / kill credit as messages.
+const POL = { pool: [], heli: null, beam: null, rb: [], rbT: 0, sT: 0, mirror: [], heliT: 0 };
+function buildPoliceForce() {
+  POL.pool = cars.filter(c => c.police);
+  const c5 = createCar('police', '#fff', 0, -9999, 0, 'police'); c5.active = false; c5.group.visible = false; POL.pool.push(c5);
+  for (let k = 0; k < 2; k++) { const c = createCar('armored', '#16181e', 0, -9999, 0, 'police'); c.police = true; c.swat = true; c.active = false; c.group.visible = false; POL.pool.push(c); }
+  const h = createHeli('#0e1830', 0, 60, -9999, 0); h.home = null; h.police = true; h.polHeli = true; h.mode = 'polheli'; h.active = false; h.group.visible = false; h.power = 1; POL.heli = h;
+  POL.beam = makeHeliBeam(); scene.add(POL.beam);
+}
+function makeHeliBeam() {
+  const m = new THREE.Mesh(new THREE.ConeGeometry(7, 70, 18, 1, true).translate(0, -35, 0).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xeaf4ff, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  m.visible = false; return m;
+}
+function addBarrier(c) {
+  const tex = canvasTex(64, 16, g => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#ffffff' : '#e02020'; g.fillRect(i * 8, 0, 8, 16); } });
+  const b = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.9, 3.2).translate(0, 0.75, 4.1), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
+  c.group.add(b);
+}
+function policeTargets() {
+  const T = [];
+  if (state.wanted > 0 && !state.dead && !state.interior) T.push({ id: 'h', x: player.pos.x, y: player.pos.y, z: player.pos.z, w: state.wanted, car: !!state.inCar, h: state.inCar ? state.inCar.h : player.yaw, local: true });
+  if (MP.on && MP.host) for (const r of MP.remotes.values()) if (r.wn > 0 && r.x > -2000 && !r.sdead) T.push({ id: r.id, x: r.x, y: r.y, z: r.z, w: r.wn, car: !!r.vehKey, h: r.r });
+  return T.sort((a, b) => b.w - a.w);
+}
+function policeShoot(fx, fy, fz, t, acc, dmg) {
+  const hit = Math.random() < acc, ex = t.x + (hit ? 0 : MR(-3, 3)), ez = t.z + (hit ? 0 : MR(-3, 3));
+  FX.tracer(fx, fy, fz, ex, t.y + 1.2, ez, true); AudioSys.shot(0.35);
+  if (MP.on) mpSend({ t: 'psh', a: [r1(fx), r1(fy), r1(fz)], b: [r1(ex), r1(t.y + 1.2), r1(ez)], tg: t.id, hit: hit ? 1 : 0, dmg });
+  if (hit && t.local) policeHitMe(dmg);
+}
+function policeHitMe(dmg) { if (state.dead) return; if (state.inCar) { damageCar(state.inCar, dmg * 0.8); state.health -= dmg * 0.25; } else applyDamage(dmg); }
+function policeKilled(c) {
+  const by = c.lastHit || 'h';
+  if (!MP.on || by === 'h') addHeat(1.2); else mpSend({ t: 'pkill', to: by });
+}
+function spawnUnitFor(c, t) {
+  let best = null;
+  for (let k = 0; k < 30; k++) { const i = RI(0, N), j = RI(0, N), d = Math.hypot(nodeP(i) - t.x, nodeP(j) - t.z); if (d > 130 && d < 260) { best = [i, j]; break; } }
+  if (!best) return false;
+  c.active = true; c.group.visible = true; c.dead = false; c.health = c.maxHealth; c.paint.material = c.paintM; c.mode = 'police'; c.driver = true; c.tgt = t.id; c.lastHit = null;
+  c.group.position.set(nodeP(best[0]), 0, nodeP(best[1])); c.y = 0; c.vx = c.vz = 0; c.air = false; c.group.rotation.set(0, 0, 0);
+  c.h = Math.atan2(t.x - nodeP(best[0]), t.z - nodeP(best[1])); c.path = null; c.pathT = 0; c.stuck = 0; c.reverseT = 0; c.idleT = 0; c.shootT = MR(1, 2);
+  return true;
+}
+function driveUnit(c, t, dt) {
+  const p = c.group.position, d = Math.hypot(t.x - p.x, t.z - p.z);
+  let tx = t.x, tz = t.z;
+  const direct = d < 45 && los(p.x, 1, p.z, tx, 1, tz);
+  if (!direct) {
+    c.pathT -= dt;
+    if (c.pathT <= 0 || !c.path || !c.path.length) { const s = nearestNode(p.x, p.z), e = nearestNode(tx, tz); c.path = bfsPath(s[0], s[1], e[0], e[1]); c.pathT = 1; }
+    if (c.path && c.path.length) { let [ni, nj] = c.path[0]; if (Math.hypot(nodeP(ni) - p.x, nodeP(nj) - p.z) < 9) { c.path.shift(); if (c.path.length) [ni, nj] = c.path[0]; } tx = nodeP(ni); tz = nodeP(nj); }
+  }
+  const want = Math.atan2(tx - p.x, tz - p.z), diff = wrapA(want - c.h);
+  let thr = d < 9 && !t.car ? -0.3 : 1, steer = clamp(-diff * 2.2, -1, 1);
+  if (Math.abs(diff) > 1.6 && carSpeed(c) < 8) thr = 0.6;
+  if (c.reverseT > 0) { c.reverseT -= dt; thr = -1; steer = -steer; }
+  else if (carSpeed(c) < 1.5 && d > 10) { c.stuck += dt; if (c.stuck > 1.5) { c.reverseT = 1.2; c.stuck = 0; } } else c.stuck = 0;
+  carPhysics(c, dt, thr, steer, Math.abs(diff) > 1.2 && carSpeed(c) > 14);
+  // shooting from the car (2★+), SWAT hits harder
+  if (t.w >= 2 && d < (c.swat ? 40 : 32)) {
+    c.shootT -= dt;
+    if (c.shootT <= 0 && los(p.x, 1.4, p.z, t.x, t.y + 1.3, t.z)) { c.shootT = MR(0.7, 1.4) / (0.6 + t.w * 0.3); policeShoot(p.x, p.y + 1.4, p.z, t, c.swat ? 0.55 : 0.45, c.swat ? 9 : 6); }
+  }
+  // bust: target on foot, police very close and stopped
+  if (!t.car && d < 4.5 && carSpeed(c) < 3 && t.w <= 2) { c.bustT = (c.bustT || 0) + dt; if (c.bustT > 2.5) { c.bustT = 0; if (t.local) busted(); else mpSend({ t: 'bust', to: t.id }); } } else c.bustT = 0;
+}
+// ---------------- road blocks (3★+, only against targets in a vehicle)
+function spawnRoadblock(t) {
+  const fx = Math.sin(t.h), fz = Math.cos(t.h), alongX = Math.abs(fx) > Math.abs(fz);
+  const [i, j] = nearestNode(t.x + fx * 170, t.z + fz * 170); if (i < 0 || j < 0 || i > N || j > N) return;
+  const x = nodeP(i), z = nodeP(j), d = Math.hypot(x - t.x, z - t.z); if (d < 90 || d > 240) return;
+  const rb = { tgt: t.id, x, z, t: 0, cars: [] };
+  for (const s of [-1, 1]) {
+    const px = alongX ? x : x + s * 5, pz = alongX ? z + s * 5 : z, h = Math.atan2(x - px, z - pz);
+    const c = createCar('police', '#fff', px, pz, h, 'rb'); c.police = true; c.rb = true; c.driver = true; c.shootT = MR(0.5, 1.5); addBarrier(c); rb.cars.push(c);
+  }
+  POL.rb.push(rb); if (t.local) floatText('🚧 Önünde polis barikatı!');
+}
+function removeRoadblock(rb) { for (const c of rb.cars) { if (state.inCar === c) continue; scene.remove(c.group); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); } POL.rb.splice(POL.rb.indexOf(rb), 1); }
+function updateRoadblocks(dt, T) {
+  POL.rbT -= dt;
+  for (const rb of [...POL.rb]) {
+    rb.t += dt; const t = T.find(o => o.id === rb.tgt);
+    if (!t || t.w < 3) { if ((rb.idle = (rb.idle || 0) + dt) > 15) removeRoadblock(rb); continue; } rb.idle = 0;
+    if (Math.hypot(t.x - rb.x, t.z - rb.z) > 280 || rb.t > 120) { removeRoadblock(rb); continue; }
+    for (const c of rb.cars) {
+      if (c.dead || c.mode !== 'rb') continue;
+      const p = c.group.position, d = Math.hypot(t.x - p.x, t.z - p.z);
+      c.shootT -= dt; if (d < 35 && c.shootT <= 0 && los(p.x, 1.4, p.z, t.x, t.y + 1.3, t.z)) { c.shootT = MR(0.7, 1.4); policeShoot(p.x, p.y + 1.5, p.z, t, 0.4, 6); }
     }
   }
-  let nearest = 1e9, see = false;
-  for (const c of pc) {
+  if (POL.rbT <= 0) { POL.rbT = 8; for (const t of T) if (t.w >= 3 && t.car && POL.rb.length < 2 && !POL.rb.some(r => r.tgt === t.id)) spawnRoadblock(t); }
+}
+// ---------------- helicopter (5★)
+function updatePoliceHeli(dt, T) {
+  const c = POL.heli, t = T.find(o => o.w >= 5), p = c.group.position;
+  if (c.dead) { POL.beam.visible = false; c.deadT = (c.deadT || 0) + dt; if (c.deadT > 45) { c.deadT = 0; c.dead = false; c.active = false; c.group.visible = false; c.mode = 'polheli'; } return; }
+  if (!t) {
+    if (c.active) { c.y += 14 * dt; p.y = c.y; c.rotorA += 30 * dt; c.rotor.rotation.y = c.rotorA; if (c.y > 160 || nearestPlayerDist(p.x, p.z) > 400) { c.active = false; c.group.visible = false; } }
+    POL.beam.visible = false; return;
+  }
+  if (!c.active) {
+    const a = Math.random() * Math.PI * 2; c.active = true; c.group.visible = true; c.dead = false; c.health = c.maxHealth = 160; c.paint.material = c.paintM; c.mode = 'polheli'; c.lastHit = null;
+    p.set(t.x + Math.cos(a) * 220, groundY(t.x, t.z) + 70, t.z + Math.sin(a) * 220); c.y = p.y; c.shootT = 2; if (t.local) showBig('🚁 POLİS HELİKOPTERİ', '#ff4040', 2.5, 'Gökyüzünden ateş ediyor!');
+  }
+  POL.heliT += dt;
+  const a = POL.heliT * 0.35, ox = t.x + Math.cos(a) * 32, oz = t.z + Math.sin(a) * 32, oy = Math.max(groundY(ox, oz), roofHeight(ox, oz), t.y) + 42;
+  const dx = ox - p.x, dz = oz - p.z, d = Math.hypot(dx, dz), step = Math.min(d, 34 * dt);
+  if (d > 0.01) { p.x += dx / d * step; p.z += dz / d * step; }
+  c.y = damp(c.y, oy, 1.5, dt); p.y = c.y;
+  c.h += wrapA(Math.atan2(t.x - p.x, t.z - p.z) - c.h) * (1 - Math.exp(-2 * dt));
+  c.group.rotation.set(Math.min(0.25, step / dt / 120), c.h, 0);
+  c.rotorA += 30 * dt; c.rotor.rotation.y = c.rotorA; c.tailRotor.rotation.x = c.rotorA * 1.6;
+  c.vx = dx / Math.max(d, 1) * step / dt; c.vz = dz / Math.max(d, 1) * step / dt;
+  c.shootT -= dt;
+  if (c.shootT <= 0 && Math.hypot(t.x - p.x, t.z - p.z) < 90 && los(p.x, c.y - 1, p.z, t.x, t.y + 1.2, t.z)) { c.shootT = MR(0.5, 1.0); policeShoot(p.x, c.y - 0.5, p.z, t, 0.3, 7); }
+  POL.beam.visible = nightF > 0.15; POL.beam.position.set(p.x, c.y - 0.5, p.z); POL.beam.lookAt(t.x, t.y, t.z);
+}
+// ---------------- director (host / single player)
+function updatePolice(dt) {
+  if (MP.on && !MP.host) return clientPolice(dt);
+  const T = policeTargets();
+  // release units whose target is gone / no longer wanted
+  for (const c of POL.pool) {
     if (!c.active) continue;
+    const p = c.group.position;
+    if (c.mode !== 'police') { if ((c.mode === 'dead' || c.mode === 'free') && nearestPlayerDist(p.x, p.z) > 160) { c.active = false; c.group.visible = false; } continue; }
+    const t = T.find(o => o.id === c.tgt);
+    if (!t) {
+      const t2 = T.find(o => POL.pool.filter(u => u.active && u.mode === 'police' && u.tgt === o.id && u.swat === c.swat).length < (c.swat ? (o.w >= 4 ? 2 : 0) : Math.min(3, o.w)));
+      if (t2) c.tgt = t2.id;
+      else { c.idleT += dt; carPhysics(c, dt, 0, 0, false); if (c.idleT > 6 || nearestPlayerDist(p.x, p.z) > 140) { c.active = false; c.group.visible = false; } continue; }
+    }
+  }
+  // spawn what each target needs (highest wanted first, one unit per frame)
+  for (const t of T) {
+    const mine = POL.pool.filter(u => u.active && u.mode === 'police' && u.tgt === t.id);
+    const needCars = Math.min(3, t.w) - mine.filter(u => !u.swat).length, needSwat = (t.w >= 4 ? 2 : 0) - mine.filter(u => u.swat).length;
+    const free = POL.pool.find(u => !u.active && (needSwat > 0 ? u.swat : !u.swat && needCars > 0));
+    if (free && (needCars > 0 || needSwat > 0) && spawnUnitFor(free, t)) break;
+  }
+  for (const c of POL.pool) if (c.active && c.mode === 'police') { const t = T.find(o => o.id === c.tgt); if (t) driveUnit(c, t, dt); }
+  updateRoadblocks(dt, T);
+  updatePoliceHeli(dt, T);
+  // stream to clients
+  if (MP.on) { POL.sT += dt; if (POL.sT > 0.12) { POL.sT = 0; mpSend({ t: 'pol', u: policeUnits().map(([ty, c]) => { const p = c.group.position; return [ty, c.active ? 1 : 0, r1(p.x), r1(c.y ?? p.y), r1(p.z), r2(c.h), c.dead ? 1 : 0]; }) }); } }
+  return localPoliceSense(policeUnits().map(u => u[1]));
+}
+function policeUnits() { const u = POL.pool.map(c => [c.swat ? 's' : 'c', c]); u.push(['h', POL.heli]); for (const rb of POL.rb) for (const c of rb.cars) u.push(['b', c]); return u; }
+function localPoliceSense(list) {
+  let nearest = 1e9, see = false;
+  for (const c of list) {
+    if (!c || !c.active || c.dead) continue;
     const p = c.group.position, d = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
-    if (c.mode !== 'police') { if (c.mode === 'dead' || c.mode === 'free') { if (d > 160) { c.active = false; c.group.visible = false; } } continue; }
     nearest = Math.min(nearest, d);
-    if (!see && d < 75 && state.wanted > 0 && los(p.x, 1.5, p.z, player.pos.x, 1.5, player.pos.z)) see = true;
-    if (state.wanted === 0) { c.idleT += dt; carPhysics(c, dt, 0, 0, false); if (c.idleT > 6 || d > 140) { c.active = false; c.group.visible = false; } continue; }
-    // targeting
-    let tx = player.pos.x, tz = player.pos.z;
-    const direct = d < 45 && los(p.x, 1, p.z, tx, 1, tz);
-    if (!direct) {
-      c.pathT -= dt;
-      if (c.pathT <= 0 || !c.path || !c.path.length) { const s = nearestNode(p.x, p.z), t = nearestNode(tx, tz); c.path = bfsPath(s[0], s[1], t[0], t[1]); c.pathT = 1; }
-      if (c.path && c.path.length) {
-        let [ni, nj] = c.path[0];
-        if (Math.hypot(nodeP(ni) - p.x, nodeP(nj) - p.z) < 9) { c.path.shift(); if (c.path.length) [ni, nj] = c.path[0]; }
-        tx = nodeP(ni); tz = nodeP(nj);
-      }
-    }
-    const want = Math.atan2(tx - p.x, tz - p.z), diff = wrapA(want - c.h);
-    let thr = d < 9 && !state.inCar ? -0.3 : 1, steer = clamp(-diff * 2.2, -1, 1);
-    if (Math.abs(diff) > 1.6 && carSpeed(c) < 8) thr = 0.6;
-    if (c.reverseT > 0) { c.reverseT -= dt; thr = -1; steer = -steer; }
-    else if (carSpeed(c) < 1.5 && d > 10) { c.stuck += dt; if (c.stuck > 1.5) { c.reverseT = 1.2; c.stuck = 0; } } else c.stuck = 0;
-    carPhysics(c, dt, thr, steer, Math.abs(diff) > 1.2 && carSpeed(c) > 14);
-    // shooting
-    if (state.wanted >= 2 && d < 32 && !state.dead) {
-      c.shootT -= dt;
-      if (c.shootT <= 0 && los(p.x, 1.4, p.z, player.pos.x, 1.3, player.pos.z)) {
-        c.shootT = MR(0.6, 1.3) / (state.wanted * 0.5);
-        const hit = Math.random() < 0.45;
-        const ex = player.pos.x + (hit ? 0 : MR(-3, 3)), ez = player.pos.z + (hit ? 0 : MR(-3, 3));
-        FX.tracer(p.x, p.y + 1.4, p.z, ex, player.pos.y + 1.2, ez, true);
-        AudioSys.shot(0.35);
-        if (hit) { if (state.inCar) { damageCar(state.inCar, 5); state.health -= 1.5; } else applyDamage(6); }
-      }
-    }
-    // bust: on foot, police very close and stopped
-    if (!state.inCar && d < 4.5 && carSpeed(c) < 3 && state.wanted <= 2) { c.bustT = (c.bustT || 0) + dt; if (c.bustT > 2.5) busted(); } else c.bustT = 0;
+    if (!see && state.wanted > 0 && d < (c.polHeli || c.polType === 'h' ? 120 : 75) && los(p.x, (c.y ?? 0) + 1.5, p.z, player.pos.x, player.pos.y + 1.5, player.pos.z)) see = true;
   }
   state.policeSee = see;
   return nearest;
+}
+// ---------------- clients: mirror the host's police
+function applyPoliceUnits(list) {
+  list.forEach(([ty, act, x, y, z, h, dead], i) => {
+    let c = POL.mirror[i];
+    if (c && c.polType !== ty) { scene.remove(c.group); const k = cars.indexOf(c); if (k >= 0) cars.splice(k, 1); c = null; }
+    if (!c) {
+      c = ty === 'h' ? createHeli('#0e1830', x, y, z, h) : createCar(ty === 's' ? 'armored' : 'police', ty === 's' ? '#16181e' : '#fff', x, z, h, 'free');
+      c.home = null; c.police = false; c.mode = 'net'; c.driver = true; c.polMirror = i; c.polType = ty; c.ai = null; if (ty === 'b') addBarrier(c);
+      POL.mirror[i] = c;
+    }
+    c.target = { x, y, z, h }; c.active = !!act; c.group.visible = !!act;
+    if (dead && !c.dead) { c._netBoom = true; explodeCar(c); c._netBoom = false; }
+    if (!dead && c.dead) { c.dead = false; c.paint.material = c.paintM; c.mode = 'net'; }
+  });
+  for (let i = list.length; i < POL.mirror.length; i++) { const c = POL.mirror[i]; if (c) { scene.remove(c.group); const k = cars.indexOf(c); if (k >= 0) cars.splice(k, 1); } }
+  POL.mirror.length = list.length;
+}
+function clientPolice(dt) {
+  let heli = null;
+  for (const c of POL.mirror) {
+    if (!c || !c.target || !c.active) continue;
+    if (c.polType === 'h') heli = c;
+    if (c.dead && c.polType !== 'h') continue;
+    const p = c.group.position, t = c.target, k = 1 - Math.exp(-7 * dt), ox = p.x, oz = p.z;
+    if (Math.hypot(t.x - p.x, t.z - p.z) > 40) { p.x = t.x; p.z = t.z; } else { p.x += (t.x - p.x) * k; p.z += (t.z - p.z) * k; }
+    c.h += wrapA(t.h - c.h) * k; c.y = c.polType === 'h' ? damp(c.y ?? t.y, t.y, 6, dt) : t.y; p.y = c.y;
+    c.vx = (p.x - ox) / Math.max(dt, 1e-3); c.vz = (p.z - oz) / Math.max(dt, 1e-3); c.group.rotation.set(0, c.h, 0);
+    if (c.rotor) { c.rotorA += 30 * dt; c.rotor.rotation.y = c.rotorA; c.tailRotor.rotation.x = c.rotorA * 1.6; }
+    else { c.spin += Math.hypot(c.vx, c.vz) * dt / c.spec.wr; for (const s of c.spinners) s.rotation.z = -c.spin; }
+  }
+  if (heli && state.wanted >= 5 && nightF > 0.15 && !heli.dead) { POL.beam.visible = true; POL.beam.position.set(heli.group.position.x, heli.y - 0.5, heli.group.position.z); POL.beam.lookAt(player.pos.x, player.pos.y, player.pos.z); } else POL.beam.visible = false;
+  return localPoliceSense(POL.mirror);
+}
+function handlePolice(d) {
+  switch (d.t) {
+    case 'pol': if (!MP.host) applyPoliceUnits(d.u); return true;
+    case 'psh': FX.tracer(d.a[0], d.a[1], d.a[2], d.b[0], d.b[1], d.b[2], true); if (Math.hypot(d.a[0] - player.pos.x, d.a[2] - player.pos.z) < 120) AudioSys.shot(0.3); if (d.hit && d.tg === myNetId()) policeHitMe(d.dmg); return true;
+    case 'pdm': if (MP.host) { const u = policeUnits()[d.i]; const c = u && u[1]; if (c && !c.dead) { c._rh = true; c.lastHit = d.id; damageCar(c, d.a); c._rh = false; } } return true;
+    case 'pkill': addHeat(1.2); return true;
+    case 'bust': if (!state.dead) busted(); return true;
+  }
+  return false;
 }
 function applyDamage(a) { if (state.armor > 0) { const t = Math.min(state.armor, a * 0.7); state.armor -= t; a -= t; } state.health -= a; state.shake = Math.max(state.shake, 0.25); }
 
@@ -2340,7 +2489,7 @@ function drawMinimap() {
     if (l > r - 10) { if (!clampEdge) return; px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); }
     g.fillStyle = col; g.beginPath(); g.arc(px, py, rad, 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 2; g.stroke();
   };
-  for (const c of cars) if (c.active && c.police && c.mode === 'police') dot(c.group.position.x, c.group.position.z, Math.sin(state.now * 12) > 0 ? '#ff2040' : '#2060ff', 8, true);
+  for (const c of cars) if (c.active && ((c.police && (c.mode === 'police' || c.mode === 'rb' || c.mode === 'polheli')) || (c.polMirror !== undefined && !c.dead))) dot(c.group.position.x, c.group.position.z, Math.sin(state.now * 12) > 0 ? '#ff2040' : '#2060ff', 8, true);
   g.font = '18px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const c of cars) if (c.home && c.active && !c.dead && c !== state.inCar) { const [px, py] = toMap(c.group.position.x, c.group.position.z); if (Math.hypot(px - r, py - r) < r - 10) g.fillText(c.spec.heli ? '🚁' : c.spec.plane ? '✈' : '🚤', px, py); }
   for (const c of cars) if (c.owned && !c.dead && c !== state.inCar) dot(c.group.position.x, c.group.position.z, '#40a0ff', 6, false);
@@ -4608,7 +4757,7 @@ function mpLost(reason) {
   mpLeave(true);
 }
 function mpLeave(silent) {
-  if (!MP.host) { clearEventCars(SEV.mirror); if (SEV.info) onStreetMsg({ k: 'end' }); }
+  if (!MP.host) { clearEventCars(SEV.mirror); if (SEV.info) onStreetMsg({ k: 'end' }); applyPoliceUnits([]); POL.beam.visible = false; }
   if (NW.client) { for (const c of WORLD_CARS) if (c.mode === 'net') { c.mode = 'free'; c.driver = false; c.active = true; c.group.visible = true; c.vx = c.vz = 0; } for (const p of WORLD_PEDS) { p.net = null; } NW.client = false; }
   if (state.passenger) exitPassenger();
   for (const id of [...MP.remotes.keys()]) removeRemote(id);
@@ -4636,6 +4785,7 @@ function handleNet3(d) {
   return false;
 }
 function applyPacket(d) {
+  if (handlePolice(d)) return;
   if (handleStreet(d)) return;
   if (handleShared(d)) return;
   if (handleNet3(d)) return;
@@ -4718,7 +4868,7 @@ function updateRemotes(dt) {
   for (const r of MP.remotes.values()) {
     const s = sampleRemote(r); if (!s) continue;
     const ox = r.x, oz = r.z;
-    r.x = s.x; r.y = s.y; r.z = s.z; r.r = s.r; r.hp = s.hp; r.wn = s.wn || 0;
+    r.x = s.x; r.y = s.y; r.z = s.z; r.r = s.r; r.hp = s.hp; r.wn = s.wn || 0; r.sdead = !!s.dead;
     const mv = Math.hypot(r.x - ox, r.z - oz) / Math.max(dt, 1e-3);
     const far = Math.hypot(r.x - player.pos.x, r.z - player.pos.z) > 320;
     const h = r.human;
