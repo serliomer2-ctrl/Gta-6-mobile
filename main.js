@@ -70,7 +70,7 @@ const state = {
   money: 0, shownMoney: 0, health: 100, armor: 0, heat: 0, wanted: 0, time: 16.4, inCar: null,
   mission: null, missionCooldown: 0, dead: false, deadTimer: 0, fireCd: 0, lastLookInput: 0,
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
-  weapon: 0, ammo: [Infinity, 150, 0, 0, 0, 0], ownedW: [true, true, false, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
+  weapon: 0, homes: {}, bag: {}, food: 100, water: 100, ammo: [Infinity, 150, 0, 0, 0, 0], ownedW: [true, true, false, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
   props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
   stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0, racesWon: 0, heists: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, story: 0, look: null, dialog: null, photo: null, hidden: false, noSave: false, emote: null, interior: null, passenger: null, mpRace: null, raceInv: null, incoming: null, heist: null, spawnProt: 0, lastHitBy: null, lastHitT: -99, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0, docs: {}, chute: 0, sky: null, cabin: null, lesson: null
 };
@@ -357,6 +357,7 @@ function init() {
   buildCrewZones();
   buildBlackMarket();
   vgLoad();
+  initDecorUI();
   buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
@@ -375,6 +376,8 @@ function init() {
   buildStory();
   buildClothesShop();
   buildInteriors();
+  buildMarkets();
+  buildHomes();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -2534,6 +2537,7 @@ function drawMinimap() {
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   drawAnomMap(dot);
+  if (!state.interior) drawLifeMap(dot);
   if (BM.van && !BM.van.dead && Math.hypot(BM.x - player.pos.x, BM.z - player.pos.z) < 220) { dot(BM.x, BM.z, '#a040ff', 10, false); const [px, py] = toMap(BM.x, BM.z); g.font = '12px sans-serif'; g.fillText('🕶', px, py + 1); }
   for (const rp of MP.remotes.values()) { { const hunt = state.cop && rp.wn > 0; dot(rp.x, rp.z, hunt ? (Math.sin(state.now * 10) > 0 ? '#ff2040' : '#ffffff') : rp.info.cop ? '#3a7aff' : rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, hunt || rp.bounty || sameCrew(rp) ? 11 : 8, true); if (hunt) { const [px, py] = toMap(rp.x, rp.z); if (Math.hypot(px - r, py - r) < r - 12) { g.font = 'bold 11px sans-serif'; g.fillStyle = '#ffd23a'; g.fillText('★'.repeat(rp.wn), px, py - 14); } } } if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
@@ -2595,7 +2599,8 @@ function respawn() {
   state.sky = null; if (chuteMesh) chuteMesh.visible = false;
   state.dead = false; state.health = 100; state.heat = 0; state.wanted = 0;
   const loss = 0; state.money -= loss;
-  if (state.interior) { state.interior = null; interiorLight.intensity = 0; for (const hh of clubDancers) hh.g.visible = false; disposeGen(); }
+  if (state.interior) { state.interior = null; interiorLight.intensity = 0; for (const hh of clubDancers) hh.g.visible = false; disposeGen(); disposeHome(); }
+  state.food = Math.max(state.food ?? 100, 50); state.water = Math.max(state.water ?? 100, 50);
   state.spawnProt = 3;
   const [x, z] = spawnPoint();
   if (packagesFound() >= 5) state.armor = 100;
@@ -2856,7 +2861,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2869,6 +2874,10 @@ function shopItems(type) {
   if (type === 'prop') return propItems();
   if (type === 'clothes') return [...clothesItems(), ...styleShopItems()];
   if (type === 'bm') return bmItems();
+  if (type === 'grocery') return groceryItems();
+  if (type === 'fridge') return fridgeItems();
+  if (type === 'bag') return bagItems();
+  if (type === 'homebuy') return homeShopItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2939,7 +2948,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, homes: state.homes || {}, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2955,6 +2964,7 @@ function loadGame() {
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
     state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned;
+    state.homes = d.homes || {}; state.bag = d.bag || {}; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
 }
@@ -3393,7 +3403,7 @@ function renderPhone(app) {
     const next = Math.ceil((1 - (state.time % 1)) * HOUR_SEC);
     h = head('🏠 Emlak', '#d88a10') + `<div class="phBody"><div class="phBal"><small>Saatlik gelir · sonraki ödeme ${next} sn</small><b>+$${propIncome()}</b></div>
       ${PROPERTIES.map(p => `<div class="phRow"><i class="phIc">${p.icon}</i><div><b>${p.name}</b><small>${state.props[p.id] ? `Senin · +$${p.income}/saat${state.spawnProp === p.id ? ' · 🛏 Doğuş' : ''}` : `$${p.price.toLocaleString('tr-TR')} · +$${p.income}/saat`}</small></div><button class="phBtn" data-gps="${p.id}">📍 GPS</button></div>`).join('')}
-      <p class="phNote">Mülkü satın almak için önündeki yeşil halkaya git.</p></div>`;
+      <p class="phNote">Mülkü satın almak için önündeki yeşil halkaya git.</p>${homesPhoneHtml()}</div>`;
   }
   sc.innerHTML = h;
 }
@@ -3414,6 +3424,8 @@ function initPhone() {
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
     else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
+    else if (d.hgps) { const H = LIFE.homes.find(q => q.id === d.hgps); state.waypoint = { x: H.door.x, z: H.door.z, label: H.name }; floatText('📍 ' + H.name + ' işaretlendi'); closePhone(); }
+    else if (d.mgps) { const M = LIFE.mkts.find(q => q.id === d.mgps); state.waypoint = { x: M.door.x, z: M.door.z, label: M.name }; floatText('📍 ' + M.name + ' market işaretlendi'); closePhone(); }
     else if (d.gps) { const p = PROPERTIES.find(q => q.id === d.gps); state.waypoint = { x: p.zone.x, z: p.zone.z, label: p.name }; floatText('📍 ' + p.name + ' işaretlendi'); closePhone(); }
     else if (t.id === 'phClose' || t.id === 'phHomeBtn') { if (t.id === 'phHomeBtn' && state.phoneApp !== 'home') renderPhone('home'); else closePhone(); }
   };
@@ -5540,6 +5552,547 @@ function updateGunFear(dt) {
   for (const c of cars) if (c.mode === 'ai' && c.ai && c.ai.panic <= 0 && Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < R + 10) { c.ai.panic = 4; if (Math.random() < 0.15) honkSound(0.4); }
 }
 
+// ============================================================ LIFE RP 1: HOMES (buy · upgrade · decorate), SUPERMARKETS, FRIDGE, HUNGER & THIRST
+// ---------------- groceries
+const GROC_CATS = { bakery: '🥖 Fırın & Kahvaltılık', butcher: '🥩 Kasap', produce: '🍎 Manav', drinks: '🥤 İçecekler', snacks: '🍫 Atıştırmalık' };
+const GROCERY = {
+  bread: { n: 'Ekmek', i: '🍞', cat: 'bakery', p: 4, f: 14, w: 0 },
+  simit: { n: 'Simit', i: '🥯', cat: 'bakery', p: 3, f: 10, w: 0 },
+  eggs: { n: 'Yumurta (10\'lu)', i: '🥚', cat: 'bakery', p: 12, f: 18, w: 0 },
+  milk: { n: 'Süt (1 L)', i: '🥛', cat: 'bakery', p: 6, f: 6, w: 14 },
+  cheese: { n: 'Beyaz peynir', i: '🧀', cat: 'bakery', p: 14, f: 16, w: 0 },
+  meat: { n: 'Dana kıyma / et', i: '🥩', cat: 'butcher', p: 28, f: 35, w: 0 },
+  chicken: { n: 'Tavuk but', i: '🍗', cat: 'butcher', p: 18, f: 28, w: 0 },
+  sausage: { n: 'Sucuk', i: '🌭', cat: 'butcher', p: 15, f: 20, w: 0 },
+  apple: { n: 'Elma (1 kg)', i: '🍎', cat: 'produce', p: 3, f: 8, w: 6 },
+  banana: { n: 'Muz', i: '🍌', cat: 'produce', p: 4, f: 10, w: 2 },
+  melon: { n: 'Karpuz', i: '🍉', cat: 'produce', p: 9, f: 12, w: 22 },
+  tomato: { n: 'Domates', i: '🍅', cat: 'produce', p: 3, f: 6, w: 6 },
+  water: { n: 'Su (1,5 L)', i: '💧', cat: 'drinks', p: 2, f: 0, w: 30 },
+  cola: { n: 'Kola', i: '🥤', cat: 'drinks', p: 5, f: 3, w: 18 },
+  juice: { n: 'Meyve suyu', i: '🧃', cat: 'drinks', p: 5, f: 4, w: 20 },
+  ayran: { n: 'Ayran', i: '🥛', cat: 'drinks', p: 3, f: 4, w: 22 },
+  chips: { n: 'Cips', i: '🍟', cat: 'snacks', p: 6, f: 9, w: -2 },
+  choco: { n: 'Çikolata', i: '🍫', cat: 'snacks', p: 5, f: 10, w: 0 },
+  biscuit: { n: 'Bisküvi', i: '🍪', cat: 'snacks', p: 4, f: 8, w: 0 },
+  meal: { n: 'Hazır yemek', i: '🍱', cat: 'snacks', p: 16, f: 30, w: 4 },
+};
+const BAG_CAP = 40, FRIDGE_CAP = 60;
+const cnt = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+const LIFE = { mkts: [], homes: [], decay: 0, warnT: 0 };
+// ---------------- hunger & thirst
+function eatItem(k, from) {
+  const G = GROCERY[k]; if (!G || !(from[k] > 0)) return;
+  from[k]--; if (!from[k]) delete from[k];
+  state.food = clamp((state.food ?? 100) + G.f, 0, 100); state.water = clamp((state.water ?? 100) + G.w, 0, 100);
+  if (!state.dead) state.health = Math.min(100, state.health + 3 + G.f * 0.1);
+  floatText(`${G.i} ${G.n} · 🍔 ${Math.round(state.food)} · 💧 ${Math.round(state.water)}`);
+  AudioSys.tone(G.w > G.f ? 500 : 180, 0.12, 0.12, G.w > G.f ? 'sine' : 'square', G.w > G.f ? 1.5 : 0.6); haptic(15); saveGame();
+}
+function updateNeeds(dt) {
+  if (state.food == null) state.food = 100; if (state.water == null) state.water = 100;
+  if (state.dead || state.god || state.cabin) { updateNeedsHud(); return; }
+  const run = !state.inCar && player.speed > 5 ? 1.6 : 1;
+  state.food = Math.max(0, state.food - dt * 100 / 2100 * run);     // ~35 min to empty
+  state.water = Math.max(0, state.water - dt * 100 / 1500 * run);   // ~25 min to empty
+  if (state.food <= 0 || state.water <= 0) {
+    LIFE.decay += dt; if (LIFE.decay > 2) { LIFE.decay = 0; if (state.health > 10) state.health -= 1; }
+  }
+  LIFE.warnT -= dt;
+  if ((state.food < 20 || state.water < 20) && LIFE.warnT <= 0) { LIFE.warnT = 60; floatText(state.water < 20 ? '💧 Susadın · su iç (buzdolabı / market / B: poşet)' : '🍔 Acıktın · bir şeyler ye (buzdolabı / market / B: poşet)'); }
+  updateNeedsHud();
+}
+const wellFed = () => (state.food ?? 100) > 15 && (state.water ?? 100) > 15;
+function updateNeedsHud() {
+  const f = $('foodBar'), w = $('waterBar'); if (!f) return;
+  f.firstChild.style.width = (state.food ?? 100) + '%'; w.firstChild.style.width = (state.water ?? 100) + '%';
+  f.classList.toggle('low', state.food < 20); w.classList.toggle('low', state.water < 20);
+}
+function bagItems() {
+  const it = [{ sec: `🛍 Poşet · ${cnt(state.bag)}/${BAG_CAP} · 🍔 ${Math.round(state.food)} · 💧 ${Math.round(state.water)}` }];
+  const keysB = Object.keys(state.bag || {});
+  if (!keysB.length) it.push({ name: 'Poşet boş', desc: 'Süpermarketten (🛒 BİRİM · A-110 · ŞIKO) alışveriş yap', price: 0, dis: '—', buy: () => { } });
+  for (const k of keysB) { const G = GROCERY[k]; it.push({ name: `${G.i} ${G.n} ×${state.bag[k]}`, desc: `🍔 +${G.f} · 💧 ${G.w >= 0 ? '+' : ''}${G.w}`, price: 0, btn: G.w > G.f ? 'İÇ' : 'YE', buy: () => eatItem(k, state.bag) }); }
+  return it;
+}
+// ---------------- supermarkets (three fictional discount chains)
+const MARKET_BRANDS = [
+  { id: 'birim', name: 'BİRİM', col: '#d81e2a', col2: '#1a3a8a', mult: 0.9, slogan: 'Her gün ucuz' },
+  { id: 'a110', name: 'A-110', col: '#1a5ac8', col2: '#e8202a', mult: 1.0, slogan: 'Komşunuz' },
+  { id: 'siko', name: 'ŞIKO', col: '#f2c200', col2: '#1a1a1a', mult: 0.95, slogan: 'Şok fiyatlar' },
+];
+const dealOf = M => { const ks = Object.keys(GROCERY); return ks[(Math.floor(Date.now() / 3600000) + M.k * 5) % ks.length]; };   // hourly "aktüel" deal, same for everyone
+const grocPrice = (M, k) => Math.max(1, Math.round(GROCERY[k].p * M.mult * (dealOf(M) === k ? 0.6 : 1)));
+function logoTex(M, w = 512, h = 160) {
+  return canvasTex(w, h, g => { g.fillStyle = M.col; g.fillRect(0, 0, w, h); g.fillStyle = M.col2; g.fillRect(0, h * 0.78, w, h * 0.22); g.fillStyle = M.id === 'siko' ? '#1a1a1a' : '#fff'; g.font = `900 ${h * 0.5}px Arial`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(M.name, w / 2, h * 0.4); g.font = `700 ${h * 0.13}px Arial`; g.fillStyle = '#fff'; g.fillText(M.slogan.toUpperCase(), w / 2, h * 0.89); });
+}
+function lifeDoorFree(d) {   // keep away from other entrances / rings so prompts never clash
+  for (const id in INTERIORS) { const e = INTERIORS[id].ext; if (e && Math.hypot(e[0] - d.x, e[1] - d.z) < 12) return false; }
+  for (const p of PROPERTIES) if (p.zone && Math.hypot(p.zone.x - d.x, p.zone.z - d.z) < 12) return false;
+  return !SHOPS.some(z => Math.hypot(z.x - d.x, z.z - d.z) < 10);
+}
+function buildMarkets() {
+  const shops = DOORS.filter(d => d.type === 'shop' && d.y0 < 1 && d.blk && d.blk.dist && !d.blk.park && lifeDoorFree(d)).sort((a, b) => a.id - b.id);
+  const picked = [];
+  for (const d of shops) { if (picked.length >= 3) break; if (picked.some(p => Math.hypot(p.x - d.x, p.z - d.z) < 260)) continue; picked.push(d); }
+  picked.forEach((d, k) => {
+    const M = { ...MARKET_BRANDS[k], k, door: d };
+    // facade sign
+    const sp = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.55), new THREE.MeshBasicMaterial({ map: logoTex(M) }));
+    sp.position.set(d.fx + d.nx * 0.12, d.y0 + 3.6, d.fz + d.nz * 0.12); sp.rotation.y = Math.atan2(d.nx, d.nz); scene.add(sp);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(M.col), transparent: true, opacity: 0.85, depthWrite: false }));
+    ring.position.set(d.x, groundY(d.x, d.z) + 0.05, d.z); scene.add(ring);
+    M.I = buildMarketInterior(M); LIFE.mkts.push(M); d.market = M;
+  });
+}
+function buildMarketInterior(M) {
+  const W = 22, D = 16, ox = -4600 - M.k * 60, z1 = -2400, z0 = z1 - D, x0 = ox - W / 2, x1 = ox + W / 2, cz = (z0 + z1) / 2, d = M.door;
+  const I = { name: `${M.name} Market`, x0, x1, z0, z1, h: 4, boxes: [], spawn: [ox, z1 - 2.6, Math.PI], exitAt: [ox, z1 - 0.6], ext: [d.x, d.z], extOut: [d.x + d.nx * 1.2, d.z + d.nz * 1.2, Math.atan2(d.nx, d.nz)], spots: [], market: M };
+  const G = genMats(), L = new Map(), add = (mat, geo) => { if (!L.has(mat)) L.set(mat, []); L.get(mat).push(geo); };
+  const box = (x, y, z, w, h, dd, mat, solid = true) => { add(mat, new THREE.BoxGeometry(w, h, dd).translate(x, y + h / 2, z)); if (solid) I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - dd / 2, z1: z + dd / 2, y0: y, y1: y + h }); };
+  const brand = new THREE.MeshStandardMaterial({ color: new THREE.Color(M.col), roughness: 0.6, envMapIntensity: 0.2 }), brand2 = new THREE.MeshStandardMaterial({ color: new THREE.Color(M.col2), roughness: 0.6, envMapIntensity: 0.2 });
+  box(ox, -0.1, cz, W, 0.1, D, G.floorTile, false); box(ox, 4, cz, W + 0.6, 0.2, D + 0.6, G.ceil, false);
+  for (const [x, z, w, dd] of [[ox, z0 - 0.15, W + 0.6, 0.3], [ox, z1 + 0.15, W + 0.6, 0.3], [x0 - 0.15, cz, 0.3, D], [x1 + 0.15, cz, 0.3, D]]) { box(x, 0, z, w, 4.1, dd, G.white, false); }
+  box(ox, 2.9, z0 + 0.02, W, 0.5, 0.06, brand, false); box(x0 + 0.02, 2.9, cz, 0.06, 0.5, D, brand, false); box(x1 - 0.02, 2.9, cz, 0.06, 0.5, D, brand2, false);
+  for (let k = 0; k < 4; k++) box(ox - 7.5 + k * 5, 3.95, cz, 3.2, 0.05, 0.5, G.panel, false);   // ceiling light panels
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.9), new THREE.MeshBasicMaterial({ map: logoTex(M) })); logo.position.set(ox, 3.3, z0 + 0.06); scene.add(logo);
+  // shelves: 4 aisles + back fridges + produce crates + checkout
+  const shelfM = G.metal, aisles = [[-6, 'bakery'], [-2, 'snacks'], [2, 'butcher'], [6, 'snacks']];
+  const prodGeo = new THREE.BoxGeometry(0.22, 0.28, 0.2), prods = new THREE.InstancedMesh(prodGeo, new THREE.MeshStandardMaterial({ roughness: 0.6, envMapIntensity: 0.2 }), 4 * 2 * 4 * 22 + 120), m4 = new THREE.Matrix4(), col = new THREE.Color();
+  let pi = 0; const prod = (x, y, z, hue) => { if (pi >= prods.count) return; m4.makeTranslation(x, y, z); prods.setMatrixAt(pi, m4); prods.setColorAt(pi++, col.setHSL(hue + MR(-0.06, 0.06), 0.7, MR(0.4, 0.65))); };
+  const CAT_HUE = { bakery: 0.1, snacks: 0.95, butcher: 0.0, drinks: 0.55, produce: 0.28 };
+  for (const [ax, cat] of aisles) {
+    const x = ox + ax, zc = cz - 0.5;
+    box(x, 0, zc, 1.1, 1.95, 8, shelfM);
+    for (let lv = 0; lv < 4; lv++) { box(x, 0.25 + lv * 0.45, zc, 1.3, 0.04, 8, G.white, false); for (const s of [-1, 1]) for (let n = 0; n < 22; n++) prod(x + s * 0.45, 0.43 + lv * 0.45, zc - 3.8 + n * 0.36, CAT_HUE[cat]); }
+    box(x, 1.95, zc + 4.05, 1.1, 0.4, 0.06, cat === 'butcher' ? brand2 : brand, false);
+    I.spots.push({ x, z: zc + 4.6, cat, label: GROC_CATS[cat] });
+  }
+  // back wall fridges (drinks & dairy)
+  const fridgeGlow = new THREE.MeshStandardMaterial({ color: 0xdff2ff, emissive: 0x8ac8f0, emissiveIntensity: 0.7, roughness: 0.1 });
+  box(ox, 0, z0 + 0.6, 14, 2.2, 1.0, fridgeGlow);
+  for (let n = 0; n < 40; n++) prod(ox - 6.6 + (n % 20) * 0.7, 0.5 + Math.floor(n / 20) * 0.8, z0 + 1.15, 0.55);
+  I.spots.push({ x: ox - 3, z: z0 + 1.9, cat: 'drinks', label: GROC_CATS.drinks }, { x: ox + 3, z: z0 + 1.9, cat: 'bakery', label: '🥛 Süt & Kahvaltılık dolabı' });
+  // produce crates by the entrance
+  for (let n = 0; n < 4; n++) { box(x0 + 1.4, 0, z1 - 3 - n * 1.3, 1.6, 0.8, 1.1, G.crate); for (let q = 0; q < 6; q++) prod(x0 + 1.0 + (q % 3) * 0.35, 0.92, z1 - 3.3 - n * 1.3 + Math.floor(q / 3) * 0.4, [0.0, 0.15, 0.28, 0.08][n]); }
+  I.spots.push({ x: x0 + 2.8, z: z1 - 4.8, cat: 'produce', label: GROC_CATS.produce });
+  // checkout
+  box(x1 - 3, 0, z1 - 3.5, 1, 0.95, 3.4, brand2); box(x1 - 3, 0.95, z1 - 3.5, 0.9, 0.04, 3.2, G.black, false); box(x1 - 3.5, 0.95, z1 - 2.5, 0.4, 0.3, 0.3, G.black, false);
+  const cashier = makeHuman({ skin: pick(SKIN), shirt: M.col, pants: '#1a1a1e', hair: '#1a1210', shoes: '#111', cap: M.col2, glasses: false }); cashier.g.position.set(x1 - 2, 0, z1 - 3.5); cashier.g.rotation.y = -Math.PI / 2; I.cashier = cashier;
+  I.spots.push({ x: x1 - 4.2, z: z1 - 3.5, cat: 'cash', label: '🧾 KASA · fiş & poşet' });
+  prods.count = pi; prods.instanceMatrix.needsUpdate = true; if (prods.instanceColor) prods.instanceColor.needsUpdate = true; scene.add(prods);
+  for (const [mat, list] of L) { const m = new THREE.Mesh(merge(list), mat); m.receiveShadow = true; scene.add(m); for (const g of list) g.dispose(); }
+  INTERIORS['mkt_' + M.id] = I;
+  return I;
+}
+function enterMarket(M) {
+  const f = $('fade'); f.style.opacity = 1;
+  setTimeout(() => {
+    const I = M.I; state.interior = 'mkt_' + M.id; player.pos.set(I.spawn[0], 0, I.spawn[1]); player.yaw = I.spawn[2]; camYaw = player.yaw + Math.PI; camDist = 3;
+    interiorLight.position.set((I.x0 + I.x1) / 2, 3.6, (I.z0 + I.z1) / 2); interiorLight.color.set(0xffffff); interiorLight.intensity = 40;
+    f.style.opacity = 0; floatText(`🛒 ${M.name} · aktüel: ${GROCERY[dealOf(M)].i} ${GROCERY[dealOf(M)].n} %40 indirim`);
+  }, 350);
+}
+function groceryItems() {
+  const M = LIFE.curMkt, cat = state.grocCat; if (!M) return [];
+  const it = [{ sec: `${cat === 'cash' ? '🧾 Kasa' : GROC_CATS[cat]} · poşet ${cnt(state.bag)}/${BAG_CAP} · ödeme kasada otomatik` }];
+  if (cat === 'cash') {
+    it.push({ name: '🛍 Poşetine bak', desc: Object.entries(state.bag || {}).map(([k, n]) => GROCERY[k].i + '×' + n).join(' ') || 'Poşet boş', price: 0, btn: 'TAMAM', buy: () => { } });
+    it.push({ sec: `Bu saatin aktüel ürünü` }); const k = dealOf(M); it.push({ name: `${GROCERY[k].i} ${GROCERY[k].n}`, desc: `%40 indirimli · normal $${Math.round(GROCERY[k].p * M.mult)}`, price: grocPrice(M, k), dis: cnt(state.bag) >= BAG_CAP ? 'POŞET DOLU' : null, buy: () => { state.bag[k] = (state.bag[k] || 0) + 1; } });
+    return it;
+  }
+  for (const k in GROCERY) {
+    const G = GROCERY[k]; if (G.cat !== cat && !(cat === 'bakery' && k === 'milk')) continue;
+    for (const n of [1, 5]) it.push({ name: `${G.i} ${G.n}${n > 1 ? ' ×5' : ''}${dealOf(M) === k ? ' 🔥' : ''}`, desc: `🍔 +${G.f} · 💧 ${G.w >= 0 ? '+' : ''}${G.w} · poşette ${state.bag[k] || 0}`, price: grocPrice(M, k) * n, dis: cnt(state.bag) + n > BAG_CAP ? 'POŞET DOLU' : null, buy: () => { state.bag[k] = (state.bag[k] || 0) + n; floatText(`🛍 ${G.i} ${G.n} poşete eklendi`); } });
+  }
+  return it;
+}
+function updateMarketInside(I) {
+  if (state.interact) return;
+  for (const s of I.spots) if (Math.hypot(player.pos.x - s.x, player.pos.z - s.z) < 1.7) { state.interact = { label: s.cat === 'cash' ? s.label : `🛒 ${s.label} rafı`, fn: () => { LIFE.curMkt = I.market; state.grocCat = s.cat; openShop('grocery'); } }; return; }
+}
+// ---------------- homes
+const HOME_TIERS = [null,
+  { name: '1+1 Daire', W: 10, D: 8, nF: 1, cap: 16, up: 0 },
+  { name: 'Dublex', W: 14, D: 11, nF: 2, cap: 32, up: 30000 },
+  { name: 'Lüks Villa', W: 20, D: 15, nF: 2, cap: 55, up: 75000 },
+];
+const HFH = 3.4;
+const myHome = H => state.homes && state.homes[H.id];
+function buildHomes() {
+  const kindOf = d => d.type === 'home' || d.type === 'apt' ? 'home' : d.type === 'shop' && (d.blk.dist === 'downtown' || d.blk.dist === 'midtown') ? 'apt' : null;
+  const r = mulberry32(777), cand = DOORS.filter(d => d.y0 < 1 && d.blk && d.blk.dist && !d.blk.park && !d.market && kindOf(d) && lifeDoorFree(d)).map(d => [r(), d]).sort((a, b) => a[0] - b[0]).map(a => a[1]);
+  const want = { apt: 4, home: 3 }, got = { apt: 0, home: 0 };
+  for (const minD of [260, 180, 110]) for (const d of cand) {
+    if (LIFE.homes.length >= 7) break;
+    const kd = kindOf(d); if (d.home || got[kd] >= want[kd] + (minD < 180 ? 3 : 0)) continue;
+    if (LIFE.homes.some(h => Math.hypot(h.door.x - d.x, h.door.z - d.z) < minD)) continue;
+    got[kd]++;
+    const k = LIFE.homes.length, area = AREA_NAMES[d.blk.dist] || 'Şehir';
+    const H = { id: 'h' + d.id, k, door: d, name: `${area} ${kd === 'apt' ? 'Rezidans' : 'Evleri'} No:${(d.id % 90) + 1}`, price: kd === 'apt' ? 18000 : 30000, kind: kd };
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(document.createElement('canvas')), depthWrite: false })); sp.scale.set(2.8, 0.9, 1); sp.position.set(d.x, groundY(d.x, d.z) + 2.9, d.z); scene.add(sp); H.sign = sp;
+    d.home = H; LIFE.homes.push(H); drawHomeSign(H);
+  }
+}
+function drawHomeSign(H) {
+  const own = myHome(H), cv = H.sign.material.map.image; cv.width = 256; cv.height = 80; const g = cv.getContext('2d');
+  g.fillStyle = own ? 'rgba(20,90,50,0.9)' : 'rgba(150,20,30,0.9)'; g.beginPath(); g.roundRect(4, 4, 248, 72, 14); g.fill();
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = 'bold 26px Arial'; g.fillText(own ? '🏠 EVİN' : '🏷 SATILIK', 128, 34);
+  g.font = 'bold 20px Arial'; g.fillText(own ? HOME_TIERS[own.tier].name : '$' + H.price.toLocaleString('tr-TR'), 128, 62);
+  H.sign.material.map.needsUpdate = true;
+}
+function homeShopItems() {
+  const H = LIFE.curHome, own = myHome(H);
+  const it = [{ sec: `${H.kind === 'apt' ? '🏢' : '🏡'} ${H.name}` }];
+  if (!own) {
+    it.push({ name: `🔑 Satın al · ${HOME_TIERS[1].name}`, desc: 'Kendi evin: mobilya dekorasyonu, buzdolabı, yatak (uyu & kaydet). Sonra Dublex ve Lüks Villa\'ya büyüt.', price: H.price, close: true, buy: () => buyHome(H) });
+  } else {
+    it.push({ name: `🚪 Evine gir · ${HOME_TIERS[own.tier].name}`, desc: `${own.furn.length}/${HOME_TIERS[own.tier].cap} mobilya · buzdolabında ${cnt(own.fridge)} ürün`, price: 0, btn: 'GİR', close: true, buy: () => enterHome(H) });
+    for (let t = own.tier + 1; t <= 3; t++) it.push({ name: `⬆ ${HOME_TIERS[t].name}'ya büyüt`, desc: `${HOME_TIERS[t].W}×${HOME_TIERS[t].D} m · ${HOME_TIERS[t].nF} kat · ${HOME_TIERS[t].cap} mobilya${t === 3 ? ' · havuz, cam cephe' : ' · merdivenli 2. kat'}`, price: HOME_TIERS[t].up, dis: t > own.tier + 1 ? 'ÖNCE ' + HOME_TIERS[t - 1].name.toUpperCase() : null, buy: () => upgradeHome(H, t) });
+  }
+  return it;
+}
+function buyHome(H) {
+  state.homes = state.homes || {};
+  state.homes[H.id] = { tier: 1, furn: [{ k: 'bed', c: '#f2f0ea', x: 3, z: -6, r: 0, f: 0 }, { k: 'fridge', c: '#d8dde2', x: -4.2, z: -6.9, r: 0, f: 0 }, { k: 'sofa', c: '#3a5a7a', x: 0, z: -2.8, r: Math.PI, f: 0 }], fridge: { water: 2, bread: 1 } };
+  drawHomeSign(H); saveGame(); showBig('🔑 EV SENİN!', '#7dff9a', 3, `${H.name} · içeri gir, K / 🛋 ile dekore et`); AudioSys.success();
+  if (typeof breakingNews === 'function' && Math.random() < 0.3) breakingNews(`Emlak piyasası hareketli: ${H.name} yeni sahibini buldu.`);
+}
+function upgradeHome(H, t) {
+  const own = myHome(H); if (!own || t !== own.tier + 1) return;
+  own.tier = t; const T = HOME_TIERS[t];
+  for (const F of own.furn) { const st = stairRect(T); if (F.f === 0 && F.x > st.x0 - 0.5 && F.x < st.x1 + 0.5 && F.z > st.z0 - 0.5 && F.z < st.z1 + 0.5) F.x = st.x1 + 1.5; }
+  drawHomeSign(H); saveGame(); showBig(`⬆ ${T.name.toUpperCase()}`, '#ffd23a', 3, `Evin büyüdü · ${T.W}×${T.D} m · ${T.nF} kat`); AudioSys.success();
+  if (state.interior === 'home' && LIFE.curHome === H) enterHome(H, true);
+}
+// local room coordinates: the door is at (0, 0), the room extends to z = -D, x ∈ [-W/2, W/2]
+const stairRect = T => ({ x0: -T.W / 2 + 0.2, x1: -T.W / 2 + 1.8, z0: -2.4 - 6, z1: -2.4 });
+function homeOrigin(H) { const own = (MP.on ? MP.name : 'me').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 6; return [-5600 - H.k * 90, -2400 - own * 70]; }
+let homeGroup = null;
+function disposeHome() {
+  if (!homeGroup) return;
+  homeGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); scene.remove(homeGroup); homeGroup = null;
+  if (DEC.on) closeDecor(true);
+  delete INTERIORS.home;
+}
+function buildHomeInterior(H) {
+  const own = myHome(H), T = HOME_TIERS[own.tier], [ox, oz] = homeOrigin(H), G = genMats();
+  const x0 = ox - T.W / 2, x1 = ox + T.W / 2, z0 = oz - T.D, z1 = oz, multi = T.nF > 1;
+  const I = { name: `${H.name} · ${T.name}`, x0, x1, z0, z1, h: T.nF * HFH, FH: multi ? HFH : 0, nF: T.nF, boxes: [], levels: [], stairs: [], spawn: [ox, z1 - 2.6, Math.PI], exitAt: [ox, z1 - 0.6], ext: [H.door.x, H.door.z], extOut: [H.door.x + H.door.nx * 1.2, H.door.z + H.door.nz * 1.2, Math.atan2(H.door.nx, H.door.nz)], home: H, ox, oz, T, lamps: [], furnMeshes: [], floorNames: ['Zemin kat · salon', 'Üst kat · yatak odaları'] };
+  const root = new THREE.Group(); homeGroup = root; scene.add(root);
+  const L = new Map(), add = (mat, geo) => { if (!L.has(mat)) L.set(mat, []); L.get(mat).push(geo); };
+  const box = (x, y, z, w, h, d, mat, solid = true) => { add(mat, new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z)); if (solid) I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, y0: y, y1: y + h }); };
+  const lux = own.tier === 3, floorM = lux ? new THREE.MeshStandardMaterial({ map: noiseTex('#e8e4dc', ['#d8d2c8', '#f2eee6', '#c8c2b8'], 256, 3000, 1, 3), roughness: 0.25, envMapIntensity: 0.25 }) : G.floorWood;
+  const wallM = own.tier === 1 ? G.wallW : own.tier === 2 ? new THREE.MeshStandardMaterial({ color: 0xd8d0c4, roughness: 0.9, envMapIntensity: 0.2 }) : new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.8, envMapIntensity: 0.2 });
+  const cx = ox, cz = (z0 + z1) / 2;
+  box(cx, -0.1, cz, T.W, 0.1, T.D, floorM, false);
+  box(cx, T.nF * HFH, cz, T.W + 0.6, 0.2, T.D + 0.6, G.ceil, false);
+  for (const [x, z, w, d] of [[cx, z0 - 0.15, T.W + 0.6, 0.3], [cx, z1 + 0.15, T.W + 0.6, 0.3], [x0 - 0.15, cz, 0.3, T.D], [x1 + 0.15, cz, 0.3, T.D]]) box(x, 0, z, w, T.nF * HFH + 0.1, d, wallM, false);
+  // windows (light panels) on the side walls of every floor
+  const winM = new THREE.MeshBasicMaterial({ color: nightF > 0.5 ? 0x1a2440 : 0xbfe0ff });
+  for (let f = 0; f < T.nF; f++) for (const s of [-1, 1]) for (let k = 0; k < Math.floor(T.D / 4); k++) box(s < 0 ? x0 + 0.02 : x1 - 0.02, f * HFH + 1, z1 - 2.5 - k * 4, 0.04, 1.3, 1.6, winM, false);
+  if (lux) {   // glass back wall with a sea view + indoor pool
+    const view = new THREE.Mesh(new THREE.PlaneGeometry(T.W - 1, T.nF * HFH - 0.6), new THREE.MeshBasicMaterial({ map: canvasTex(512, 256, g => { const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, nightF > 0.5 ? '#0a1030' : '#6ab0e8'); gr.addColorStop(0.55, nightF > 0.5 ? '#2a2050' : '#f0c890'); gr.addColorStop(0.56, '#1a5a8a'); gr.addColorStop(1, '#0a2a4a'); g.fillStyle = gr; g.fillRect(0, 0, 512, 256); g.fillStyle = '#fff6'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * 512, 150 + Math.random() * 100, 30, 2); }) }));
+    view.position.set(cx, (T.nF * HFH) / 2, z0 + 0.04); root.add(view);
+    for (let k = -4; k <= 4; k++) box(cx + k * T.W / 9, 0, z0 + 0.08, 0.08, T.nF * HFH, 0.08, G.metal, false);
+    const px = x1 - 3.6, pz = z0 + 3.2;
+    box(px, 0, pz, 5.6, 0.25, 4, G.white); const water = new THREE.Mesh(new THREE.BoxGeometry(5, 0.04, 3.4), new THREE.MeshStandardMaterial({ color: 0x3ab8e8, emissive: 0x0a5a8a, emissiveIntensity: 0.6, roughness: 0.05 })); water.position.set(px, 0.27, pz); root.add(water); I.pool = water;
+  }
+  // stairs + upper floor slab with a stair hole
+  if (multi) {
+    const S2 = stairRect(T), sx0 = ox + S2.x0, sx1 = ox + S2.x1, zb = oz + S2.z1, zt = oz + S2.z0, SL = zb - zt, n = 14, scx = (sx0 + sx1) / 2;
+    I.stairs.push({ x0: sx0, x1: sx1, za: zt, zb2: zb, zb, zt, y: 0 });
+    I.levels.push({ y: HFH, hole: { x0: sx0 - 0.1, x1: sx1 + 0.1, z0: zt - 0.1, z1: zb + 0.1 } });
+    for (let i = 0; i < n; i++) box(scx, 0, zb - (i + 0.5) * SL / n, sx1 - sx0, (i + 1) * HFH / n, SL / n + 0.02, G.darkWood, false);
+    I.boxes.push({ x0: sx0, x1: sx1, z0: zt, z1: zb - 1.6, y0: 0, y1: 0.7 });
+    // slab pieces around the hole
+    const sy = HFH - 0.15;
+    box((x0 + sx0 - 0.1) / 2, sy, cz, sx0 - 0.1 - x0, 0.15, T.D, floorM, false);
+    box((sx1 + 0.1 + x1) / 2, sy, cz, x1 - sx1 - 0.1, 0.15, T.D, floorM, false);
+    box(scx, sy, (z0 + zt - 0.1) / 2, sx1 - sx0 + 0.2, 0.15, zt - 0.1 - z0, floorM, false);
+    box(scx, sy, (zb + 0.1 + z1) / 2, sx1 - sx0 + 0.2, 0.15, z1 - zb - 0.1, floorM, false);
+    box(sx1 + 0.15, HFH, (zt + zb) / 2 + 0.8, 0.06, 1.0, SL - 1.6, G.metal); box(scx, HFH, zb + 0.12, sx1 - sx0 + 0.3, 1.0, 0.06, G.metal);
+  }
+  // front door & exit ring
+  box(ox, 0, z1 - 0.02, 1.6, 2.4, 0.08, G.darkWood, false);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x40e080, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(ox, 0.06, z1 - 1.2); root.add(ring);
+  for (const [mat, list] of L) { const m = new THREE.Mesh(merge(list), mat); m.receiveShadow = true; root.add(m); for (const g of list) g.dispose(); }
+  I.baseBoxes = I.boxes.slice();
+  INTERIORS.home = I;
+  rebuildFurniture(I);
+  return I;
+}
+function enterHome(H, quick) {
+  if (!myHome(H)) return;
+  const f = $('fade'); if (!quick) f.style.opacity = 1;
+  const go = () => {
+    disposeHome(); if (state.interior === 'gen') disposeGen();
+    LIFE.curHome = H; const I = buildHomeInterior(H);
+    state.interior = 'home';
+    if (!quick) { player.pos.set(I.spawn[0], 0, I.spawn[1]); player.yaw = I.spawn[2]; camYaw = player.yaw + Math.PI; camDist = 3; }
+    else player.pos.set(clamp(player.pos.x, I.x0 + 0.5, I.x1 - 0.5), Math.min(player.pos.y, (I.nF - 1) * HFH), clamp(player.pos.z, I.z0 + 0.5, I.z1 - 0.5));
+    homeLight(I); f.style.opacity = 0; if (!quick) floatText(`🏠 ${I.name} · K / 🛋 dekorasyon`);
+  };
+  if (quick) go(); else setTimeout(go, 350);
+}
+function homeLight(I) {
+  const fl = genFloorOf(I); interiorLight.position.set(I.ox, fl * HFH + HFH - 0.5, (I.z0 + I.z1) / 2); interiorLight.color.set(0xfff2e0); interiorLight.intensity = I.T === HOME_TIERS[3] ? 16 : 12 + I.T.W * 0.6; I.curF = fl;
+}
+// ---------------- furniture
+const FURN = {
+  sofa: { n: 'Koltuk takımı', i: '🛋', p: 1500, w: 2.2, d: 0.95, h: 0.95, cols: ['#3a5a7a', '#7a3a3a', '#5a5a60', '#d8ccb0', '#2a4a3a'] },
+  armchair: { n: 'Berjer koltuk', i: '💺', p: 650, w: 1, d: 0.95, h: 0.95, cols: ['#7a3a3a', '#3a5a7a', '#c8a050', '#5a5a60'] },
+  bed: { n: 'Çift kişilik yatak', i: '🛏', p: 1800, w: 1.8, d: 2.2, h: 0.9, cols: ['#f2f0ea', '#c8d8f0', '#f0c8d0', '#d8e8c8'] },
+  tv: { n: 'Akıllı TV + sehpa', i: '📺', p: 2200, w: 2, d: 0.5, h: 1.6, cols: ['#1a1a1c', '#f2f2f2'] },
+  fridge: { n: 'Buzdolabı (cam kapaklı)', i: '🧊', p: 1600, w: 0.85, d: 0.75, h: 1.95, cols: ['#d8dde2', '#1a1a1c', '#c8a070'] },
+  table: { n: 'Yemek masası + 4 sandalye', i: '🍽', p: 900, w: 1.9, d: 1.6, h: 0.78, cols: ['#6a4a30', '#2a1a10', '#e8e4dc'] },
+  coffee: { n: 'Orta sehpa', i: '🟫', p: 300, w: 1.2, d: 0.65, h: 0.42, cols: ['#2a2420', '#8a6a40', '#e8e4dc'] },
+  lamp: { n: 'Lambader', i: '💡', p: 250, w: 0.45, d: 0.45, h: 1.75, cols: ['#f6e8c8', '#ffd0a0', '#c8e0ff'] },
+  painting: { n: 'Tablo (duvara)', i: '🖼', p: 400, w: 1.3, d: 0.08, h: 0.9, wall: true, cols: ['sunset', 'abstract', 'mountain', 'city', 'sea'] },
+  plant: { n: 'Saksı bitkisi', i: '🪴', p: 120, w: 0.6, d: 0.6, h: 1.3, cols: ['#3a7a3a', '#5a9a3a', '#2a5a3a'] },
+  rug: { n: 'Halı', i: '🟥', p: 350, w: 2.6, d: 1.8, h: 0.02, flat: true, cols: ['#b08a6a', '#8a2a2a', '#2a4a7a', '#d8ccb0'] },
+  shelf: { n: 'Kitaplık', i: '📚', p: 500, w: 1.3, d: 0.4, h: 2, cols: ['#6a4a30', '#f2f2f2', '#2a1a10'] },
+  wardrobe: { n: 'Gardırop', i: '🚪', p: 700, w: 1.4, d: 0.65, h: 2.1, cols: ['#5a3a26', '#e8e4dc', '#2a2a2e'] },
+  kitchen: { n: 'Mutfak tezgâhı + ocak', i: '🍳', p: 1400, w: 2.6, d: 0.7, h: 0.95, cols: ['#e8e4dc', '#2a2a2e', '#6a4a30'] },
+  desk: { n: 'Çalışma masası + PC', i: '🖥', p: 1100, w: 1.4, d: 0.7, h: 1.2, cols: ['#2a2420', '#e8e4dc'] },
+};
+const PAINT_TEX = {};
+function paintingTex(c) {
+  if (PAINT_TEX[c]) return PAINT_TEX[c];
+  return PAINT_TEX[c] = canvasTex(256, 176, g => {
+    const gr = g.createLinearGradient(0, 0, 0, 176);
+    if (c === 'sunset') { gr.addColorStop(0, '#f05a28'); gr.addColorStop(0.6, '#f0c040'); gr.addColorStop(0.61, '#1a4a7a'); gr.addColorStop(1, '#0a2040'); g.fillStyle = gr; g.fillRect(0, 0, 256, 176); g.fillStyle = '#fff2a0'; g.beginPath(); g.arc(128, 104, 30, Math.PI, 0); g.fill(); }
+    else if (c === 'abstract') { g.fillStyle = '#f2ead8'; g.fillRect(0, 0, 256, 176); for (const [x, y, r, col] of [[70, 70, 50, '#d8202a'], [170, 110, 60, '#1a4a9a'], [140, 40, 25, '#f2c200'], [60, 140, 30, '#1a1a1a']]) { g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
+    else if (c === 'mountain') { gr.addColorStop(0, '#8ac0e8'); gr.addColorStop(1, '#e8f0f8'); g.fillStyle = gr; g.fillRect(0, 0, 256, 176); g.fillStyle = '#4a5a6a'; g.beginPath(); g.moveTo(0, 176); g.lineTo(80, 50); g.lineTo(140, 120); g.lineTo(190, 70); g.lineTo(256, 176); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(80, 50); g.lineTo(65, 75); g.lineTo(95, 75); g.fill(); }
+    else if (c === 'city') { g.fillStyle = '#1a1030'; g.fillRect(0, 0, 256, 176); for (let i = 0; i < 12; i++) { const h = 40 + Math.random() * 110; g.fillStyle = '#2a2050'; g.fillRect(i * 22, 176 - h, 20, h); g.fillStyle = '#ffd870'; for (let k = 0; k < 8; k++) if (Math.random() < 0.5) g.fillRect(i * 22 + 4 + (k % 2) * 8, 176 - h + 6 + Math.floor(k / 2) * 12, 4, 5); } }
+    else { gr.addColorStop(0, '#9ad8f0'); gr.addColorStop(0.5, '#3aa0c8'); gr.addColorStop(1, '#e8d8a8'); g.fillStyle = gr; g.fillRect(0, 0, 256, 176); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(150, 60); g.lineTo(150, 110); g.lineTo(185, 110); g.fill(); g.fillStyle = '#5a3a26'; g.fillRect(130, 110, 70, 8); }
+  });
+}
+let FURN_MAT = null, FURN_GLOW = null;
+function furnMesh(F) {
+  if (!FURN_MAT) { FURN_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, envMapIntensity: 0.22 }); FURN_GLOW = new THREE.MeshBasicMaterial({ vertexColors: true }); }
+  const D = FURN[F.k], c = F.c, C = (geo, col) => colorize(geo, col), P = [], GL = [], B = (x, y, z, w, h, d, col, glow) => (glow ? GL : P).push(C(new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z), col)), Cy = (x, y, z, r, h, col, r2 = r, seg = 12) => P.push(C(new THREE.CylinderGeometry(r, r2, h, seg).translate(x, y + h / 2, z), col));
+  const g = new THREE.Group();
+  switch (F.k) {
+    case 'sofa': B(0, 0.1, 0.05, 2.2, 0.35, 0.85, c); B(0, 0.1, -0.35, 2.2, 0.85, 0.25, c); for (const s of [-1, 1]) B(s * 1.0, 0.1, 0.05, 0.22, 0.6, 0.85, c); for (const s of [-1, 1]) B(s * 0.5, 0.45, 0.1, 0.95, 0.12, 0.65, c); for (const [x, z] of [[-1, -0.38], [1, -0.38], [-1, 0.4], [1, 0.4]]) B(x, 0, z, 0.06, 0.1, 0.06, '#1a1a1a'); break;
+    case 'armchair': B(0, 0.1, 0.05, 0.95, 0.35, 0.85, c); B(0, 0.1, -0.35, 0.95, 0.85, 0.22, c); for (const s of [-1, 1]) B(s * 0.4, 0.1, 0.05, 0.16, 0.6, 0.85, c); B(0, 0, 0, 0.8, 0.1, 0.7, '#2a1a10'); break;
+    case 'bed': B(0, 0, 0, 1.8, 0.35, 2.15, '#5a3a26'); B(0, 0.35, 0.05, 1.72, 0.22, 2.0, '#f6f6f2'); B(0, 0.57, 0.35, 1.76, 0.08, 1.35, c); for (const s of [-1, 1]) B(s * 0.42, 0.57, -0.75, 0.7, 0.14, 0.38, '#ffffff'); B(0, 0, -1.06, 1.9, 1.15, 0.1, '#5a3a26'); break;
+    case 'tv': B(0, 0, 0, 2, 0.5, 0.45, c === '#f2f2f2' ? '#e8e4dc' : '#2a2420'); B(0, 0.5, -0.05, 0.3, 0.12, 0.2, '#111'); B(0, 0.62, -0.05, 1.7, 0.98, 0.06, '#0a0a0c'); GL.push(C(new THREE.PlaneGeometry(1.6, 0.9).translate(0, 1.11, -0.015), '#2a6ab8')); break;
+    case 'fridge': B(0, 0, -0.05, 0.85, 1.95, 0.65, c); B(0, 0.05, 0.29, 0.75, 1.15, 0.03, '#9ab8d0'); B(0.3, 1.3, 0.3, 0.04, 0.45, 0.05, '#888'); GL.push(C(new THREE.PlaneGeometry(0.7, 1.08).translate(0, 0.63, 0.311), '#dff2ff')); break;
+    case 'table': B(0, 0.72, 0, 1.9, 0.06, 1.0, c); for (const [x, z] of [[-0.85, -0.42], [0.85, -0.42], [-0.85, 0.42], [0.85, 0.42]]) B(x, 0, z, 0.07, 0.72, 0.07, c); for (const [x, z] of [[-0.45, -0.75], [0.45, -0.75], [-0.45, 0.75], [0.45, 0.75]]) { B(x, 0.42, z, 0.45, 0.05, 0.45, c); B(x, 0, z, 0.05, 0.42, 0.05, c); B(x, 0.45, z + (z > 0 ? 0.2 : -0.2), 0.45, 0.5, 0.05, c); } break;
+    case 'coffee': B(0, 0.36, 0, 1.2, 0.06, 0.65, c); for (const [x, z] of [[-0.52, -0.25], [0.52, -0.25], [-0.52, 0.25], [0.52, 0.25]]) B(x, 0, z, 0.05, 0.36, 0.05, '#1a1a1a'); B(0.25, 0.42, 0, 0.18, 0.14, 0.18, '#c83a3a'); break;
+    case 'lamp': Cy(0, 0, 0, 0.2, 0.04, '#1a1a1a'); Cy(0, 0.04, 0, 0.025, 1.35, '#2a2a2a'); GL.push(C(new THREE.CylinderGeometry(0.16, 0.24, 0.32, 14, 1, true).translate(0, 1.55, 0), c)); break;
+    case 'painting': { B(0, -0.47, 0, 1.3, 0.94, 0.05, '#3a2618'); const pm = new THREE.Mesh(new THREE.PlaneGeometry(1.16, 0.8), new THREE.MeshBasicMaterial({ map: paintingTex(c), color: 0xbbbbbb })); pm.position.set(0, 0, 0.03); g.add(pm); break; }
+    case 'plant': Cy(0, 0, 0, 0.22, 0.45, '#b05a3a', 0.17); P.push(C(new THREE.IcosahedronGeometry(0.4, 1).scale(1, 1.3, 1).translate(0, 0.95, 0), c)); break;
+    case 'rug': B(0, 0, 0, 2.6, 0.02, 1.8, c); B(0, 0.005, 0, 2.2, 0.02, 1.4, '#e8dcc0'); B(0, 0.01, 0, 1.6, 0.02, 0.9, c); break;
+    case 'shelf': B(0, 0, 0, 1.3, 2, 0.06, c); for (const s of [-1, 1]) B(s * 0.62, 0, 0.17, 0.06, 2, 0.4, c); for (let k = 0; k < 5; k++) { B(0, k * 0.48, 0.17, 1.24, 0.04, 0.38, c); if (k < 4) for (let q = 0; q < 8; q++) B(-0.5 + q * 0.14, k * 0.48 + 0.04, 0.17, 0.1, 0.3 + (q % 3) * 0.04, 0.26, ['#8a2a2a', '#2a4a8a', '#d8c088', '#2a6a3a', '#5a3a6a'][(q + k) % 5]); } break;
+    case 'wardrobe': B(0, 0, 0, 1.4, 2.1, 0.62, c); B(0, 0.1, 0.315, 0.02, 1.9, 0.02, '#1a1a1a'); for (const s of [-1, 1]) B(s * 0.12, 1.0, 0.33, 0.04, 0.3, 0.04, '#c8c8c8'); break;
+    case 'kitchen': B(0, 0, 0, 2.6, 0.9, 0.68, c); B(0, 0.9, 0, 2.64, 0.05, 0.72, '#3a3a3e'); B(0.7, 0.95, 0, 0.6, 0.02, 0.5, '#1a1a1a'); for (const [x, z] of [[0.55, -0.12], [0.85, -0.12], [0.55, 0.12], [0.85, 0.12]]) Cy(x, 0.96, z, 0.09, 0.01, '#5a5a5a'); B(-0.6, 0.93, 0, 0.55, 0.06, 0.42, '#b8bcc2'); Cy(-0.6, 0.95, -0.25, 0.02, 0.35, '#b8bcc2'); B(0.7, 0.15, 0.345, 0.6, 0.55, 0.02, '#111'); break;
+    case 'desk': B(0, 0.72, 0, 1.4, 0.05, 0.7, c); for (const s of [-1, 1]) B(s * 0.66, 0, 0, 0.05, 0.72, 0.66, c); B(0, 0.77, -0.15, 0.6, 0.38, 0.04, '#111'); GL.push(C(new THREE.PlaneGeometry(0.55, 0.32).translate(0, 0.96, -0.128), '#3a8ad8')); B(0, 0.77, 0.12, 0.45, 0.02, 0.15, '#2a2a2a'); B(0, 0, 0.55, 0.45, 0.45, 0.45, '#1a1a1a'); break;
+  }
+  if (P.length) { const m = new THREE.Mesh(merge(P), FURN_MAT); m.castShadow = QUALITY !== 'low'; m.receiveShadow = true; g.add(m); }
+  if (GL.length) { const m = new THREE.Mesh(merge(GL), FURN_GLOW); g.add(m); if (F.k === 'tv') g.userData.screen = m; }
+  if (F.k === 'fridge') { const im = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13, 0.17, 0.12), new THREE.MeshBasicMaterial(), 24); im.count = 0; g.add(im); g.userData.items = im; }
+  return g;
+}
+function fridgeVisual(g, fr) {
+  const im = g.userData.items; if (!im) return; const list = []; for (const k in fr || {}) for (let n = 0; n < fr[k]; n++) list.push(k);
+  const m4 = new THREE.Matrix4(), col = new THREE.Color(); im.count = Math.min(24, list.length);
+  for (let i = 0; i < im.count; i++) { m4.makeTranslation(-0.25 + (i % 4) * 0.165, 0.18 + Math.floor(i / 4) * 0.19, 0.18); im.setMatrixAt(i, m4); const G = GROCERY[list[i]]; im.setColorAt(i, col.setHSL({ bakery: 0.12, butcher: 0.0, produce: 0.28, drinks: 0.55, snacks: 0.9 }[G.cat], 0.75, 0.55)); }
+  im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+}
+// world transform for a stored item: local (x, z) relative to the door, rotation r, floor f
+const furnWorld = (I, F) => [I.ox + F.x, F.f * HFH, I.oz + F.z];
+function furnExtents(F) { const D = FURN[F.k], c = Math.abs(Math.cos(F.r)), s = Math.abs(Math.sin(F.r)); return [(D.w * c + D.d * s) / 2, (D.w * s + D.d * c) / 2]; }
+function rebuildFurniture(I) {
+  const own = myHome(I.home); if (!own) return;
+  for (const m of I.furnMeshes) { m.traverse(o => { if (o.geometry) o.geometry.dispose(); }); homeGroup.remove(m); }
+  for (const l of I.lamps) homeGroup.remove(l);
+  I.furnMeshes = []; I.lamps = []; I.boxes = I.baseBoxes.slice();
+  for (const F of own.furn) {
+    const g = furnMesh(F), [x, y, z] = furnWorld(I, F); g.position.set(x, y + (FURN[F.k].wall ? 1.6 : 0), z); g.rotation.y = F.r; homeGroup.add(g); I.furnMeshes.push(g); g.userData.F = F;
+    if (F.k === 'fridge') fridgeVisual(g, own.fridge);
+    if (F.k === 'tv' && F.on && g.userData.screen) g.userData.screen.material = new THREE.MeshBasicMaterial();
+    if (F.k === 'lamp' && I.lamps.length < 3 && F.on !== false) { const l = new THREE.PointLight(new THREE.Color(F.c), 8, 9, 1.6); l.position.set(x, y + 1.6, z); homeGroup.add(l); I.lamps.push(l); }
+    if (!FURN[F.k].flat && !FURN[F.k].wall) { const [ex, ez] = furnExtents(F); I.boxes.push({ x0: x - ex, x1: x + ex, z0: z - ez, z1: z + ez, y0: y, y1: y + FURN[F.k].h }); }
+  }
+}
+// ---------------- decoration mode
+const DEC = { on: false, ghost: null, sel: null, rot: 0, tab: 'shop', ok: false };
+let GHOST_OK = null, GHOST_BAD = null;
+function openDecor() {
+  if (state.interior !== 'home') { floatText('🛋 Dekorasyon için evinin içinde ol'); return; }
+  DEC.on = true; DEC.tab = 'shop'; document.body.classList.add('decor'); try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
+  renderDecor(); $('decor').style.display = 'flex';
+}
+function closeDecor(silent) {
+  cancelGhost(); DEC.on = false; document.body.classList.remove('decor'); $('decor').style.display = 'none'; if (!silent) saveGame();
+}
+function cancelGhost() {
+  if (DEC.ghost) { homeGroup && homeGroup.remove(DEC.ghost); DEC.ghost = null; }
+  if (DEC.sel && DEC.sel.moving) { const own = myHome(LIFE.curHome); own.furn.push(DEC.sel.moving); rebuildFurniture(INTERIORS.home); }
+  DEC.sel = null; if (DEC.on) renderDecor();
+}
+function startGhost(k, c, price, moving) {
+  if (!homeGroup) return;
+  const own = myHome(LIFE.curHome), I = INTERIORS.home;
+  if (!moving && own.furn.length >= I.T.cap) { floatText(`🏠 Mobilya sınırı ${I.T.cap} · evini büyüt`); AudioSys.fail(); return; }
+  if (!moving && state.money < price) { floatText('💸 Yeterli paran yok'); AudioSys.fail(); return; }
+  if (DEC.ghost) { homeGroup.remove(DEC.ghost); DEC.ghost = null; }
+  if (!GHOST_OK) { GHOST_OK = new THREE.MeshBasicMaterial({ color: 0x40ff90, transparent: true, opacity: 0.45, depthWrite: false }); GHOST_BAD = new THREE.MeshBasicMaterial({ color: 0xff4040, transparent: true, opacity: 0.45, depthWrite: false }); }
+  DEC.sel = { k, c, price, moving }; DEC.rot = moving ? moving.r : Math.round((player.yaw + Math.PI) / (Math.PI / 4)) * Math.PI / 4;
+  const g = furnMesh({ k, c, r: 0 }); g.traverse(o => { if (o.isMesh) { o.userData.ok = true; o.castShadow = false; } }); DEC.ghost = g; homeGroup.add(g);
+  renderDecor();
+}
+function ghostPlace() {
+  const I = INTERIORS.home, S2 = DEC.sel, D = FURN[S2.k], f = genFloorOf(I);
+  const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw), dist = 0.9 + Math.max(D.w, D.d) / 2;
+  let x = Math.round((player.pos.x + fx * dist - I.ox) * 4) / 4, z = Math.round((player.pos.z + fz * dist - I.oz) * 4) / 4, r = DEC.rot;
+  const F = { k: S2.k, c: S2.c, x, z, r, f };
+  if (D.wall) {   // snap to the nearest wall, facing into the room
+    const T = I.T, cand = [[Math.abs(x + T.W / 2), -T.W / 2 + 0.06, null, Math.PI / 2], [Math.abs(T.W / 2 - x), T.W / 2 - 0.06, null, -Math.PI / 2], [Math.abs(z + T.D), null, -T.D + 0.06, 0], [Math.abs(z) + 0.4, null, -0.06, Math.PI]].sort((a, b) => a[0] - b[0])[0];
+    if (cand[1] !== null) F.x = cand[1]; else F.z = cand[2]; F.r = cand[3]; F.x = clamp(F.x, -I.T.W / 2 + 0.06, I.T.W / 2 - 0.06);
+  } else {
+    const [ex, ez] = furnExtents(F); F.x = clamp(F.x, -I.T.W / 2 + ex + 0.05, I.T.W / 2 - ex - 0.05); F.z = clamp(F.z, -I.T.D + ez + 0.05, -ez - 0.05);
+  }
+  return F;
+}
+function ghostValid(F) {
+  const I = INTERIORS.home, own = myHome(LIFE.curHome), D = FURN[F.k];
+  if (D.wall) return !(F.f === 0 && Math.abs(F.x) < 1.2 && F.z > -0.5);
+  const [ex, ez] = furnExtents(F);
+  if (F.f === 0 && Math.abs(F.x) < 1.2 + ex && F.z + ez > -2.4) return false;                     // keep the door free
+  if (I.T.nF > 1) { const S2 = stairRect(I.T); if (F.x - ex < S2.x1 + 0.2 && F.x + ex > S2.x0 - 0.2 && F.z - ez < S2.z1 + 0.4 && F.z + ez > S2.z0 - 0.4) return false; }
+  if (I.pool && F.f === 0 && F.x + ex > I.T.W / 2 - 6.6 && F.z - ez < -I.T.D + 5.4) return false;
+  if (D.flat) return true;
+  for (const O of own.furn) { if (O.f !== F.f || FURN[O.k].flat || FURN[O.k].wall) continue; const [ox, oz] = furnExtents(O); if (Math.abs(O.x - F.x) < ox + ex - 0.02 && Math.abs(O.z - F.z) < oz + ez - 0.02) return false; }
+  return true;
+}
+function updateDecorGhost() {
+  if (!DEC.ghost || !DEC.sel) return;
+  const I = INTERIORS.home, F = ghostPlace(), ok = ghostValid(F), [x, y, z] = furnWorld(I, F);
+  DEC.ghost.position.set(x, y + (FURN[F.k].wall ? 1.6 : 0) + 0.01, z); DEC.ghost.rotation.y = F.r;
+  if (ok !== DEC.ok) { DEC.ok = ok; DEC.ghost.traverse(o => { if (o.isMesh) o.material = ok ? GHOST_OK : GHOST_BAD; }); }
+  if (DEC.ghost.userData.first !== true) { DEC.ghost.userData.first = true; DEC.ghost.traverse(o => { if (o.isMesh) o.material = ok ? GHOST_OK : GHOST_BAD; }); DEC.ok = ok; }
+  DEC.cur = F;
+}
+function decorConfirm() {
+  if (!DEC.sel || !DEC.cur) return;
+  if (!ghostValid(DEC.cur)) { floatText('❌ Buraya sığmıyor'); AudioSys.fail(); return; }
+  const own = myHome(LIFE.curHome), S2 = DEC.sel, F = { ...DEC.cur };
+  if (!S2.moving) { if (state.money < S2.price) { floatText('💸 Yeterli paran yok'); return; } state.money -= S2.price; S().spent += S2.price; ledger(`🛋 ${FURN[S2.k].n}`, -S2.price); AudioSys.cash(); }
+  else { F.on = S2.moving.on; AudioSys.pickup(); }
+  own.furn.push(F); DEC.sel = null; homeGroup.remove(DEC.ghost); DEC.ghost = null;
+  rebuildFurniture(INTERIORS.home); saveGame(); renderDecor(); haptic(25);
+}
+function nearestFurn(maxD = 2.6) {
+  const I = INTERIORS.home, own = myHome(LIFE.curHome), f = genFloorOf(I); let best = null, bd = maxD;
+  for (const F of own.furn) { if (F.f !== f) continue; const d = Math.hypot(I.ox + F.x - player.pos.x, I.oz + F.z - player.pos.z); if (d < bd) { bd = d; best = F; } }
+  return best;
+}
+function decorPick() {
+  const F = nearestFurn(); if (!F) { floatText('✋ Yakında mobilya yok'); return; }
+  const own = myHome(LIFE.curHome); own.furn.splice(own.furn.indexOf(F), 1); rebuildFurniture(INTERIORS.home); startGhost(F.k, F.c, 0, F);
+}
+function decorSell() {
+  const F = nearestFurn(); if (!F) { floatText('🗑 Yakında mobilya yok'); return; }
+  const own = myHome(LIFE.curHome), refund = Math.round(FURN[F.k].p * 0.5);
+  if (F.k === 'fridge' && own.furn.filter(o => o.k === 'fridge').length === 1 && cnt(own.fridge)) { for (const k in own.fridge) { const n = Math.min(own.fridge[k], BAG_CAP - cnt(state.bag)); if (n > 0) state.bag[k] = (state.bag[k] || 0) + n; } own.fridge = {}; floatText('🧊 Buzdolabındakiler poşete alındı'); }
+  own.furn.splice(own.furn.indexOf(F), 1); state.money += refund; ledger(`🗑 ${FURN[F.k].n} satıldı`, refund); rebuildFurniture(INTERIORS.home); saveGame(); AudioSys.cash(); floatText(`🗑 ${FURN[F.k].i} satıldı · +$${refund}`);
+}
+function renderDecor() {
+  const el = $('decor'); if (!el || !DEC.on) return;
+  const own = myHome(LIFE.curHome), I = INTERIORS.home; if (!own || !I) return;
+  let h = `<div class="dcHead"><b>🛋 ${esc(I.T.name)} · ${own.furn.length}/${I.T.cap}</b><span>$${Math.round(state.money).toLocaleString('tr-TR')}</span><button data-dc="close">✕</button></div>`;
+  if (DEC.sel) {
+    const D = FURN[DEC.sel.k];
+    h += `<div class="dcSel">${D.i} <b>${D.n}</b> ${DEC.sel.moving ? '· taşınıyor' : '· $' + D.p}<small>Yürüyerek konumla · ${isTouch ? '⟲ ⟳ ile döndür' : 'Q / E döndür · Space yerleştir · Esc iptal'}${D.wall ? ' · en yakın duvara asılır' : ''}</small></div>
+      <div class="dcCtl"><button data-dc="rl">⟲</button><button data-dc="rr">⟳</button><button data-dc="ok" class="go">✓ YERLEŞTİR</button><button data-dc="cancel" class="grey">✕</button></div>`;
+  } else {
+    h += `<div class="dcTabs"><button data-dt="shop" class="${DEC.tab === 'shop' ? 'on' : ''}">🛒 Mobilya</button><button data-dt="home" class="${DEC.tab === 'home' ? 'on' : ''}">🏠 Ev</button></div><div class="dcCtl"><button data-dc="pick">✋ Yakındakini taşı</button><button data-dc="sell" class="grey">🗑 Yakındakini sat</button></div><div class="dcList">`;
+    if (DEC.tab === 'shop') for (const k in FURN) { const D = FURN[k]; h += `<div class="dcItem"><div><b>${D.i} ${D.n}</b><small>$${D.p}</small></div><div class="dcCols">${D.cols.map(c => `<button data-buy="${k}" data-col="${c}" style="background:${c.startsWith('#') ? c : 'url(' + paintingTex(c).image.toDataURL() + ') center/cover'}" ${state.money < D.p ? 'disabled' : ''}></button>`).join('')}</div></div>`; }
+    else {
+      h += `<div class="dcItem"><div><b>${esc(LIFE.curHome.name)}</b><small>${I.T.name} · ${I.T.W}×${I.T.D} m · ${I.T.nF} kat · buzdolabı ${cnt(own.fridge)}/${FRIDGE_CAP}</small></div></div>`;
+      for (let t = own.tier + 1; t <= 3; t++) h += `<div class="dcItem"><div><b>⬆ ${HOME_TIERS[t].name}</b><small>$${HOME_TIERS[t].up.toLocaleString('tr-TR')} · ${HOME_TIERS[t].cap} mobilya · ${HOME_TIERS[t].nF} kat${t === 3 ? ' · havuz + cam cephe' : ''}</small></div><button data-up="${t}" ${t > own.tier + 1 || state.money < HOME_TIERS[t].up ? 'disabled' : ''}>BÜYÜT</button></div>`;
+      if (own.tier === 3) h += '<div class="dcItem"><div><b>👑 En üst seviye</b><small>Lüks Villa · havuzlu, cam cepheli</small></div></div>';
+    }
+    h += '</div>';
+  }
+  el.innerHTML = h;
+}
+function initDecorUI() {
+  const el = $('decor');
+  const act = e => {
+    const b = e.target.closest('button'); if (!b) return; e.preventDefault(); e.stopPropagation(); if (b.disabled) return;
+    const d = b.dataset;
+    if (d.dc === 'close') closeDecor();
+    else if (d.dc === 'rl') DEC.rot -= Math.PI / 4;
+    else if (d.dc === 'rr') DEC.rot += Math.PI / 4;
+    else if (d.dc === 'ok') decorConfirm();
+    else if (d.dc === 'cancel') cancelGhost();
+    else if (d.dc === 'pick') decorPick();
+    else if (d.dc === 'sell') { decorSell(); renderDecor(); }
+    else if (d.dt) { DEC.tab = d.dt; renderDecor(); }
+    else if (d.buy) startGhost(d.buy, d.col, FURN[d.buy].p);
+    else if (d.up) { const t = +d.up; if (state.money >= HOME_TIERS[t].up) { state.money -= HOME_TIERS[t].up; ledger(`⬆ ${HOME_TIERS[t].name}`, -HOME_TIERS[t].up); upgradeHome(LIFE.curHome, t); } }
+  };
+  el.addEventListener('click', act); el.addEventListener('touchstart', act, { passive: false });
+  addEventListener('keydown', e => {
+    if (e.code === 'KeyB' && !state.shopOpen && !state.phoneOpen && !DEC.on) { e.preventDefault(); openShop('bag'); }
+    if (e.code === 'KeyK' && !state.shopOpen && !state.phoneOpen) { e.preventDefault(); if (DEC.on) closeDecor(); else openDecor(); }
+    if (!DEC.on) return;
+    if (e.code === 'Escape') { if (DEC.sel) cancelGhost(); else closeDecor(); }
+    if (DEC.sel) { if (e.code === 'KeyQ') DEC.rot -= Math.PI / 4; if (e.code === 'KeyE') { DEC.rot += Math.PI / 4; e.stopImmediatePropagation(); } if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); decorConfirm(); } }
+  }, true);
+  const tb = (id, fn) => { const b = $(id); b.addEventListener('click', e => { e.stopPropagation(); fn(); }); b.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false }); };
+  tb('bDecor', () => DEC.on ? closeDecor() : openDecor());
+  tb('bFood', () => { if (!state.shopOpen && !state.phoneOpen) openShop('bag'); });
+}
+// ---------------- fridge
+function fridgeItems() {
+  const own = myHome(LIFE.curHome); if (!own) return [];
+  const it = [{ sec: `🧊 Buzdolabı · ${cnt(own.fridge)}/${FRIDGE_CAP} · 🍔 ${Math.round(state.food)} · 💧 ${Math.round(state.water)}` }];
+  const bagN = cnt(state.bag);
+  it.push({ name: '🛍 ➜ 🧊 Poşeti buzdolabına diz', desc: bagN ? Object.entries(state.bag).map(([k, n]) => GROCERY[k].i + '×' + n).join(' ') : 'Poşetin boş · önce markete uğra', price: 0, btn: 'DİZ', dis: bagN ? null : 'BOŞ', buy: () => { for (const k in state.bag) { const n = Math.min(state.bag[k], FRIDGE_CAP - cnt(own.fridge)); if (n <= 0) break; own.fridge[k] = (own.fridge[k] || 0) + n; state.bag[k] -= n; if (!state.bag[k]) delete state.bag[k]; } floatText('🧊 Ürünler buzdolabına dizildi'); refreshFridge(); } });
+  for (const k in own.fridge) { const G = GROCERY[k]; it.push({ name: `${G.i} ${G.n} ×${own.fridge[k]}`, desc: `🍔 +${G.f} · 💧 ${G.w >= 0 ? '+' : ''}${G.w}`, price: 0, btn: G.w > G.f ? 'İÇ' : 'YE', buy: () => { eatItem(k, own.fridge); refreshFridge(); } }); }
+  if (Object.keys(own.fridge).length) it.push({ sec: 'Yanına al' }, { name: '🧊 ➜ 🛍 Birkaç atıştırmalığı poşete al', desc: 'Dışarıda acıkınca B / 🍔 ile ye', price: 0, btn: 'AL', buy: () => { let n = 0; for (const k in own.fridge) { while (own.fridge[k] > 0 && n < 4 && cnt(state.bag) < BAG_CAP) { own.fridge[k]--; state.bag[k] = (state.bag[k] || 0) + 1; n++; } if (!own.fridge[k]) delete own.fridge[k]; } refreshFridge(); } });
+  return it;
+}
+function refreshFridge() { const I = INTERIORS.home; if (!I) return; const own = myHome(I.home); for (const g of I.furnMeshes) if (g.userData.F.k === 'fridge') fridgeVisual(g, own.fridge); }
+function updateHomeInside(dt, I) {
+  const fl = genFloorOf(I); if (fl !== I.curF) homeLight(I);
+  if (I.pool) I.pool.material.emissiveIntensity = 0.5 + Math.sin(state.now * 2) * 0.15;
+  for (const g of I.furnMeshes) if (g.userData.F.k === 'tv' && g.userData.screen && g.userData.F.on && g.userData.screen.material !== FURN_GLOW) g.userData.screen.material.color.setHSL((state.now * 0.1) % 1, 0.6, 0.6 + Math.sin(state.now * 7) * 0.1);
+  if (DEC.on) { updateDecorGhost(); return; }
+  if (state.interact) return;
+  const F = nearestFurn(1.9); if (!F) return;
+  if (F.k === 'fridge') state.interact = { label: '🧊 BUZDOLABI · ye / iç / poşeti diz', fn: () => openShop('fridge') };
+  else if (F.k === 'bed') state.interact = { label: '🛏 UYU & KAYDET', fn: () => { state.health = 100; state.time = (state.time + 8) % 24; state.lastHour = Math.floor(state.time); state.food = Math.max(10, state.food - 10); state.water = Math.max(10, state.water - 15); saveGame(); showBig('İYİ UYUDUN', '#7dff9a', 2.5, '8 saat geçti · can doldu · kaydedildi'); } };
+  else if (F.k === 'tv') state.interact = { label: F.on ? '📺 TV\'Yİ KAPAT' : '📺 TV AÇ · VISTA HABER', fn: () => { F.on = !F.on; const g = I.furnMeshes.find(m => m.userData.F === F); if (g && g.userData.screen) { g.userData.screen.material = F.on ? new THREE.MeshBasicMaterial() : FURN_GLOW; } if (F.on && typeof NEWS !== 'undefined' && NEWS.last.length) floatText('📺 ' + NEWS.last[0].m.slice(0, 80)); saveGame(); } };
+  else if (F.k === 'lamp') state.interact = { label: F.on === false ? '💡 LAMBAYI AÇ' : '💡 LAMBAYI KAPAT', fn: () => { F.on = F.on === false; rebuildFurniture(I); saveGame(); } };
+  else if (F.k === 'wardrobe') state.interact = { label: '👕 GARDIROP · kıyafet değiştir', fn: () => openShop('clothes') };
+  else if (F.k === 'kitchen' && Object.keys(myHome(I.home).fridge).length) state.interact = { label: '🍳 YEMEK PİŞİR · buzdolabından', fn: () => { const own = myHome(I.home), k = ['meat', 'chicken', 'eggs', 'sausage'].find(q => own.fridge[q]); if (!k) { floatText('🍳 Pişirecek et/yumurta yok'); return; } eatItem(k, own.fridge); state.food = Math.min(100, state.food + 15); floatText('🍳 Sıcak yemek · ekstra +15 tokluk'); refreshFridge(); } };
+}
+function updateLifeInterior(dt) {
+  const id = state.interior; if (!id) return;
+  const I = INTERIORS[id]; if (!I) return;
+  if (I.market) updateMarketInside(I);
+  else if (id === 'home') updateHomeInside(dt, I);
+}
+function lifeDoorInteract(d) {
+  if (d.market) { state.interact = { label: `🛒 ${d.market.name} MARKET · alışveriş`, fn: () => enterMarket(d.market) }; return true; }
+  if (d.home) { const H = d.home, own = myHome(H); state.interact = { label: own ? `🏠 EVİNE GİR · ${HOME_TIERS[own.tier].name}` : `🏷 SATILIK EV · $${H.price.toLocaleString('tr-TR')}`, fn: () => { LIFE.curHome = H; if (own) enterHome(H); else openShop('homebuy'); } }; return true; }
+  return false;
+}
+function drawLifeMap(dot, g, toMap, r) {
+  for (const M of LIFE.mkts) { dot(M.door.x, M.door.z, M.col, 7, false); }
+  for (const H of LIFE.homes) dot(H.door.x, H.door.z, myHome(H) ? '#40e080' : '#e04050', myHome(H) ? 8 : 5, !!myHome(H));
+}
+function homesPhoneHtml() {
+  return `<div class="phSec">Satılık evler · daireler</div>` + LIFE.homes.map(H => { const own = myHome(H); return `<div class="phRow"><i class="phIc">${H.kind === 'apt' ? '🏢' : '🏡'}</i><div><b>${esc(H.name)}</b><small>${own ? 'Senin · ' + HOME_TIERS[own.tier].name + ' · ' + own.furn.length + ' mobilya' : '$' + H.price.toLocaleString('tr-TR') + ' · 1+1 → Dublex → Lüks Villa'}</small></div><button class="phBtn" data-hgps="${H.id}">📍</button></div>`; }).join('')
+    + `<div class="phSec">Süpermarketler</div>` + LIFE.mkts.map(M => `<div class="phRow"><i class="phIc" style="color:${M.col}">🛒</i><div><b>${M.name}</b><small>${M.slogan} · aktüel: ${GROCERY[dealOf(M)].i} ${GROCERY[dealOf(M)].n}</small></div><button class="phBtn" data-mgps="${M.id}">📍</button></div>`).join('');
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -5740,7 +6293,7 @@ function exitInterior() {
   setTimeout(() => {
     state.interior = null; interiorLight.intensity = 0; for (const h of clubDancers) h.g.visible = false;
     if (I.extOut) { const [x, z, yaw] = I.extOut; player.pos.set(x, groundY(x, z), z); player.yaw = yaw; camYaw = yaw + Math.PI; } else { const [x, z] = I.ext; player.pos.set(x, groundY(x, z), z + 2.4); player.yaw = 0; camYaw = Math.PI; }
-    if (I.gen) disposeGen(); f.style.opacity = 0;
+    if (I.gen) disposeGen(); if (I.home) disposeHome(); f.style.opacity = 0;
   }, 350);
 }
 function updateInteriors(dt) {
@@ -5754,6 +6307,7 @@ function updateInteriors(dt) {
   const I = INTERIORS[state.interior], t = state.now;
   if (player.pos.y < 1.5 && Math.hypot(player.pos.x - I.exitAt[0], player.pos.z - (I.exitAt[1] - 0.6)) < 1.1) state.interact = { label: '🚪 DIŞARI ÇIK', fn: exitInterior };
   if (state.interior === 'gen') updateGenInterior(dt);
+  updateLifeInterior(dt);
   if (state.interior === 'club') {
     if (Math.floor(t * 4) !== I.lastBeat) { I.lastBeat = Math.floor(t * 4); for (let k = 0; k < 36; k++) danceTiles.setColorAt(k, tmpC.setHSL((k * 0.11 + t * 0.3) % 1, 0.9, Math.random() < 0.5 ? 0.6 : 0.15).multiplyScalar(1.4)); danceTiles.instanceColor.needsUpdate = true; }
     interiorLight.color.setHSL((t * 0.15) % 1, 0.8, 0.6); interiorLight.intensity = 140 + Math.sin(t * 8) * 60;
@@ -8215,6 +8769,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
+    if ((d.market || d.home) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && lifeDoorInteract(d)) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -8381,6 +8936,8 @@ function loop(now) {
   updateAnomaly(dt);
   updateHoverBoards();
   updateGunFear(dt);
+  updateNeeds(dt);
+  document.body.classList.toggle('inHome', state.interior === 'home');
   if (state.ownedW[5] && state.ammo[5] < 60) { state.laserT = (state.laserT || 0) + dt; if (state.laserT > 0.5) { state.laserT = 0; state.ammo[5]++; } }
   document.body.classList.toggle('hasHover', !!state.hoverOwned && !state.inCar);
   updateAirport(dt);
@@ -8414,7 +8971,7 @@ function loop(now) {
   // health
   if (state.god && isAdmin()) state.health = 100;
   if (state.health <= 0 && !state.dead) onLocalDeath();
-  if (state.wanted === 0 && state.health < 100 && !state.dead) state.health = Math.min(100, state.health + dt * 1.5);
+  if (state.wanted === 0 && state.health < 100 && !state.dead && wellFed()) state.health = Math.min(100, state.health + dt * 1.5);
   // sirens flash
   const ph = Math.sin(state.now * 14) > 0;
   M.sirenR.color.setRGB(ph ? 4 : 0.15, 0.05, 0.1); M.sirenB.color.setRGB(0.05, 0.15, ph ? 0.2 : 5);

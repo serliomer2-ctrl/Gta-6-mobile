@@ -73,6 +73,15 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **His**: el freni/drift'te asfaltta kalıcı lastik izi, isabette 'tık' sesi + nişangâh işareti, mobilde bağlama göre butonlar (en yakın araca göre 🚗/🏍/🚤/🚁/✈, serbest düşüşte 🪂 AÇ, kabinde ateş/araç butonları gizli), haritada 🏛 Nüfus ve 🎓 Uçuş Okulu ikonları
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
 
+## 🏠 Gerçek Hayat (Life RP)
+- **🔑 Ev satın alma**: şehirde 7 satılık ev var (Merkez/Midtown'da 🏢 Rezidans daireleri $18.000, Banliyö'de 🏡 evler $30.000). Kapının üstünde **SATILIK** tabelası, mini haritada kırmızı nokta (senin evin yeşil), telefonda 🏠 Emlak → konum işaretle. Ev, yatak + buzdolabı + koltukla teslim edilir
+- **⬆ Ev geliştirme**: **1+1 Daire** (10×8 m, 16 mobilya) → **Dublex** (14×11 m, merdivenli 2 kat, 32 mobilya, $30.000) → **Lüks Villa** (20×15 m, 2 kat, mermer zemin, deniz manzaralı cam cephe, kapalı havuz, 55 mobilya, $75.000)
+- **🛋 Dekorasyon modu** (evin içinde K / 🛋 DEKOR): 15 çeşit mobilya, renk seçenekleriyle — koltuk takımı, berjer, çift kişilik yatak, akıllı TV, cam kapaklı buzdolabı, yemek masası + sandalyeler, orta sehpa, lambader (gerçek ışık), tablolar (5 resim, en yakın duvara asılır), saksı bitkisi, halı, kitaplık, gardırop, mutfak tezgâhı + ocak, çalışma masası + PC. Seçtiğin eşyanın yeşil hayaleti önünde belirir: yürüyerek konumla, ⟲ ⟳ (Q / E) ile 45° döndür, ✓ YERLEŞTİR (Space). Sığmazsa kırmızı olur (kapı, merdiven, havuz ve diğer eşyalar korunur). ✋ yakındaki eşyayı taşı, 🗑 yarı fiyatına sat. Her şey kayda ve bulut hesabına kalıcı yazılır
+- **Ev içi etkileşimler**: 🛏 yatakta uyu & kaydet, 📺 TV aç/kapat (son dakika haberi), 💡 lambayı aç/kapat, 👕 gardıroptan kıyafet, 🍳 tezgâhta buzdolabındaki et/tavuk/yumurtayı pişir (ekstra tokluk)
+- **🛒 Süpermarketler**: şehrin üç mahallesinde girilebilir indirim marketleri — **BİRİM** (en ucuz), **A-110**, **ŞIKO**. Raflı koridorlar, soğuk dolaplar, manav kasaları ve kasiyerli kasa. Her rafın önünde E: 🥖 Fırın & Kahvaltılık (ekmek, simit, yumurta, süt, peynir), 🥩 Kasap (et, tavuk, sucuk), 🍎 Manav (elma, muz, karpuz, domates), 🥤 İçecekler (su, kola, meyve suyu, ayran), 🍫 Atıştırmalık (cips, çikolata, bisküvi, hazır yemek). Her saat her markette bir **aktüel ürün** %40 indirimli (herkes için aynı)
+- **🛍 Poşet & 🧊 Buzdolabı**: aldıkların poşete girer (40 ürün). Evdeki buzdolabının önünde E → "Poşeti buzdolabına diz" (60 ürün); ürünler cam kapağın arkasında rafta görünür. Buzdolabından ye/iç ya da yanına atıştırmalık al
+- **🍔 Açlık & 💧 Susuzluk**: can barının altında turuncu ve mavi bar. Tokluk ~35 dk'da, su ~25 dk'da biter (koşarken daha hızlı). 20'nin altında uyarı, sıfırda can yavaş yavaş azalır; aç/susuzken can kendiliğinden dolmaz. B (mobilde 🍔) ile poşetten her yerde ye/iç
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
