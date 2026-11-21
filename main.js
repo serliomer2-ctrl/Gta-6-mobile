@@ -358,6 +358,7 @@ function init() {
   buildBlackMarket();
   vgLoad();
   initDecorUI();
+  initFamilyUI();
   buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
@@ -378,6 +379,7 @@ function init() {
   buildInteriors();
   buildMarkets();
   buildHomes();
+  buildWedding();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -1341,6 +1343,7 @@ function enterCar() {
   if (state.passenger) { exitPassenger(); return; }
   if (state.inCar) { exitCar(false); return; }
   if (MP.on && !state.interior) { const rv = nearRemoteVehicle(4.5); if (rv) { let nl = 1e9; for (const c of cars) if (c.active && !c.dead) nl = Math.min(nl, Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z)); if (Math.hypot(rv.x - player.pos.x, rv.z - player.pos.z) < nl) { enterAsPassenger(rv); return; } } }
+  if (babyBlocks('drive')) return;
   let best = null, bd = 5;
   for (const c of cars) { if (!c.active || c.dead || c.evSlot !== undefined || c.netEv !== undefined || c.netTruck || c.polMirror !== undefined || c.polHeli || c.rb || c.bmVan) continue; const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d < bd) { bd = d; best = c; } }
   if (!best) return;
@@ -1395,7 +1398,7 @@ function updatePlayerFoot(dt) {
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
   let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
   const run = input.sprint || mag > 0.92;
-  const target = (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1);
+  const target = (state.baby && state.baby.grow < 30 ? 0.65 : 1) * (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1);
   player.speed = damp(player.speed, target, 10, dt);
   if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; if (player.aimT <= 0) player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-12 * dt))); }
   else { mx = Math.sin(player.yaw); mz = Math.cos(player.yaw); }
@@ -2537,6 +2540,7 @@ function drawMinimap() {
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   drawAnomMap(dot);
+  if (!state.interior) { dot(WED.x, WED.z, '#ff7ab0', 7, false); for (const r of MP.remotes.values()) if (state.spouse && r.info.name === state.spouse.name) dot(r.x, r.z, '#ff7ab0', 11, true); }
   if (!state.interior) drawLifeMap(dot);
   if (BM.van && !BM.van.dead && Math.hypot(BM.x - player.pos.x, BM.z - player.pos.z) < 220) { dot(BM.x, BM.z, '#a040ff', 10, false); const [px, py] = toMap(BM.x, BM.z); g.font = '12px sans-serif'; g.fillText('🕶', px, py + 1); }
   for (const rp of MP.remotes.values()) { { const hunt = state.cop && rp.wn > 0; dot(rp.x, rp.z, hunt ? (Math.sin(state.now * 10) > 0 ? '#ff2040' : '#ffffff') : rp.info.cop ? '#3a7aff' : rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, hunt || rp.bounty || sameCrew(rp) ? 11 : 8, true); if (hunt) { const [px, py] = toMap(rp.x, rp.z); if (Math.hypot(px - r, py - r) < r - 12) { g.font = 'bold 11px sans-serif'; g.fillStyle = '#ffd23a'; g.fillText('★'.repeat(rp.wn), px, py - 14); } } } if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
@@ -2861,7 +2865,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2878,6 +2882,7 @@ function shopItems(type) {
   if (type === 'fridge') return fridgeItems();
   if (type === 'bag') return bagItems();
   if (type === 'homebuy') return homeShopItems();
+  if (type === 'wed') return wedItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2948,7 +2953,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, homes: state.homes || {}, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2964,7 +2969,7 @@ function loadGame() {
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
     state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned;
-    state.homes = d.homes || {}; state.bag = d.bag || {}; state.food = d.food ?? 100; state.water = d.water ?? 100;
+    state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
 }
@@ -3327,7 +3332,7 @@ function cleanupRico(m) {
 }
 
 // ============================================================ SMARTPHONE UI
-const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
 function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
 function openPhone() {
   if (state.shopOpen || state.dead || state.dialog || state.photo) return;
@@ -3394,6 +3399,8 @@ function renderPhone(app) {
       <div class="phRow"><div><b>🏁 Stunt atlayışları ${Object.keys(state.stuntsDone).length}/${ramps.length}</b><small>Rampalardan hızla atla · ilk atlayış x2 bonus</small></div></div></div>`;
   } else if (app === 'wallet') {
     h = walletHtml(head);
+  } else if (app === 'family') {
+    h = familyPhoneHtml(head);
   } else if (app === 'vg') {
     h = vgHtml(head);
   } else if (app === 'news') {
@@ -3424,6 +3431,10 @@ function initPhone() {
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
     else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
+    else if (d.joint) { jointMove(+d.joint); renderPhone('family'); }
+    else if (d.famtog) { state.family = !state.family; sendInfo(); saveGame(); renderPhone('family'); }
+    else if (d.wgps) { state.waypoint = { x: WED.x, z: WED.z, label: 'Evlendirme Dairesi' }; floatText('📍 Evlendirme Dairesi işaretlendi'); closePhone(); }
+    else if (d.babyto) { WED.babyAsk = d.babyto; mpSend({ t: 'baby_req', to: d.babyto }); floatText('👶 Aileye haber verildi · cevap bekleniyor'); closePhone(); }
     else if (d.hgps) { const H = LIFE.homes.find(q => q.id === d.hgps); state.waypoint = { x: H.door.x, z: H.door.z, label: H.name }; floatText('📍 ' + H.name + ' işaretlendi'); closePhone(); }
     else if (d.mgps) { const M = LIFE.mkts.find(q => q.id === d.mgps); state.waypoint = { x: M.door.x, z: M.door.z, label: M.name }; floatText('📍 ' + M.name + ' market işaretlendi'); closePhone(); }
     else if (d.gps) { const p = PROPERTIES.find(q => q.id === d.gps); state.waypoint = { x: p.zone.x, z: p.zone.z, label: p.name }; floatText('📍 ' + p.name + ' işaretlendi'); closePhone(); }
@@ -5718,7 +5729,7 @@ const HOME_TIERS = [null,
   { name: 'Lüks Villa', W: 20, D: 15, nF: 2, cap: 55, up: 75000 },
 ];
 const HFH = 3.4;
-const myHome = H => state.homes && state.homes[H.id];
+const myHome = H => (state.homes && state.homes[H.id]) || (state.spouseHomes && state.spouseHomes[H.id]);
 function buildHomes() {
   const kindOf = d => d.type === 'home' || d.type === 'apt' ? 'home' : d.type === 'shop' && (d.blk.dist === 'downtown' || d.blk.dist === 'midtown') ? 'apt' : null;
   const r = mulberry32(777), cand = DOORS.filter(d => d.y0 < 1 && d.blk && d.blk.dist && !d.blk.park && !d.market && kindOf(d) && lifeDoorFree(d)).map(d => [r(), d]).sort((a, b) => a[0] - b[0]).map(a => a[1]);
@@ -5737,7 +5748,7 @@ function buildHomes() {
 function drawHomeSign(H) {
   const own = myHome(H), cv = H.sign.material.map.image; cv.width = 256; cv.height = 80; const g = cv.getContext('2d');
   g.fillStyle = own ? 'rgba(20,90,50,0.9)' : 'rgba(150,20,30,0.9)'; g.beginPath(); g.roundRect(4, 4, 248, 72, 14); g.fill();
-  g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = 'bold 26px Arial'; g.fillText(own ? '🏠 EVİN' : '🏷 SATILIK', 128, 34);
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = 'bold 26px Arial'; g.fillText(own ? (state.homes && state.homes[H.id] ? '🏠 EVİN' : '💍 EŞİNİN EVİ') : '🏷 SATILIK', 128, 34);
   g.font = 'bold 20px Arial'; g.fillText(own ? HOME_TIERS[own.tier].name : '$' + H.price.toLocaleString('tr-TR'), 128, 62);
   H.sign.material.map.needsUpdate = true;
 }
@@ -5767,7 +5778,7 @@ function upgradeHome(H, t) {
 }
 // local room coordinates: the door is at (0, 0), the room extends to z = -D, x ∈ [-W/2, W/2]
 const stairRect = T => ({ x0: -T.W / 2 + 0.2, x1: -T.W / 2 + 1.8, z0: -2.4 - 6, z1: -2.4 });
-function homeOrigin(H) { const own = (MP.on ? MP.name : 'me').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 6; return [-5600 - H.k * 90, -2400 - own * 70]; }
+function homeOrigin(H) { const own = (state.homes && state.homes[H.id] ? (MP.on ? MP.name : 'me') : (state.spouse ? state.spouse.name : 'me')).split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 6; return [-5600 - H.k * 90, -2400 - own * 70]; }
 let homeGroup = null;
 function disposeHome() {
   if (!homeGroup) return;
@@ -6093,6 +6104,237 @@ function homesPhoneHtml() {
     + `<div class="phSec">Süpermarketler</div>` + LIFE.mkts.map(M => `<div class="phRow"><i class="phIc" style="color:${M.col}">🛒</i><div><b>${M.name}</b><small>${M.slogan} · aktüel: ${GROCERY[dealOf(M)].i} ${GROCERY[dealOf(M)].n}</small></div><button class="phBtn" data-mgps="${M.id}">📍</button></div>`).join('');
 }
 
+// ============================================================ LIFE RP 2: MARRIAGE, SHARED HOME & JOINT ACCOUNT, FAMILY / BORN AS A BABY
+const WED = { x: 0, z: 0, npcs: [], sync: { own: '', sp: '' }, syncT: 0, offerT: 0, offered: false, careCd: 0, growT: 0, cookDay: -1 };
+const NPC_PARTNERS = [
+  { name: 'Elif', look: { skin: '#e0ac80', shirt: '#f0a0c0', pants: '#e8e8e8', hair: '#3a2416', shoes: '#f2f2f2', glasses: false, longHair: true }, line: 'Sahilde gün batımını izlemeye bayılırım.' },
+  { name: 'Can', look: { skin: '#c58c60', shirt: '#1e2e5a', pants: '#3a4a6e', hair: '#101010', shoes: '#f2f2f2', glasses: true }, line: 'Hafta sonu Palmiye Adası\'na uçalım mı?' },
+  { name: 'Zeynep', look: { skin: '#f1c7a5', shirt: '#2a9ab8', pants: '#16161a', hair: '#8a2a1a', shoes: '#111', glasses: false, longHair: true }, line: 'Evimizi birlikte döşemek çok güzel olur.' },
+  { name: 'Mert', look: { skin: '#8d5a3a', shirt: '#f0eee8', pants: '#5a3a26', hair: '#101010', shoes: '#5a3a26', glasses: false, cap: '#1a2a4a' }, line: 'En güzel köfteyi ben yaparım, söz!' },
+];
+const spouseName = () => state.spouse && state.spouse.name;
+const spouseRemote = () => { if (!state.spouse || state.spouse.npc || !MP.on) return null; for (const r of MP.remotes.values()) if (r.info.name === state.spouse.name) return r; return null; };
+const babyScale = g => 0.45 + 0.55 * clamp(g, 0, 100) / 100;
+const babyStage = g => g < 30 ? '👶 Bebek' : g < 70 ? '🧒 Çocuk' : g < 100 ? '🧑 Genç' : 'Yetişkin';
+// ---------------- the wedding venue (white arch + flowers in the central park)
+function buildWedding() {
+  const b = blocks[3][3]; let sx = b.cx, sz = b.cz + BLOCK / 2 - 16;
+  for (let k = 0; k < 40; k++) { const x = b.cx + (k % 8 - 3.5) * 9, z = b.cz + BLOCK / 2 - 12 - Math.floor(k / 8) * 9; if (!collide(x, z, 5, 0.5).hit) { sx = x; sz = z; break; } }
+  WED.x = sx; WED.z = sz; const y = groundY(sx, sz);
+  const white = new THREE.MeshStandardMaterial({ color: 0xf8f6f0, roughness: 0.5, envMapIntensity: 0.3 }), flower = new THREE.MeshStandardMaterial({ color: 0xffa0c8, roughness: 0.8 }), gold = new THREE.MeshStandardMaterial({ color: 0xe8c060, metalness: 0.8, roughness: 0.3 });
+  const parts = [], fl = [];
+  for (const s of [-1, 1]) parts.push(new THREE.CylinderGeometry(0.18, 0.22, 3.4, 12).translate(sx + s * 1.8, y + 1.7, sz - 3));
+  parts.push(new THREE.TorusGeometry(1.8, 0.16, 8, 24, Math.PI).translate(sx, y + 3.4, sz - 3));
+  for (let k = 0; k < 16; k++) { const a = k / 15 * Math.PI; fl.push(new THREE.IcosahedronGeometry(0.28, 0).translate(sx + Math.cos(a) * 1.8, y + 3.4 + Math.sin(a) * 1.8, sz - 3 + 0.1)); }
+  parts.push(new THREE.BoxGeometry(5, 0.12, 7).translate(sx, y + 0.06, sz - 1.2));   // white aisle platform
+  for (const s of [-1, 1]) for (let k = 0; k < 3; k++) { parts.push(new THREE.BoxGeometry(1.6, 0.08, 0.5).translate(sx + s * 2.6, y + 0.5, sz + k * 1.4), new THREE.BoxGeometry(1.6, 0.5, 0.08).translate(sx + s * 2.6, y + 0.75, sz + k * 1.4 + 0.25)); fl.push(new THREE.IcosahedronGeometry(0.22, 0).translate(sx + s * 1.7, y + 0.9, sz + k * 1.4)); }
+  const g = new THREE.Group(); g.add(new THREE.Mesh(merge(parts), white), new THREE.Mesh(merge(fl), flower));
+  const bell = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.45, 12).translate(sx, y + 4.6, sz - 3), gold); g.add(bell);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.1), new THREE.MeshBasicMaterial({ map: canvasTex(512, 120, gg => { gg.fillStyle = '#fff8f0'; gg.fillRect(0, 0, 512, 120); gg.strokeStyle = '#e8c060'; gg.lineWidth = 8; gg.strokeRect(4, 4, 504, 112); gg.fillStyle = '#b03060'; gg.font = 'bold 40px Georgia'; gg.textAlign = 'center'; gg.fillText('💍 Evlendirme Dairesi', 256, 56); gg.font = '24px Georgia'; gg.fillStyle = '#5a3a26'; gg.fillText('Vista Bay Belediyesi · Nikah Salonu', 256, 96); }) }));
+  sign.position.set(sx, y + 4.9 + 0.6, sz - 3.05); g.add(sign);
+  scene.add(g);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff7ab0, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(sx, y + 0.14, sz - 1.2); scene.add(ring);
+  NPC_PARTNERS.forEach((P, i) => { const h = makeHuman(P.look); h.g.position.set(sx - 4.5 + i * 3, y, sz + 4.6); h.g.rotation.y = Math.PI; WED.npcs.push(h); });
+  WED.bell = bell;
+}
+function updateWeddingSpot(dt) {
+  WED.npcs.forEach((h, i) => { h.phase += dt; h.armL.rotation.x = Math.sin(h.phase * 1.3) * 0.1; h.g.visible = !(state.spouse && state.spouse.npc === i); });
+  if (WED.cele > 0) {
+    WED.cele -= dt; const y = groundY(WED.x, WED.z) + 4;
+    for (let k = 0; k < 3; k++) FX.add.spawn(WED.x + MR(-3, 3), y + MR(-1, 1), WED.z - 2 + MR(-2, 2), MR(-3, 3), MR(2, 6), MR(-3, 3), MR(0.1, 0.2), 1.6, 2, Math.random(), Math.random(), Math.random(), 1, 3);
+    WED.bell.rotation.z = Math.sin(state.now * 10) * 0.4;
+  }
+  if (state.inCar || state.interior || state.dead) return;
+  if (Math.hypot(player.pos.x - WED.x, player.pos.z - (WED.z - 1.2)) < 1.6) state.interact = { label: '💍 EVLENDİRME DAİRESİ · nikah / aile', fn: () => openShop('wed') };
+}
+function wedItems() {
+  const it = [], sp = state.spouse;
+  if (sp) {
+    it.push({ sec: `💍 Evlisin · ${esc(sp.name)}${sp.npc != null ? ' (Vista Bay sakini)' : spouseRemote() ? ' · çevrimiçi' : ' · çevrimdışı'}` });
+    it.push({ name: state.family ? '👪 Aile kuruldu · bebek bekleniyor' : '👶 Aile kur · çocuk sahibi ol', desc: state.family ? 'Odaya katılan ya da yeniden doğan oyuncular ailenizin bebeği olarak doğabilir · kapatmak için dokun' : 'Açınca oyuncular sizin bebeğiniz olarak doğmayı seçebilir', price: 0, btn: state.family ? 'KAPAT' : 'AÇ', buy: () => { state.family = !state.family; sendInfo(); floatText(state.family ? '👪 Aileniz bebek bekliyor' : '👪 Aile isteği kapatıldı'); } });
+    it.push({ name: '💔 Boşan', desc: 'Nikah bozulur · ortak ev erişimi ve ortak hesap kapanır (hesaptaki para ikiye bölünür)', price: 0, btn: 'BOŞAN', buy: () => divorce(true) });
+    return it;
+  }
+  it.push({ sec: 'Yakındaki oyunculara evlilik teklif et · 💍 yüzük $2.000' });
+  const near = MP.on ? [...MP.remotes.values()].filter(r => Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 25 && !r.info.spouse && !(r.info.baby != null && r.info.baby < 100)) : [];
+  if (!near.length) it.push({ name: MP.on ? 'Yakında bekâr oyuncu yok' : 'Online modda oyuncularla evlenebilirsin', desc: 'Eşin nikah dairesine gelsin (25 m içinde olmalı)', price: 0, dis: '—', buy: () => { } });
+  for (const r of near) it.push({ name: `💍 ${esc(r.info.name)}`, desc: 'Teklif gönder · kabul ederse nikah kıyılır', price: 2000, close: true, buy: () => { mpSend({ t: 'wed_prop', to: r.id }); WED.pending = r.id; floatText(`💍 ${r.info.name} cevabını bekliyorsun…`); } });
+  it.push({ sec: 'Ya da bir Vista Bay sakiniyle tanış' });
+  NPC_PARTNERS.forEach((P, i) => it.push({ name: `💍 ${P.name}`, desc: `"${P.line}"`, price: 2000, close: true, buy: () => marry({ name: P.name, npc: i, since: Date.now() }) }));
+  return it;
+}
+function marry(sp, quiet) {
+  state.spouse = { ...sp, since: sp.since || Date.now() }; state.joint = state.joint || { bal: 0, ts: 0 };
+  sendInfo(); saveGame();
+  WED.cele = 6; AudioSys.success(); for (let k = 0; k < 6; k++) AudioSys.tone([784, 988, 1175, 988, 1319, 1568][k], 0.35, 0.12, 'triangle', 1, k * 0.28);
+  showBig('💍 TEBRİKLER!', '#ff7ab0', 4.5, `${MP.on ? MP.name : 'Sen'} ❤ ${sp.name} · nikahınız kıyıldı · evler ve ortak hesap ortak`);
+  if (!quiet) { const txt = `Vista Bay Evlendirme Dairesi'nde mutlu gün: ${MP.on ? MP.name : 'Bir vatandaşımız'} ile ${sp.name} dünyaevine girdi!`; if (typeof breakingNews === 'function') breakingNews(txt, true); if (MP.on) mpSend({ t: 'wedding', x: r1(WED.x), z: r1(WED.z) }); }
+  WED.sync.own = ''; WED.sync.sp = '';
+}
+function divorce(send) {
+  if (!state.spouse) return;
+  const r = spouseRemote(), half = Math.floor((state.joint && state.joint.bal || 0) / 2);
+  if (send && r) mpSend({ t: 'divorce', to: r.id });
+  if (half) { earn(half, '💔 Ortak hesaptan pay'); }
+  state.spouse = null; state.joint = { bal: 0, ts: Date.now() }; state.family = false; state.spouseHomes = {}; sendInfo(); saveGame();
+  for (const H of LIFE.homes) drawHomeSign(H);
+  if (state.interior === 'home' && LIFE.curHome && !state.homes[LIFE.curHome.id]) exitInterior();
+  showBig('💔 BOŞANDINIZ', '#a0a0b0', 3, half ? `Ortak hesaptaki payın +$${half}` : '');
+}
+// ---------------- joint account
+function jointMove(amt) {
+  const J = state.joint || (state.joint = { bal: 0, ts: 0 });
+  if (amt > 0) { if (state.money < amt) { floatText('💸 Yeterli paran yok'); return; } state.money -= amt; ledger('🏦 Ortak hesaba', -amt); }
+  else { if (state.spouse.npc == null && !spouseRemote()) { floatText('🏦 Çekmek için eşin çevrimiçi olmalı'); return; } if (J.bal < -amt) { floatText('🏦 Ortak hesapta yeterli para yok'); return; } state.money -= amt; ledger('🏦 Ortak hesaptan', -amt); }
+  J.bal += amt; J.ts = Date.now(); AudioSys.cash(); saveGame();
+  const r = spouseRemote(); if (r) mpSend({ t: 'joint', to: r.id, bal: J.bal, ts: J.ts });
+}
+// ---------------- shared home sync (owner is authoritative, spouse edits are sent back)
+function familySync(dt) {
+  WED.syncT -= dt; if (WED.syncT > 0) return; WED.syncT = 2;
+  const r = spouseRemote(); if (!r) return;
+  const own = JSON.stringify(state.homes || {}), sp = JSON.stringify(state.spouseHomes || {});
+  if (own !== WED.sync.own) { WED.sync.own = own; mpSend({ t: 'home_sync', to: r.id, homes: state.homes || {} }); }
+  if (sp !== WED.sync.sp) { WED.sync.sp = sp; if (Object.keys(state.spouseHomes || {}).length) mpSend({ t: 'home_edit', to: r.id, homes: state.spouseHomes }); }
+}
+const homeSane = h => h && typeof h === 'object' && HOME_TIERS[h.tier] && Array.isArray(h.furn) && h.furn.length <= 60 && h.furn.every(F => FURN[F.k]) && typeof h.fridge === 'object';
+function refreshHomeView(id) {
+  for (const H of LIFE.homes) drawHomeSign(H);
+  if (state.interior === 'home' && LIFE.curHome && LIFE.curHome.id === id && INTERIORS.home) {
+    const I = INTERIORS.home, h = myHome(LIFE.curHome); if (!h) { exitInterior(); return; }
+    if (HOME_TIERS[h.tier] !== I.T) enterHome(LIFE.curHome, true); else if (!DEC.sel) { rebuildFurniture(I); refreshFridge(); }
+  }
+}
+// ---------------- babies
+function babyOffer() {
+  if (!MP.on || state.spouse || (state.baby && state.baby.grow < 100) || WED.offered) return;
+  const fams = [...MP.remotes.values()].filter(r => r.info.family && r.info.spouse);
+  if (!fams.length) return;
+  WED.offered = true;
+  const seen = new Set(), rows = fams.filter(r => { const k = [r.info.name, r.info.spouse].sort().join('&'); if (seen.has(k)) return false; seen.add(k); return true; });
+  mpModal(`<b>👶 Bu odada çocuk bekleyen aileler var</b><small>Bir ailenin bebeği olarak doğmak ister misin? Küçük doğarsın; anne-baban seni besleyip oynadıkça büyürsün. Paran ve eşyaların aynen kalır.</small>
+    <div class="mmBtns" style="flex-direction:column">${rows.map(r => `<button data-fam="baby" data-to="${esc(r.id)}">👪 ${esc(r.info.name)} & ${esc(r.info.spouse)}</button>`).join('')}<button data-fam="nobaby" class="grey">Hayır, normal devam et</button></div>`);
+}
+function startBaby(parents, at) {
+  state.baby = { parents, grow: 0, born: Date.now() }; sendInfo(); saveGame();
+  if (state.inCar) exitCar(true);
+  if (at) { player.pos.set(at[0], groundY(at[0], at[1]), at[1]); player.vy = 0; }
+  showBig('👶 HOŞ GELDİN BEBEK!', '#ffd0e8', 4, `${parents.join(' & ')} ailesine doğdun · anne-baban seni besleyip oynadıkça büyürsün`);
+  AudioSys.tone(880, 0.3, 0.12, 'sine', 1.2); AudioSys.tone(1320, 0.4, 0.1, 'sine', 1, 0.3);
+}
+function babyGrow(n, why) {
+  const B = state.baby; if (!B || B.grow >= 100) return;
+  const before = babyStage(B.grow); B.grow = Math.min(100, B.grow + n); const after = babyStage(B.grow);
+  if (why) floatText(`${why} · büyüme ${Math.floor(B.grow)}%`);
+  if (after !== before) { if (B.grow >= 100) { showBig('🎉 BÜYÜDÜN!', '#7dff9a', 4, 'Artık yetişkinsin · araç sürebilir, silah kullanabilirsin'); state.baby = null; } else showBig(after.toUpperCase(), '#ffd0e8', 2.5, after.includes('Çocuk') ? 'Artık koşabilir ve yüzebilirsin' : 'Neredeyse büyüdün · bisiklet yerine motora binebilirsin'); AudioSys.success(); }
+  sendInfo(); saveGame();
+}
+function updateBaby(dt) {
+  const B = state.baby;
+  if (player.human) player.human.g.scale.setScalar(B ? babyScale(B.grow) : 1);
+  for (const r of MP.remotes.values()) if (r.human) { const s = r.info.baby != null && r.info.baby < 100 ? babyScale(r.info.baby) : 1; if (r.human.g.scale.x !== s) r.human.g.scale.setScalar(s); }
+  if (!B) return;
+  // slow growth over time; faster near a parent
+  const parentNear = [...MP.remotes.values()].some(r => B.parents.includes(r.info.name) && Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 14);
+  WED.growT += dt * (parentNear ? 1 : 0.15); if (WED.growT > 30) { WED.growT = 0; babyGrow(1); }
+  const el = $('babyHud'), txt = `${babyStage(B.grow)} · ${Math.floor(B.grow)}% · ${B.parents.join(' & ')} ailesi${parentNear ? ' · 💕 ailenin yanında' : ''}`;
+  if (el.textContent !== txt) el.textContent = txt;
+}
+const babyBlocks = what => { const B = state.baby; if (!B) return false; if (what === 'drive' && B.grow < 70) { floatText('🧒 Araç kullanmak için büyümelisin · yolcu olarak binebilirsin'); return true; } if (what === 'gun' && B.grow < 30) { floatText('👶 Bebekler silah kullanamaz'); return true; } return false; };
+function updateParentCare() {
+  if (WED.careCd > 0 || state.inCar || state.dead || !MP.on || !state.spouse) return;
+  for (const r of MP.remotes.values()) {
+    if (r.info.baby == null || r.info.baby >= 100 || !(r.info.parents || []).includes(MP.name) || Math.hypot(r.x - player.pos.x, r.z - player.pos.z) > 2.2) continue;
+    const food = Object.keys(state.bag || {})[0];
+    state.interact = food ? { label: `🍼 ${r.info.name}'i BESLE (${GROCERY[food].i})`, fn: () => { state.bag[food]--; if (!state.bag[food]) delete state.bag[food]; mpSend({ t: 'baby_care', to: r.id, k: 'feed' }); WED.careCd = 8; floatText(`🍼 ${r.info.name} beslendi`); } }
+      : { label: `🧸 ${r.info.name} İLE OYNA`, fn: () => { mpSend({ t: 'baby_care', to: r.id, k: 'play' }); WED.careCd = 15; floatText(`🧸 ${r.info.name} ile oynadın`); } };
+    return;
+  }
+}
+function updateFamily(dt) {
+  if (WED.careCd > 0) WED.careCd -= dt;
+  updateWeddingSpot(dt); updateBaby(dt); updateParentCare();
+  if (MP.on) { familySync(dt); WED.offerT += dt; if (WED.offerT > 5 && !WED.offered) babyOffer(); }
+  document.body.classList.toggle('isBaby', !!state.baby);
+  // NPC spouse at home
+  if (state.interior === 'home' && state.spouse && state.spouse.npc != null && INTERIORS.home) {
+    const I = INTERIORS.home, P = NPC_PARTNERS[state.spouse.npc];
+    if (!I.npcSpouse && P) { const h = makeHuman(P.look); h.g.position.set(I.ox + 1.2, 0, I.oz - 2); I.npcSpouse = h; homeGroup.add(h.g); }
+    const h = I.npcSpouse; if (!h) return;
+    h.phase += dt; h.g.rotation.y = Math.atan2(player.pos.x - h.g.position.x, player.pos.z - h.g.position.z); h.armR.rotation.x = Math.sin(h.phase * 2) * 0.15;
+    if (!state.interact && Math.hypot(player.pos.x - h.g.position.x, player.pos.z - h.g.position.z) < 1.8) {
+      const day = Math.floor((Date.now() / 1000) / (HOUR_SEC * 24));
+      state.interact = WED.cookDay !== day ? { label: `🍲 ${P.name} yemek hazırlamış · YE`, fn: () => { WED.cookDay = day; state.food = Math.min(100, state.food + 45); state.water = Math.min(100, state.water + 30); state.health = Math.min(100, state.health + 25); floatText(`🍲 ${P.name}: "Afiyet olsun!" · 🍔 +45 · 💧 +30`); AudioSys.success(); } }
+        : { label: `💬 ${P.name} ile konuş`, fn: () => floatText(`💬 ${P.name}: "${pick([P.line, 'Seni seviyorum ❤', 'Bugün nasıl geçti?', 'Buzdolabı boşalıyor, markete uğrar mısın?', 'Yeni bir koltuk alsak mı?'])}"`) };
+    }
+  }
+}
+function handleFamily(d) {
+  const r = MP.remotes.get(d.id);
+  switch (d.t) {
+    case 'wed_prop':
+      if (!r || state.spouse || (state.baby && state.baby.grow < 100)) { mpSend({ t: 'wed_no', to: d.id }); return true; }
+      WED.incoming = d.id;
+      mpModal(`<b>💍 ${esc(r.info.name)} sana evlenme teklif ediyor!</b><small>Kabul edersen Vista Bay Evlendirme Dairesi'nde nikahınız kıyılır. Evleriniz ve buzdolaplarınız ortak olur, ortak banka hesabı açılır.</small><div class="mmBtns"><button data-fam="wyes">💍 EVET</button><button data-fam="wno" class="grey">Hayır</button></div>`);
+      AudioSys.tone(988, 0.3, 0.12, 'triangle'); return true;
+    case 'wed_ok': if (r && WED.pending === d.id && !state.spouse) { WED.pending = null; marry({ name: r.info.name, since: Date.now() }); } return true;
+    case 'wed_no': if (WED.pending === d.id) { WED.pending = null; state.money += 2000; ledger('💍 Yüzük iadesi', 2000); showBig('💔 TEKLİF REDDEDİLDİ', '#a0a0b0', 2.5, (r ? r.info.name : '') + ' hayır dedi · yüzük paran iade edildi'); } return true;
+    case 'wedding': WED.cele = 6; if (Math.hypot(d.x - player.pos.x, d.z - player.pos.z) < 120) AudioSys.tone(1175, 0.4, 0.08, 'triangle'); return true;
+    case 'divorce': if (r && state.spouse && state.spouse.name === r.info.name) divorce(false); return true;
+    case 'joint': if (r && state.spouse && state.spouse.name === r.info.name && +d.ts > (state.joint && state.joint.ts || 0)) { state.joint = { bal: Math.max(0, +d.bal || 0), ts: +d.ts }; saveGame(); } return true;
+    case 'home_sync': {
+      if (!r || !state.spouse || state.spouse.name !== r.info.name || typeof d.homes !== 'object') return true;
+      const clean = {}; for (const id in d.homes) if (homeSane(d.homes[id])) clean[id] = d.homes[id];
+      state.spouseHomes = clean; WED.sync.sp = JSON.stringify(clean); saveGame();
+      for (const id in clean) refreshHomeView(id); return true;
+    }
+    case 'home_edit': {
+      if (!r || !state.spouse || state.spouse.name !== r.info.name || typeof d.homes !== 'object') return true;
+      for (const id in d.homes) if (state.homes[id] && homeSane(d.homes[id])) { state.homes[id] = d.homes[id]; refreshHomeView(id); }
+      saveGame(); return true;
+    }
+    case 'baby_req':
+      if (!r || !state.spouse || !state.family) { mpSend({ t: 'baby_no', to: d.id }); return true; }
+      WED.babyReq = d.id;
+      mpModal(`<b>👶 ${esc(r.info.name)} ailenizin bebeği olarak doğmak istiyor!</b><small>Kabul edersen yanında küçük bir bebek olarak doğar. Onu besleyip (poşetten yiyecek) onunla oynadıkça büyür.</small><div class="mmBtns"><button data-fam="byes">👶 KABUL</button><button data-fam="bno" class="grey">Şimdi değil</button></div>`);
+      return true;
+    case 'baby_ok': if (r && WED.babyAsk === d.id) { WED.babyAsk = null; startBaby((d.parents || []).slice(0, 2).map(s => String(s).slice(0, 14)), [r.x + 1.5, r.z + 1]); } return true;
+    case 'baby_no': if (WED.babyAsk === d.id) { WED.babyAsk = null; floatText('👶 Aile şu an kabul edemedi'); } return true;
+    case 'baby_care': if (state.baby && r && state.baby.parents.includes(r.info.name)) { if (d.k === 'feed') { babyGrow(8, `🍼 ${r.info.name} seni besledi`); state.food = Math.min(100, state.food + 30); } else babyGrow(4, `🧸 ${r.info.name} seninle oynadı`); } return true;
+  }
+  return false;
+}
+function initFamilyUI() {
+  $('mpModal').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !b.dataset.fam || b.disabled) return;
+    const k = b.dataset.fam; closeModal();
+    if (k === 'wyes' && WED.incoming) { const r = MP.remotes.get(WED.incoming); if (r) { mpSend({ t: 'wed_ok', to: r.id }); marry({ name: r.info.name, since: Date.now() }, true); } WED.incoming = null; }
+    if (k === 'wno' && WED.incoming) { mpSend({ t: 'wed_no', to: WED.incoming }); WED.incoming = null; }
+    if (k === 'baby') { WED.babyAsk = b.dataset.to; mpSend({ t: 'baby_req', to: b.dataset.to }); floatText('👶 Aileye haber verildi · cevap bekleniyor'); }
+    if (k === 'byes' && WED.babyReq) { const r = MP.remotes.get(WED.babyReq); mpSend({ t: 'baby_ok', to: WED.babyReq, parents: [MP.name, state.spouse.name] }); showBig('👶 BEBEĞİNİZ DOĞDU!', '#ffd0e8', 4, `${r ? r.info.name : ''} ailenize katıldı · besleyin, oynayın, büyüsün`); if (typeof breakingNews === 'function') breakingNews(`${MP.name} ve ${state.spouse.name} ailesine yeni bir bebek katıldı. Vista Bay nüfusu artıyor!`, true); WED.babyReq = null; }
+    if (k === 'bno' && WED.babyReq) { mpSend({ t: 'baby_no', to: WED.babyReq }); WED.babyReq = null; }
+  });
+}
+function familyPhoneHtml(head) {
+  const sp = state.spouse, J = state.joint || { bal: 0 };
+  let h = head('👪 Aile', '#c8508a') + '<div class="phBody">';
+  if (state.baby) h += `<div class="phBal"><small>${state.baby.parents.join(' & ')} ailesinin çocuğusun</small><b>${babyStage(state.baby.grow)} · ${Math.floor(state.baby.grow)}%</b></div><p class="phNote">Ailenin yanında daha hızlı büyürsün; seni besleyip oynadıkça büyüme hızlanır. ${state.baby.grow < 70 ? 'Büyüyene kadar araç süremezsin (yolcu olabilirsin).' : ''}</p>`;
+  if (!sp) {
+    h += `<div class="phEmpty">Bekârsın.<br>💍 Evlendirme Dairesi'ne (Merkez park) git: bir oyuncuya ya da Vista Bay sakinine teklif et.</div><button class="phBig" data-wgps="1">📍 Nikah dairesini işaretle</button>`;
+    if (MP.on && !state.baby) { const fams = [...MP.remotes.values()].filter(r => r.info.family && r.info.spouse); if (fams.length) h += `<div class="phSec">Çocuk bekleyen aileler</div>` + fams.map(r => `<div class="phRow"><div><b>👪 ${esc(r.info.name)} & ${esc(r.info.spouse)}</b><small>Bebekleri olarak doğ</small></div><button class="phBtn" data-babyto="${esc(r.id)}">👶</button></div>`).join(''); }
+  } else {
+    const on = sp.npc != null ? true : !!spouseRemote();
+    h += `<div class="phBal"><small>💍 Eşin · ${new Date(sp.since).toLocaleDateString('tr-TR')} tarihinden beri</small><b>${esc(sp.name)} ${on ? '🟢' : '⚪'}</b></div>
+      <div class="phSec">🏦 Ortak hesap</div><div class="phBal"><small>${sp.npc != null ? 'Eşinle ortak birikim' : 'İkiniz de yatırıp çekebilirsiniz' + (on ? '' : ' · çekmek için eşin çevrimiçi olmalı')}</small><b>$${Math.round(J.bal).toLocaleString('tr-TR')}</b></div>
+      <div class="phRow phQ">${[1000, 5000].map(a => `<button class="phBtn" data-joint="${a}">+$${a / 1000}K</button>`).join('')}${[1000, 5000].map(a => `<button class="phBtn off" data-joint="${-a}">-$${a / 1000}K</button>`).join('')}</div>
+      <div class="phSec">🏠 Ortak evler</div>${LIFE.homes.filter(H => myHome(H)).map(H => `<div class="phRow"><div><b>${esc(H.name)}</b><small>${state.homes[H.id] ? 'Senin' : 'Eşinin'} · ${HOME_TIERS[myHome(H).tier].name} · 🧊 ${cnt(myHome(H).fridge)} ürün</small></div><button class="phBtn" data-hgps="${H.id}">📍</button></div>`).join('') || '<div class="phEmpty">Henüz eviniz yok · 🏠 Emlak</div>'}
+      <div class="phSec">👶 Aile</div><div class="phRow"><div><b>${state.family ? 'Bebek bekliyorsunuz' : 'Çocuk isteği kapalı'}</b><small>Açıkken odaya katılan oyuncular ailenizin bebeği olarak doğabilir</small></div><button class="phBtn ${state.family ? '' : 'off'}" data-famtog="1">${state.family ? 'AÇIK' : 'KAPALI'}</button></div>`;
+    const kids = [...MP.remotes.values()].filter(r => r.info.baby != null && r.info.baby < 100 && (r.info.parents || []).includes(MP.name));
+    if (kids.length) h += kids.map(r => `<div class="phRow"><div><b>${babyStage(r.info.baby)} ${esc(r.info.name)}</b><small>Büyüme ${Math.floor(r.info.baby)}% · yanına gidip 🍼 besle / 🧸 oyna</small></div></div>`).join('');
+  }
+  return h + '</div>';
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -6353,7 +6595,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover, spouse: spouseName() || null, family: !!(state.family && state.spouse), baby: state.baby ? Math.floor(state.baby.grow) : null, parents: state.baby ? state.baby.parents : null }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -6524,6 +6766,7 @@ function applyPacket(d) {
   if (handleTrade(d)) return;
   if (handleAnom(d)) return;
   if (handleVG(d)) return;
+  if (handleFamily(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -6578,7 +6821,7 @@ function vehVisual(kind, color) {
   c.remote = true; return c;
 }
 function drawTag(r) {
-  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + (r.info.cop ? '👮 ' : '') + ((RANKS[r.info.rank] || RANKS[0]).icon + ' ') + crewTag(r.info.crew) + r.info.name;
+  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + (r.info.baby != null && r.info.baby < 100 ? '👶 ' : '') + (r.info.spouse ? '💍 ' : '') + (r.info.cop ? '👮 ' : '') + ((RANKS[r.info.rank] || RANKS[0]).icon + ' ') + crewTag(r.info.crew) + r.info.name;
   const key = `${nm}|${r.hp}|${r.wn}|${r.bounty || 0}|${r.bubbleT > 0 ? r.bubble : ''}|${bagC}|${sameCrew(r)}`;
   if (key === r.tagKey) return; r.tagKey = key;
   const cv = r.tag.material.map.image; cv.width = 256; cv.height = 128; const g = cv.getContext('2d');
@@ -7046,6 +7289,7 @@ function applyHit(res, w, pellet) {
 function fire() {
   if (state.fireCd > 0 || state.dead || state.cabin || state.swim) return;
   if (!state.ownedW[state.weapon] || state.ammo[state.weapon] <= 0) { nextWeapon(); return; }
+  if (babyBlocks('gun')) { state.fireCd = 1.5; return; }
   haptic(20);
   const w = WEAPONS[state.weapon];
   state.fireCd = w.cd;
@@ -8937,6 +9181,7 @@ function loop(now) {
   updateHoverBoards();
   updateGunFear(dt);
   updateNeeds(dt);
+  updateFamily(dt);
   document.body.classList.toggle('inHome', state.interior === 'home');
   if (state.ownedW[5] && state.ammo[5] < 60) { state.laserT = (state.laserT || 0) + dt; if (state.laserT > 0.5) { state.laserT = 0; state.ammo[5]++; } }
   document.body.classList.toggle('hasHover', !!state.hoverOwned && !state.inCar);

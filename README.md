@@ -82,6 +82,12 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🛍 Poşet & 🧊 Buzdolabı**: aldıkların poşete girer (40 ürün). Evdeki buzdolabının önünde E → "Poşeti buzdolabına diz" (60 ürün); ürünler cam kapağın arkasında rafta görünür. Buzdolabından ye/iç ya da yanına atıştırmalık al
 - **🍔 Açlık & 💧 Susuzluk**: can barının altında turuncu ve mavi bar. Tokluk ~35 dk'da, su ~25 dk'da biter (koşarken daha hızlı). 20'nin altında uyarı, sıfırda can yavaş yavaş azalır; aç/susuzken can kendiliğinden dolmaz. B (mobilde 🍔) ile poşetten her yerde ye/iç
 
+- **💍 Evlilik** (Merkez parktaki beyaz çiçekli kemer: Vista Bay Evlendirme Dairesi): 25 m yakınındaki bekâr bir oyuncuya teklif et (💍 yüzük $2.000; reddedilirse iade) ya da orada bekleyen 4 Vista Bay sakininden biriyle (Elif, Can, Zeynep, Mert) evlen. Kabul edilince nikah kıyılır: konfeti, çan sesi, herkese SON DAKİKA haberi; isim etiketinde 💍, haritada eşin pembe görünür
+- **🏠 Ortak ev & 🧊 ortak buzdolabı**: evli çiftlerin evleri ortak olur. Eşin senin evine girebilir (tabelada "💍 EŞİNİN EVİ"); ikiniz aynı evde birbirinizi görürsünüz, birinin yerleştirdiği mobilya ve buzdolabına koyduğu yiyecek diğerine anında yansır (ev sahibinin kaydı esastır, eş çevrimdışıyken yapılan değişiklikler bağlanınca eşitlenir)
+- **🏦 Ortak banka hesabı** (telefon → 👪 Aile): ikiniz de para yatırıp çekebilirsiniz (çekmek için eş çevrimiçi olmalı); boşanınca hesaptaki para paylaşılır
+- **NPC eş**: evinde seni bekler, konuşur; her oyun gününde bir kez yemek hazırlar (🍔 +45, 💧 +30, can +25)
+- **👶 Aile kur & bebek olarak doğ**: evli çift nikah dairesinde ya da telefonda "Aile kur"u açar. Odaya katılan bir oyuncuya (ya da telefonda 👪 Aile → "Bebekleri olarak doğ") ailenin bebeği olarak doğma teklifi gelir; ebeveyn kabul edince ailenin yanında küçük bir bebek olarak doğar (parası ve eşyaları korunur). Bebek → Çocuk → Genç → Yetişkin: ebeveynler yanına gidip 🍼 BESLE (poşetten yiyecek, büyüme +8) ve 🧸 OYNA (+4) yaptıkça, ailesinin yanında vakit geçirdikçe büyür ve boyu uzar. Bebekken silah kullanamaz, büyüyene kadar araç süremez (yolcu olabilir); diğer oyuncular onu küçük ve 👶 etiketli görür
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
