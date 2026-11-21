@@ -352,6 +352,8 @@ function init() {
   buildDockAndPads();
   buildRoofAccess();
   buildDocOffices();
+  buildHeistSites();
+  buildCrewZones();
   buildSpecialVehicles();
   buildPlanes();
   buildGang();
@@ -799,6 +801,7 @@ function collide(x, z, r, y = 0, bounds = true) {
   // world bounds
   const isl = bounds && x > WATERLINE + 150 ? islandAt(x, z, 40) : null;
   if (isl) { const dx = x - isl.x, dz = z - isl.z, d = Math.hypot(dx, dz), m = isl.R - 2 - r; if (d > m) { x = isl.x + dx / d * m; z = isl.z + dz / d * m; hitRes.hit = true; hitRes.nx -= dx / d; hitRes.nz -= dz / d; } }
+  else if (bounds && onYacht(x, z, 2)) { x = clamp(x, YACHT.x - YACHT.hx + r, YACHT.x + YACHT.hx - r); z = clamp(z, YACHT.z - YACHT.hz + r, YACHT.z + YACHT.hz - 1 - r); }
   else if (bounds) {
     if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
     if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; }
@@ -1360,6 +1363,7 @@ function exitCar(forced) {
   if (c.spec.boat) {
     const bx = c.group.position.x, bz = c.group.position.z;
     if (bx < DOCK.x1 + 8 && Math.abs(bz - DOCK.z) < 12) player.pos.set(clamp(bx, DOCK.x0 + 1, DOCK.x1 - 1), DOCK.y, DOCK.z);
+    else if (onYacht(bx, bz, 14)) { const px = YACHT.x + Math.sign(bx - YACHT.x || 1) * (YACHT.hx - 0.8), pz = clamp(bz, YACHT.z - YACHT.hz + 2, YACHT.z + YACHT.hz - 4); player.pos.set(px, YACHT.deck - 0.25, pz); floatText('🛥 Yata çıktın'); }
     else { const I = islandAt(bx, bz, 60); if (I) { const dx = bx - I.x, dz = bz - I.z, dd = Math.hypot(dx, dz) || 1, px = I.x + dx / dd * (I.R - 5), pz = I.z + dz / dd * (I.R - 5); player.pos.set(px, groundY(px, pz), pz); floatText('🏊 Adaya yüzdün'); } else { player.pos.set(WATERLINE - 3, 0.05, clamp(bz, BOUNDS.z0, BOUNDS.z1)); floatText('🏊 Kıyıya yüzdün'); } }
   }
   if (c.spec.heli) c.vy = 0;
@@ -2508,6 +2512,7 @@ function drawMinimap() {
   if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
   drawStreetEventsMap(dot);
   drawModesMap(g, toMap, r, MAP.k * zoom);
+  drawCrewZonesMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   for (const rp of MP.remotes.values()) { dot(rp.x, rp.z, rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, rp.bounty || sameCrew(rp) ? 11 : 8, true); if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
@@ -2979,6 +2984,7 @@ const PROPERTIES = [
   { id: 'beach', name: 'Sahil Kulübü', icon: '🏖', block: [7, 4], price: 25000, income: 650, desc: 'Okyanus manzaralı plaj kulübü' },
   { id: 'villa', name: 'Lüks Villa', icon: '🏡', block: [0, 3], price: 40000, income: 450, desc: 'Havuzlu villa · en güvenli ev' },
   { id: 'club', name: 'Gece Kulübü', icon: '🎵', block: [4, 2], price: 50000, income: 1200, desc: 'Şehrin en popüler gece kulübü' },
+  { id: 'safehouse', name: 'Güvenli Ev', icon: '🏚', block: [2, 5], price: 12000, income: 150, desc: 'Çetenin gizli üssü · soygun planlama masası' },
 ];
 const HOUR_SEC = 1 / TIME_SPEED; // real seconds per in-game hour
 function propIncome() { return PROPERTIES.reduce((a, p) => a + (state.props[p.id] ? p.income : 0), 0) + turfIncome(); }
@@ -3009,6 +3015,7 @@ function propItems() {
   if (own) it.push({ sec: 'Güvenli Ev' },
     { name: '💾 KAYDET & DİNLEN', desc: 'Oyunu kaydeder, canını %100 yapar', price: 0, btn: 'KAYDET', buy: () => { state.health = 100; floatText('💾 Oyun kaydedildi'); } },
     { name: '🛏 DOĞUŞ NOKTASI YAP', desc: 'Oyun açılınca ve bayılınca burada başlarsın', price: 0, btn: 'SEÇ', dis: state.spawnProp === p.id ? 'AKTİF' : null, buy: () => { state.spawnProp = p.id; floatText('Doğuş noktası: ' + p.name); } });
+  if (own) it.push(...heistPlanItems(p));
   it.push({ sec: 'Toplam' }, { name: `🏦 Mülklerin: ${ownedProps()}/${PROPERTIES.length}`, desc: `Saatlik toplam gelir +$${propIncome()}`, price: 0, dis: '—' });
   return it;
 }
@@ -3459,6 +3466,7 @@ function boatPhysics(c, dt, thr, steer) {
   if (x < xmin) { x = xmin; c.vx = Math.abs(c.vx) * 0.2; if (Math.abs(vF) > 8 && c.mode === 'player') { AudioSys.crash(0.5); damageCar(c, Math.abs(vF)); } }
   x = Math.min(x, SHORE_X + 1500); z = clamp(z, -2800, 2800);
   for (const I of ISLES) { const dx = x - I.x, dz = z - I.z, dd = Math.hypot(dx, dz); if (dd < I.R + 3) { x = I.x + dx / dd * (I.R + 3); z = I.z + dz / dd * (I.R + 3); c.vx *= 0.5; c.vz *= 0.5; } }
+  if (onYacht(x, z, 2.5)) { x = YACHT.x + Math.sign(x - YACHT.x || 1) * (YACHT.hx + 2.5); c.vx *= 0.3; c.vz *= 0.6; }
   if (x < DOCK.x1 + 1.5 && Math.abs(z - DOCK.z) < DOCK.w / 2 + 1.4) { const sd = z >= DOCK.z ? 1 : -1; if (x > DOCK.x1 - 0.5) x = DOCK.x1 + 1.5; else z = DOCK.z + sd * (DOCK.w / 2 + 1.4); c.vz *= -0.3; }
   c.group.position.x = x; c.group.position.z = z;
   const w = waveH(x, z), wf = waveH(x + s2 * 2.5, z + c2 * 2.5), wb = waveH(x - s2 * 2.5, z - c2 * 2.5);
@@ -5175,6 +5183,7 @@ function mpLost(reason) {
   mpLeave(true);
 }
 function mpLeave(silent) {
+  if (BH.cur) endBigHeistLocal();
   endModesLocal();
   if (!MP.host) { clearEventCars(SEV.mirror); if (SEV.info) onStreetMsg({ k: 'end' }); applyPoliceUnits([]); POL.beam.visible = false; }
   if (NW.client) { for (const c of WORLD_CARS) if (c.mode === 'net') { c.mode = 'free'; c.driver = false; c.active = true; c.group.visible = true; c.vx = c.vz = 0; } for (const p of WORLD_PEDS) { p.net = null; } NW.client = false; }
@@ -5205,6 +5214,7 @@ function handleNet3(d) {
 }
 function applyPacket(d) {
   if (handleAccount(d)) return;
+  if (handleBigHeist(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
   if (handleStreet(d)) return;
@@ -5876,7 +5886,7 @@ function releaseWorldCar(c, d) {
   c.claimedBy = null; c.active = true; c.group.visible = true; c.mode = d && d.dead ? 'dead' : 'free'; c.driver = false; c.vx = c.vz = 0;
   if (d) { c.h = d.h; c.y = groundY(d.x, d.z); c.group.position.set(d.x, c.y, d.z); c.group.rotation.set(0, c.h, 0); if (d.dead && !c.dead) explodeCar(c); }
 }
-function releaseClaimsOf(id) { svRelease(id); modesPlayerLeft(id); for (const c of WORLD_CARS) if (c.claimedBy === id) { const r = MP.remotes.get(id); releaseWorldCar(c, r ? { x: r.x, z: r.z, h: r.r, dead: 0 } : null); } }
+function releaseClaimsOf(id) { svRelease(id); modesPlayerLeft(id); bhPlayerLeft(id); for (const c of WORLD_CARS) if (c.claimedBy === id) { const r = MP.remotes.get(id); releaseWorldCar(c, r ? { x: r.x, z: r.z, h: r.r, dead: 0 } : null); } }
 
 
 // ============================================================ SHARED WORLD 2: special vehicles, pickups, armored truck, looted spots
@@ -5947,7 +5957,7 @@ function hostStreamTruck(dt) {
 function sharedManifest() {
   return {
     sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
-    ...modesManifest(), sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+    ...modesManifest(), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
   };
 }
 function applySharedManifest(d) {
@@ -5956,6 +5966,8 @@ function applySharedManifest(d) {
   if (d.gcd) for (const [k, t] of d.gcd) GEN_CD.set(k, state.now + t);
   if (d.sev) onStreetMsg({ ...d.sev });
   applyModesManifest(d);
+  if (d.bh) onBigHeist({ ...d.bh, start: 1 });
+  if (d.cz) for (const id in d.cz) if (CZ.st[id]) Object.assign(CZ.st[id], d.cz[id]);
 }
 function handleShared(d) {
   switch (d.t) {
@@ -6222,7 +6234,7 @@ function initModesUI() {
     if (a === 'close') closeModal();
     if (a === 'crewMake') {
       const name = ($('crewName').value || '').trim().slice(0, 14) || 'Çete', col = (m.querySelector('[data-col].on') || {}).dataset?.col || MP.color;
-      MP.crew = { id: myNetId() + Date.now().toString(36), name, tag: name.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü0-9]/g, '').slice(0, 4).toUpperCase() || 'ÇETE', color: col };
+      MP.crew = { id: myNetId() + Date.now().toString(36), name, tag: name.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü0-9]/g, '').slice(0, 4).toUpperCase() || 'ÇETE', color: col, owner: MP.name };
       saveCrew(); sendInfo(); closeModal(); showBig('👥 ÇETE KURULDU', col, 2.5, `${crewTag(MP.crew)}${name} · dost ateşi kapalı · kazancın %25'i yakındaki arkadaşlara`);
       if ($('mpList').style.display === 'block') renderMpList();
     }
@@ -6255,7 +6267,7 @@ function renderMpActions() {
 }
 // ---------------- crew earnings share (bonus, not deducted)
 function crewShare(amt, label) {
-  if (!MP.on || !MP.crew || amt < 200 || /Çete payı|💸/.test(label)) return;
+  if (!MP.on || !MP.crew || amt < 200 || /Çete payı|💸|Soygun payı|Bölge vergisi/.test(label)) return;
   mpSend({ t: 'crew_share', c: MP.crew.id, amt: Math.round(amt * 0.25 / 10) * 10, x: r1(player.pos.x), z: r1(player.pos.z) });
 }
 // ---------------- modes
@@ -6640,6 +6652,296 @@ function initAccountUI() {
   addEventListener('keydown', e => { if (e.code === 'F10') { e.preventDefault(); toggleAdmin(); } });
   addEventListener('pagehide', () => flushSave(true));
   initAccount();
+}
+
+
+// ============================================================ BIG CO-OP HEISTS (Central Bank, luxury yacht) — host-run, crew roles
+const BIG_HEISTS = {
+  bank: { name: 'Merkez Bankası', icon: '🏦', pay: 60000, wanted: [3, 4], time: 420, hack: 8, vault: 15 },
+  yacht: { name: 'Lüks Yat', icon: '🛥', pay: 90000, wanted: [2, 4], time: 480, hack: 10, vault: 18 },
+};
+const ROLE_NAMES = { hacker: '💻 Hacker', vault: '🧰 Kasa ustası', driver: '🚐 Şoför' };
+const STAGE_ROLE = { hack: 'hacker', vault: 'vault', escape: 'driver' };
+const STAGE_TEXT = { hack: 'Güvenlik sistemini hackle', vault: 'Kasayı boşalt', escape: 'Kaçış aracıyla teslim noktasına git' };
+const BH = { cur: null, sites: {}, cool: {}, guards: [], hold: null, beam: null, van: null, yacht: null };
+const YACHT = { x: WATERLINE + 230, z: 150, hx: 4.6, hz: 17, deck: 3 };
+const onYacht = (x, z, m = 0) => Math.abs(x - YACHT.x) < YACHT.hx + m && Math.abs(z - YACHT.z) < YACHT.hz + m;
+function buildHeistSites() {
+  // Merkez Bankası: the tallest office building (not the civil registry)
+  let d = null; for (const o of DOORS) if (o.type === 'office' && o.name !== 'Nüfus Müdürlüğü' && o.blk && o.blk.bld !== EXTRA_BLD && (!d || o.h > d.h)) d = o;
+  d.name = 'Merkez Bankası';
+  const side = (k) => [d.x + d.nz * k, d.z - d.nx * k];
+  const [hx, hz] = side(2.6), [vx, vz] = side(-2.6), [ni, nj] = nearestNode(d.x + d.nx * 16, d.z + d.nz * 16);
+  const [fx, fz] = farNode(500, 760, d.x, d.z);
+  BH.sites.bank = { x: d.x, z: d.z, y: 0.25, hack: [hx, hz], vault: [vx, vz], car: [nodeP(clamp(ni, 0, N)) + 4, nodeP(clamp(nj, 0, N)) + 4], drop: [fx, fz], dropR: 10, guards: [-7, -3.5, 3.5, 7].map((k, i) => [d.x + d.nx * (4 + (i % 2) * 3) + d.nz * k, d.z + d.nz * (4 + (i % 2) * 3) - d.nx * k]) };
+  // Lüks Yat: anchored off the beach
+  const Y = YACHT, g = new THREE.Group(), L = new Map(), add = (m, geo) => { if (!L.has(m)) L.set(m, []); L.get(m).push(geo); };
+  const white = new THREE.MeshStandardMaterial({ color: 0xf6f6f2, roughness: 0.35, metalness: 0.1 }), dark = new THREE.MeshStandardMaterial({ color: 0x1a2a3a, roughness: 0.15, metalness: 0.6 }), teak = new THREE.MeshStandardMaterial({ color: 0xa8784a, roughness: 0.8 }), navy = new THREE.MeshStandardMaterial({ color: 0x1d3a6a, roughness: 0.5 });
+  add(white, new THREE.BoxGeometry(Y.hx * 2, 4.2, Y.hz * 2 - 6).translate(0, 0.9, -3));
+  add(white, new THREE.CylinderGeometry(0.01, Y.hx, 9, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 1).rotateX(Math.PI / 2).scale(1, 0.47, 1).translate(0, 1.0, Y.hz - 4.5));
+  add(navy, new THREE.BoxGeometry(Y.hx * 2 + 0.1, 0.8, Y.hz * 2 - 6).translate(0, -0.6, -3));
+  add(teak, new THREE.BoxGeometry(Y.hx * 2 - 0.4, 0.1, Y.hz * 2 - 4).translate(0, Y.deck + 0.05, -2));
+  add(white, new THREE.BoxGeometry(6.4, 3, 14).translate(0, Y.deck + 1.5, -2)); add(dark, new THREE.BoxGeometry(6.5, 1, 13).translate(0, Y.deck + 1.9, -2));
+  add(white, new THREE.BoxGeometry(5, 2.4, 7).translate(0, Y.deck + 4.2, -1)); add(dark, new THREE.BoxGeometry(5.1, 0.8, 6.6).translate(0, Y.deck + 4.6, -1));
+  add(white, new THREE.CylinderGeometry(0.12, 0.12, 4, 8).translate(0, Y.deck + 7.4, -1));
+  for (const sd of [1, -1]) add(white, new THREE.BoxGeometry(0.06, 0.9, Y.hz * 2 - 5).translate(sd * (Y.hx - 0.2), Y.deck + 0.45, -2.5));
+  for (const [m, list] of L) { const mesh = new THREE.Mesh(merge(list), m); mesh.castShadow = mesh.receiveShadow = true; g.add(mesh); }
+  g.position.set(Y.x, -0.25, Y.z); scene.add(g); BH.yacht = g;
+  const top = YACHT.deck - 0.25;
+  EXTRA_BLD.push({ x0: Y.x - Y.hx, x1: Y.x + Y.hx, z0: Y.z - Y.hz, z1: Y.z + Y.hz - 1, h: top, yacht: true }, { x0: Y.x - 3.2, x1: Y.x + 3.2, z0: Y.z - 9, z1: Y.z + 5, h: top + 5.4, yacht: true });
+  BH.sites.yacht = { x: Y.x, z: Y.z, y: top, hack: [Y.x, Y.z + 9], vault: [Y.x, Y.z - 11], car: [Y.x + Y.hx + 3.2, Y.z - 6], boat: true, drop: [ISLES[1].x - 20, ISLES[1].z + ISLES[1].R + 16], dropR: 18,
+    guards: [[Y.x - 3, Y.z + 12], [Y.x + 3, Y.z + 7], [Y.x - 3.4, Y.z - 12.5], [Y.x + 3.4, Y.z - 10]] };
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 140, 20, 1, true).translate(0, 70, 0), new THREE.MeshBasicMaterial({ color: 0xff3040, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+  beam.visible = false; scene.add(beam); BH.beam = beam;
+}
+const myCrewId = () => MP.crew ? MP.crew.id : null;
+const isCrewLeader = () => !MP.on || !MP.crew || !MP.crew.owner || MP.crew.owner === MP.name;
+function heistPlanItems(p) {
+  if (p.id !== 'safehouse' && p.id !== 'villa') return [];
+  const it = [{ sec: '🗺 Soygun planlama masası' }];
+  for (const k in BIG_HEISTS) {
+    const H = BIG_HEISTS[k], cd = Math.max(0, Math.ceil(((BH.cool[k] || 0) - state.now)));
+    const why = BH.cur ? 'SOYGUN SÜRÜYOR' : MP.on && !MP.crew ? 'ÖNCE ÇETE KUR' : !isCrewLeader() ? 'LİDER BAŞLATIR' : cd ? cd + ' sn' : null;
+    it.push({ name: `${H.icon} ${H.name}`, desc: `Roller: Hacker · Kasa ustası · Şoför · ödül $${H.pay.toLocaleString('tr-TR')} (paylaşılır) · ${Math.round(H.time / 60)} dk · ${H.wanted[1]}★ polis`, price: 0, btn: 'BAŞLAT', dis: why, close: true, buy: () => requestHeist(k) });
+  }
+  return it;
+}
+function requestHeist(k) { if (MP.on && !MP.host) mpSend({ t: 'bh_req', to: 'h', k, crew: MP.crew }); else hostStartHeist(k, MP.on ? 'h' : null, MP.crew); }
+function hostStartHeist(k, by, crew) {
+  if (BH.cur || (BH.cool[k] || 0) > state.now) return;
+  let parts = [];
+  if (!MP.on) parts = ['h'];
+  else {
+    if (myCrewId() && crew && myCrewId() === crew.id) parts.push('h');
+    for (const r of MP.remotes.values()) if (r.info.crew && crew && r.info.crew.id === crew.id) parts.push(r.id);
+    if (!parts.includes(by)) parts.push(by);
+  }
+  const roles = {}; ['hacker', 'vault', 'driver'].forEach((r, i) => roles[r] = parts[i % parts.length]);
+  BH.cool[k] = state.now + 480;
+  bhEmit({ t: 'bh', k, st: 'hack', roles, parts, left: BIG_HEISTS[k].time, crew: crew ? { name: crew.name, tag: crew.tag, color: crew.color } : null, start: 1 });
+}
+function bhEmit(msg) { onBigHeist(msg); if (MP.on) mpSend(msg); }
+const inHeist = () => BH.cur && BH.cur.parts.includes(myNetId() || 'h');
+function onBigHeist(d) {
+  const H = BIG_HEISTS[d.k];
+  if (d.end) {
+    const C = BH.cur, mine = C && C.parts.includes(myNetId() || 'h');
+    if (d.end === 'ok' && mine) { earn(d.share, '🏦 Soygun payı'); S().heists = (S().heists || 0) + 1; showBig('💰 SOYGUN BAŞARILI!', '#ffd23a', 4, `Payın +$${d.share.toLocaleString('tr-TR')} · ${C.parts.length} kişi`); AudioSys.success(); AudioSys.cash(); }
+    else if (d.end === 'ok') floatText(`🚨 ${H.name} soygunu başarıyla kaçtı`);
+    else if (mine) { showBig('SOYGUN BAŞARISIZ', '#ff5050', 3, d.why || ''); AudioSys.fail(); }
+    endBigHeistLocal(); return;
+  }
+  const first = !BH.cur || d.start;
+  BH.cur = { ...(first && d.start ? {} : BH.cur), ...d, tLocal: state.now };
+  const C = BH.cur, me = myNetId() || 'h', mine = C.parts.includes(me);
+  if (first) {
+    spawnHeistGuards(d.k);
+    const who = C.crew ? `${crewTag(C.crew)}${C.crew.name}` : 'Bir çete';
+    if (mine) { const myRoles = Object.entries(C.roles).filter(([, v]) => v === me).map(([r]) => ROLE_NAMES[r]).join(' + '); showBig(`${H.icon} ${H.name.toUpperCase()} SOYGUNU`, '#ff4060', 4, `Rolün: ${myRoles || 'destek'} · ${Math.round(H.time / 60)} dk`); }
+    else showBig(`🚨 ${H.name.toUpperCase()} SOYULUYOR!`, '#ff4040', 4, `${who} iş başında · bölgeden uzak dur ya da araya gir`);
+    AudioSys.tone(880, 0.3, 0.2, 'square'); AudioSys.tone(660, 0.3, 0.2, 'square', 1, 0.3);
+  } else if (mine) {
+    AudioSys.pickup(); showBig(`AŞAMA: ${STAGE_TEXT[C.st].toUpperCase()}`, '#ffd23a', 2.5, `${ROLE_NAMES[STAGE_ROLE[C.st]]}: ${nameOf(C.roles[STAGE_ROLE[C.st]])}`);
+  }
+  if (mine) { const w = C.st === 'escape' ? H.wanted[1] : C.st === 'vault' ? H.wanted[0] : 0; if (w && state.heat < w + 0.2) { state.heat = w + 0.3; state.crimeTimer = 0; } }
+  if (C.st === 'escape' && C.roles.driver === me && !BH.van) spawnGetaway(d.k);
+  BH.hold = null;
+}
+function spawnHeistGuards(k) {
+  removeHeistGuards(); ensureContractNpcs();
+  const S2 = BH.sites[k];
+  S2.guards.forEach(([x, z], i) => {
+    const p = npcPed({ skin: pick(SKIN), shirt: '#1a1c22', pants: '#1a1c22', hair: '#111', shoes: '#111', cap: '#1a1c22', glasses: true, gun: true }, x, z);
+    Object.assign(p, { x, z, dead: false, npc: 'guard', hp: 3, shootT: MR(1, 2), yaw: Math.atan2(S2.x - x, S2.z - z) + Math.PI, bhIdx: i });
+    p.h.g.visible = true; BH.guards.push(p);
+  });
+}
+function removeHeistGuards() { for (const p of BH.guards) { p.dead = true; p.h.g.visible = false; const i = peds.indexOf(p); if (i >= 0) peds.splice(i, 1); disposeHuman(p.h); } BH.guards = []; }
+function spawnGetaway(k) {
+  const S2 = BH.sites[k], [x, z] = S2.car;
+  BH.van = S2.boat ? createBoat('#101418', x, z, 0) : createCar('van', '#202428', x, z, 0, 'free');
+  BH.van.delivery = true; BH.van.home = null;
+  floatText(S2.boat ? '🚤 Kaçış teknesi yatın yanında!' : '🚐 Kaçış aracı köşede seni bekliyor!');
+}
+function endBigHeistLocal() {
+  removeHeistGuards(); BH.cur = null; BH.hold = null; BH.beam.visible = false;
+  if (BH.van && BH.van !== state.inCar) { const v = BH.van; setTimeout(() => { if (v !== state.inCar) { scene.remove(v.group); const i = cars.indexOf(v); if (i >= 0) cars.splice(i, 1); } }, 8000); }
+  BH.van = null;
+}
+function bhDone(st) { if (MP.on && !MP.host) mpSend({ t: 'bh_done', to: 'h', st }); else hostBhDone('h', st); }
+function hostBhDone(id, st) {
+  const C = BH.cur; if (!C || C.st !== st) return;
+  const holder = C.roles[STAGE_ROLE[st]];
+  if (holder !== id && (holder === 'h' || MP.remotes.has(holder))) return;     // only the role holder (unless they left)
+  if (st === 'escape') { const share = Math.round(BIG_HEISTS[C.k].pay / C.parts.length / 10) * 10; bhEmit({ t: 'bh', k: C.k, end: 'ok', share }); return; }
+  bhEmit({ t: 'bh', k: C.k, st: st === 'hack' ? 'vault' : 'escape', roles: C.roles, parts: C.parts, left: C.left, crew: C.crew });
+}
+function bhPlayerLeft(id) {
+  const C = BH.cur; if (!MP.host || !C || !C.parts.includes(id)) return;
+  const parts = C.parts.filter(p => p !== id); if (!parts.length) { bhEmit({ t: 'bh', k: C.k, end: 'fail', why: 'Ekip dağıldı' }); return; }
+  const roles = { ...C.roles }; for (const r in roles) if (roles[r] === id) roles[r] = parts[0];
+  bhEmit({ t: 'bh', k: C.k, st: C.st, roles, parts, left: C.left, crew: C.crew });
+}
+function updateBigHeist(dt) {
+  const C = BH.cur; if (!C) return;
+  const H = BIG_HEISTS[C.k], S2 = BH.sites[C.k], me = myNetId() || 'h', mine = C.parts.includes(me);
+  C.left -= dt;
+  if ((!MP.on || MP.host) && C.left <= 0) { bhEmit({ t: 'bh', k: C.k, end: 'fail', why: 'Süre doldu · polis bölgeyi kuşattı' }); return; }
+  // guards: sentries that shoot whoever comes close
+  for (const p of BH.guards) {
+    const h = p.h;
+    if (p.dead) { if (!p.sent) { p.sent = true; if (MP.on) mpSend({ t: 'bh_gk', i: p.bhIdx }); } h.g.position.set(p.x, surfaceY(p.x, p.z, S2.y + 0.5) + 0.12, p.z); continue; }
+    const dx = player.pos.x - p.x, dz = player.pos.z - p.z, d = Math.hypot(dx, dz), y = surfaceY(p.x, p.z, S2.y + 0.5);
+    const alert = d < 34 && !state.dead && (mine || p.alerted);
+    if (alert) {
+      p.yaw = wrapA(p.yaw + wrapA(Math.atan2(dx, dz) - p.yaw) * (1 - Math.exp(-8 * dt))); p.shootT -= dt;
+      if (p.shootT <= 0 && los(p.x, y + 1.4, p.z, player.pos.x, player.pos.y + 1.3, player.pos.z)) {
+        p.shootT = MR(0.7, 1.4); const hit = Math.random() < 0.35;
+        FX.tracer(p.x, y + 1.45, p.z, player.pos.x + (hit ? 0 : MR(-2.5, 2.5)), player.pos.y + 1.2, player.pos.z + (hit ? 0 : MR(-2.5, 2.5)), true); AudioSys.shot(0.4);
+        if (hit) { if (state.inCar) { damageCar(state.inCar, 5); state.health -= 1; } else applyDamage(6); }
+      }
+    }
+    h.g.position.set(p.x, y, p.z); h.g.rotation.y = p.yaw; animHuman(h, 0, dt, alert);
+  }
+  // target marker for everybody
+  const tgt = C.st === 'escape' ? S2.drop : C.st === 'hack' ? S2.hack : S2.vault;
+  BH.beam.visible = true; BH.beam.material.color.setHex(C.st === 'escape' ? 0x30ff80 : 0xff3040); BH.beam.position.set(tgt[0], C.st === 'escape' ? 0 : S2.y, tgt[1]);
+  C.tx = tgt[0]; C.tz = tgt[1];
+  if (!mine) return;
+  // own stage work
+  const role = STAGE_ROLE[C.st], holder = C.roles[role], myJob = holder === me || (holder !== 'h' && MP.on && !MP.remotes.has(holder));
+  const dist = Math.hypot(player.pos.x - tgt[0], player.pos.z - tgt[1]);
+  if (C.st !== 'escape') {
+    const need = C.st === 'hack' ? H.hack : H.vault;
+    if (BH.hold) {
+      if (state.dead) { BH.hold = null; floatText('⏸ İş yarıda kaldı'); }
+      else if (dist > 2.6 || state.inCar) { if (!BH.hold.paused) { BH.hold.paused = true; floatText('⏸ Duraklatıldı · geri dön, kaldığın yerden devam'); } }
+      else { BH.hold.paused = false; BH.hold.t += dt; const tk = Math.floor(BH.hold.t * 3); if (tk !== BH.hold.tk) { BH.hold.tk = tk; AudioSys.tone(C.st === 'hack' ? 1500 + (tk % 4) * 120 : 300, 0.05, 0.08, 'square'); } if (BH.hold.t >= need) { BH.hold = null; bhDone(C.st); } }
+    }
+    if (dist < 2.2 && !state.inCar) state.interact = BH.hold ? { label: `${C.st === 'hack' ? '💻 HACKLENİYOR' : '🧰 KASA BOŞALTILIYOR'}… %${Math.floor(Math.min(1, BH.hold.t / need) * 100)}`, fn: null }
+      : myJob ? { label: C.st === 'hack' ? `💻 GÜVENLİĞİ HACKLE (${need} sn)` : `🧰 KASAYI BOŞALT (${need} sn)`, fn: () => { BH.hold = { t: 0 }; } } : { label: `⏳ Bu iş ${nameOf(holder)} (${ROLE_NAMES[role]})`, fn: null };
+  } else if (myJob) {
+    if (!BH.van) spawnGetaway(C.k);
+    if (BH.van && BH.van.dead) { if (MP.on && !MP.host) mpSend({ t: 'bh_fail', to: 'h' }); else bhEmit({ t: 'bh', k: C.k, end: 'fail', why: 'Kaçış aracı yok oldu' }); BH.van = null; return; }
+    if (state.inCar === BH.van && dist < S2.dropR) bhDone('escape');
+  }
+}
+function bhHud() {
+  const C = BH.cur; if (!C || !inHeist() || state.mission || state.flightJob || state.lesson) return;
+  const H = BIG_HEISTS[C.k], el = $('mission'), role = STAGE_ROLE[C.st], me = myNetId() || 'h';
+  const roles = Object.entries(C.roles).map(([r, id]) => `${ROLE_NAMES[r]}: ${id === me ? '<b>sen</b>' : esc(nameOf(id))}`).join(' · ');
+  const n = { hack: 1, vault: 2, escape: 3 }[C.st], d = C.tx !== undefined ? Math.round(Math.hypot(C.tx - player.pos.x, C.tz - player.pos.z)) : 0;
+  const html = `<b>${H.icon} ${H.name} · aşama ${n}/3</b><br>${STAGE_TEXT[C.st]} · ${d} m${C.st === 'escape' && C.roles.driver === me ? ' · kaçış aracına bin' : ''}<br><small>${roles} · ⏱ ${Math.max(0, Math.floor(C.left / 60))}:${String(Math.max(0, Math.floor(C.left % 60))).padStart(2, '0')}</small>`;
+  el.style.display = 'block'; el.style.borderLeftColor = '#ff4060'; if (html !== bhHud.h) { bhHud.h = html; el.innerHTML = html; }
+}
+// ============================================================ CREW TURF WARS (online): 5 zones, flags, capture, war, tax
+const CZONES = [
+  { id: 'kb', name: 'Eski Şehir', x0: -HALF - 10, x1: 0, z0: -HALF - 10, z1: 0, flag: [nodeP(2) + 11, nodeP(2) + 11] },
+  { id: 'kd', name: 'Merkez & Liman', x0: 0, x1: WATERLINE, z0: -HALF - 10, z1: 0, flag: [nodeP(6) + 11, nodeP(2) + 11] },
+  { id: 'gb', name: 'Banliyö', x0: -HALF - 10, x1: 0, z0: 0, z1: HALF + 10, flag: [nodeP(2) + 11, nodeP(6) + 11] },
+  { id: 'gd', name: 'Sahil Sanayi', x0: 0, x1: WATERLINE, z0: 0, z1: HALF + 10, flag: [nodeP(6) + 11, nodeP(6) + 11] },
+  { id: 'air', name: 'Havalimanı', x0: AIR.x0, x1: AIR.x1, z0: AIR.z0, z1: AIR.z1, flag: [-60, 505] },
+];
+const CZ = { st: {}, tickT: 0, sendT: 0, taxT: 0, meshes: {} };
+const CZ_R = 16, CZ_CAPTURE = 60, CZ_LOWER = 45, CZ_TAX = 500, CZ_TAX_SEC = 120;
+function buildCrewZones() {
+  const pole = new THREE.MeshStandardMaterial({ color: 0xd8dce2, metalness: 0.7, roughness: 0.3 });
+  for (const Z of CZONES) {
+    const [x, z] = Z.flag, y = groundY(x, z), g = new THREE.Group(); g.position.set(x, y, z);
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 9, 8).translate(0, 4.5, 0), pole));
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.6, 8, 1).translate(1.3, 0, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.8 }));
+    cloth.position.y = 8; g.add(cloth);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(CZ_R - 0.5, CZ_R, 64).rotateX(-Math.PI / 2).translate(0, 0.08, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }));
+    g.add(ring); g.visible = false; scene.add(g);
+    CZ.meshes[Z.id] = { g, cloth, ring };
+    CZ.st[Z.id] = { own: null, name: '', tag: '', color: '#ffffff', cap: null, prog: 0, war: false };
+  }
+  try { const saved = JSON.parse(localStorage.getItem('vistabay_czones') || 'null'); if (saved) for (const id in saved) if (CZ.st[id]) Object.assign(CZ.st[id], saved[id], { cap: null, prog: 0, war: false }); } catch (e) { }
+}
+const zoneAt = (x, z) => CZONES.find(Z => x >= Z.x0 && x < Z.x1 && z >= Z.z0 && z < Z.z1);
+function hostCrewZones(dt) {
+  CZ.tickT += dt; if (CZ.tickT < 0.5) return; const step = CZ.tickT; CZ.tickT = 0;
+  // everybody on foot near a flag, grouped by crew
+  const people = [];
+  if (!state.dead && !state.inCar && !state.interior && MP.crew) people.push({ x: player.pos.x, z: player.pos.z, crew: MP.crew, id: 'h' });
+  for (const r of MP.remotes.values()) if (r.info.crew && !r.sdead && !r.vehKey && r.x > -2000) people.push({ x: r.x, z: r.z, crew: r.info.crew, id: r.id });
+  for (const Z of CZONES) {
+    const S2 = CZ.st[Z.id], here = people.filter(p => Math.hypot(p.x - Z.flag[0], p.z - Z.flag[1]) < CZ_R), crews = [...new Set(here.map(p => p.crew.id))];
+    const wasWar = S2.war;
+    S2.war = crews.length > 1 || (crews.length === 1 && S2.own && crews[0] !== S2.own && S2.prog > 0);
+    if (crews.length === 1) {
+      const c = here[0].crew, n = here.length, speed = step * (1 + 0.25 * (n - 1));
+      if (c.id === S2.own) { S2.cap = null; S2.prog = 0; }
+      else {
+        if (S2.cap !== c.id) { S2.cap = c.id; S2.prog = 0; S2.capName = c.name; S2.capColor = c.color; S2.capTag = c.tag; }
+        if (S2.own) { S2.prog += speed / CZ_LOWER; if (S2.prog >= 1) { const old = S2.name; Object.assign(S2, { own: null, name: '', tag: '', color: '#ffffff', prog: 0 }); czEmit({ t: 'czw', z: Z.id, ev: 'lowered', by: c.name, old }); } }
+        else { S2.prog += speed / CZ_CAPTURE; if (S2.prog >= 1) { Object.assign(S2, { own: c.id, name: c.name, tag: c.tag, color: c.color, prog: 0, cap: null }); czEmit({ t: 'czw', z: Z.id, ev: 'taken', by: c.name }); saveZones(); } }
+      }
+    } else if (!crews.length) S2.prog = Math.max(0, S2.prog - step / 90);
+    if (S2.war && !wasWar && S2.own) czEmit({ t: 'czw', z: Z.id, ev: 'war', own: S2.own, by: S2.capName || '' });
+  }
+  CZ.sendT += step; if (CZ.sendT >= 1) { CZ.sendT = 0; mpSend({ t: 'cz', s: CZ.st }); }
+}
+function saveZones() { try { const o = {}; for (const id in CZ.st) { const s = CZ.st[id]; if (s.own) o[id] = { own: s.own, name: s.name, tag: s.tag, color: s.color }; } localStorage.setItem('vistabay_czones', JSON.stringify(o)); } catch (e) { } }
+function czEmit(msg) { onZoneEvent(msg); mpSend(msg); }
+function onZoneEvent(d) {
+  const Z = CZONES.find(z => z.id === d.z); if (!Z) return;
+  const mineOwn = d.own && d.own === myCrewId();
+  if (d.ev === 'war') { if (mineOwn) { showBig('⚔ BÖLGE SAVAŞI!', '#ff4040', 3.5, `${d.by} ${Z.name} bayrağını indirmeye çalışıyor · git ve savun!`); AudioSys.tone(440, 0.3, 0.25, 'sawtooth'); } else mpFeed(`⚔ <b>${esc(Z.name)}</b> bölgesinde savaş başladı`); }
+  if (d.ev === 'lowered') mpFeed(`🏳 <b>${esc(d.by)}</b> ${esc(Z.name)} bayrağını indirdi${d.old ? ' (' + esc(d.old) + ')' : ''}`);
+  if (d.ev === 'taken') { const me = MP.crew && MP.crew.name === d.by; showBig(me ? '🏴 BÖLGE SENİN!' : '🏴 BÖLGE EL DEĞİŞTİRDİ', me ? '#7dff9a' : '#ffd23a', 3, `${d.by} · ${Z.name}${me ? ` · her ${CZ_TAX_SEC / 60} dakikada $${CZ_TAX} vergi` : ''}`); }
+}
+function updateCrewZones(dt) {
+  const on = MP.on;
+  for (const Z of CZONES) { const m = CZ.meshes[Z.id]; if (m) m.g.visible = on; }
+  if (!on) { $('zoneHud').style.display = 'none'; return; }
+  if (MP.host) hostCrewZones(dt);
+  // visuals
+  for (const Z of CZONES) {
+    const s = CZ.st[Z.id], m = CZ.meshes[Z.id];
+    const lowerK = s.own && s.cap ? 1 - s.prog : s.own ? 1 : s.cap ? s.prog : 0.15;
+    m.cloth.position.y = 1.2 + lowerK * 6.8; m.cloth.material.color.set(s.own ? s.color : s.cap ? s.capColor || '#ffffff' : '#ffffff');
+    m.cloth.rotation.y = Math.sin(state.now * 1.7 + Z.flag[0]) * 0.25; m.ring.material.color.set(s.war ? (Math.sin(state.now * 8) > 0 ? '#ff3040' : '#ffffff') : s.own ? s.color : '#ffffff');
+  }
+  // tax for owners
+  CZ.taxT += dt;
+  if (CZ.taxT >= CZ_TAX_SEC) { CZ.taxT = 0; const n = myCrewId() ? CZONES.filter(Z => CZ.st[Z.id].own === myCrewId()).length : 0; if (n) { earn(n * CZ_TAX, '🏴 Bölge vergisi'); floatText(`🏴 Bölge vergisi +$${n * CZ_TAX}`); } }
+  // HUD
+  const Z = zoneAt(player.pos.x, player.pos.z), hud = $('zoneHud');
+  let txt = '';
+  if (Z) {
+    const s = CZ.st[Z.id], near = Math.hypot(player.pos.x - Z.flag[0], player.pos.z - Z.flag[1]) < CZ_R;
+    txt = `🏴 ${esc(Z.name)} · ${s.own ? `<b style="color:${s.color}">${esc(crewTag(s) + s.name)}</b>` : 'sahipsiz'}`;
+    if (s.cap) txt += ` · ${s.own ? 'bayrak iniyor' : 'ele geçiriliyor'} %${Math.floor(s.prog * 100)} (${esc(s.capName || '')})`;
+    if (s.war) txt += ' · <b style="color:#ff5050">⚔ SAVAŞ</b>';
+    if (near && !MP.crew) txt += ' · çete kurmadan ele geçiremezsin';
+    else if (near && state.inCar) txt += ' · araçtan in';
+  }
+  if (txt !== updateCrewZones.t) { updateCrewZones.t = txt; hud.innerHTML = txt; hud.style.display = txt ? 'block' : 'none'; }
+}
+function drawCrewZonesMap(g, toMap, r) {
+  if (!MP.on) return;
+  for (const Z of CZONES) {
+    const s = CZ.st[Z.id]; if (!s.own && !s.war) continue;
+    const pts = [[Z.x0, Z.z0], [Z.x1, Z.z0], [Z.x1, Z.z1], [Z.x0, Z.z1]].map(([x, z]) => toMap(x, z));
+    g.beginPath(); pts.forEach(([px, py], i) => i ? g.lineTo(px, py) : g.moveTo(px, py)); g.closePath();
+    g.strokeStyle = s.war ? '#ff3040' : s.color; g.lineWidth = 3; g.globalAlpha = 0.9; g.stroke(); g.globalAlpha = 1;
+  }
+  g.font = '15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const Z of CZONES) { const s = CZ.st[Z.id]; let [px, py] = toMap(Z.flag[0], Z.flag[1]); if (Math.hypot(px - r, py - r) > r - 12) continue; g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 11, 0, 7); g.fill(); g.strokeStyle = s.war ? '#ff3040' : s.own ? s.color : '#fff'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#fff'; g.fillText(s.war ? '⚔' : '🏴', px, py + 1); }
+  const C = BH.cur; if (C && C.tx !== undefined) { let [px, py] = toMap(C.tx, C.tz); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.strokeStyle = '#ff4060'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#fff'; g.font = '16px sans-serif'; g.fillText(BIG_HEISTS[C.k].icon, px, py + 1); }
+}
+function handleBigHeist(d) {
+  switch (d.t) {
+    case 'bh': if (d.id === 'h' || !MP.on) onBigHeist(d); return true;
+    case 'bh_req': if (MP.host) hostStartHeist(d.k, d.id, d.crew); return true;
+    case 'bh_done': if (MP.host) hostBhDone(d.id, d.st); return true;
+    case 'bh_fail': if (MP.host && BH.cur && BH.cur.roles.driver === d.id) bhEmit({ t: 'bh', k: BH.cur.k, end: 'fail', why: 'Kaçış aracı yok oldu' }); return true;
+    case 'bh_gk': { const p = BH.guards[d.i]; if (p && !p.dead) { p.dead = true; p.sent = true; p.h.g.rotation.x = -Math.PI / 2; } return true; }
+    case 'cz': if (!MP.host) for (const id in d.s) if (CZ.st[id]) Object.assign(CZ.st[id], d.s[id]); return true;
+    case 'czw': if (d.id === 'h') onZoneEvent(d); return true;
+  }
+  return false;
 }
 
 // ============================================================ MP STAGE 3: PvP, scoreboard, bounty, customization sync
@@ -7194,6 +7496,8 @@ function loop(now) {
   updateStage3(dt);
   updateAdmin(dt);
   updateModes(dt);
+  updateBigHeist(dt);
+  updateCrewZones(dt);
   updateDoors();
   updateDocOffices();
   updateAirport(dt);
@@ -7203,6 +7507,7 @@ function loop(now) {
   updateLicenceChecks(dt);
   updateFlyingAway(dt);
   cabinHud();
+  bhHud();
   updatePlaneHud();
   updateNetWorld(dt);
   updateCrosshair(dt);

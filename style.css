@@ -292,3 +292,5 @@ body.admin.playing #admBtn{display:flex}
 .admRow span{flex:1;min-width:150px;display:flex;align-items:center;gap:6px}.admRow i{display:inline-block;width:10px;height:10px;border-radius:50%}.admRow small{color:#ffffff88}.admRow .bad{color:#ff5a5a}
 .admRow input{width:120px;background:#ffffff12;border:1px solid #ffffff33;border-radius:8px;color:#fff;padding:6px;font:700 14px Rajdhani,sans-serif}
 body.flying .btn.heli{display:flex}
+
+#zoneHud{display:none;position:absolute;left:50%;top:calc(136px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;background:#000a;color:#fff;font:700 13px Rajdhani,sans-serif;padding:4px 12px;border-radius:9px;text-align:center;pointer-events:none;white-space:nowrap}
