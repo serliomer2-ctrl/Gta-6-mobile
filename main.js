@@ -355,6 +355,7 @@ function init() {
   buildHeistSites();
   buildPoliceStation();
   buildCrewZones();
+  buildBlackMarket();
   buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
@@ -1035,11 +1036,13 @@ function drawAirportMap(g, X, Z, k) {
 
 // ============================================================ HUMANS
 function makeHuman(look) {
+  if (!M.gunSkin) M.gunSkin = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.25, envMapIntensity: 1.2 });
   const g = new THREE.Group(); g.rotation.order = 'YXZ';
   const C = (geo, col) => colorize(geo, col);
   const lathe = (pts, seg = 16) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
   // torso: shaped chest/waist (lathe) squashed front-to-back
-  const torso = C(lathe([[0.001, 1.02], [0.16, 1.03], [0.15, 1.14], [0.175, 1.3], [0.205, 1.44], [0.2, 1.53], [0.13, 1.6], [0.001, 1.61]]).scale(1, 1, 0.62), look.shirt);
+  const top = look.jacket || look.shirt;
+  const torso = C(lathe([[0.001, 1.02], [0.16, 1.03], [0.15, 1.14], [0.175, 1.3], [0.205, 1.44], [0.2, 1.53], [0.13, 1.6], [0.001, 1.61]]).scale(1, 1, 0.62), top);
   const pelvis = C(lathe([[0.001, 0.86], [0.15, 0.88], [0.17, 0.96], [0.162, 1.05], [0.001, 1.06]]).scale(1, 1, 0.66), look.pants);
   const neck = C(new THREE.CylinderGeometry(0.052, 0.06, 0.14, 10).translate(0, 1.65, 0), look.skin);
   const head = C(new THREE.SphereGeometry(0.115, 18, 14).scale(0.92, 1.08, 1).translate(0, 1.79, 0.005), look.skin);
@@ -1050,7 +1053,11 @@ function makeHuman(look) {
   const hair = C(new THREE.SphereGeometry(0.122, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52).scale(0.96, 1.02, 1.04).translate(0, 1.805, -0.012), look.hair);
   const parts = [torso, pelvis, neck, head, jaw, nose, ...ears, ...eyes, hair];
   if (look.longHair) parts.push(C(new THREE.CapsuleGeometry(0.1, 0.22, 4, 10).scale(1.25, 1, 0.55).translate(0, 1.66, -0.085), look.hair));
-  if (look.cap) parts.push(C(new THREE.SphereGeometry(0.128, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, 1.83, -0.005), look.cap), C(new THREE.CylinderGeometry(0.11, 0.11, 0.015, 16, 1, false, -Math.PI / 2, Math.PI).scale(1, 1, 1.2).translate(0, 1.835, 0.09), look.cap));
+  if (look.jacket) parts.push(C(new THREE.BoxGeometry(0.1, 0.5, 0.02).translate(0, 1.3, 0.118), look.shirt), C(new THREE.BoxGeometry(0.11, 0.06, 0.02).rotateZ(0.5).translate(0.06, 1.55, 0.112), look.jacket), C(new THREE.BoxGeometry(0.11, 0.06, 0.02).rotateZ(-0.5).translate(-0.06, 1.55, 0.112), look.jacket));
+  if (look.hat === 'fedora') parts.push(C(new THREE.CylinderGeometry(0.1, 0.118, 0.12, 16).translate(0, 1.92, -0.005), look.hatColor), C(new THREE.CylinderGeometry(0.2, 0.2, 0.012, 20).translate(0, 1.865, -0.005), look.hatColor), C(new THREE.CylinderGeometry(0.119, 0.119, 0.025, 16).translate(0, 1.875, -0.005), '#0a0a0a'));
+  else if (look.hat === 'beanie') parts.push(C(new THREE.SphereGeometry(0.132, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1, 1.15, 1.05).translate(0, 1.8, -0.01), look.hatColor), C(new THREE.CylinderGeometry(0.133, 0.133, 0.045, 16).translate(0, 1.8, -0.01), look.hatColor));
+  else if (look.hat === 'crown') parts.push(C(new THREE.CylinderGeometry(0.11, 0.105, 0.07, 16, 1, true).translate(0, 1.89, -0.005), look.hatColor), ...[0, 1, 2, 3, 4, 5].map(k => C(new THREE.ConeGeometry(0.025, 0.07, 6).translate(Math.sin(k * 1.047) * 0.105, 1.955, Math.cos(k * 1.047) * 0.105 - 0.005), look.hatColor)), C(new THREE.SphereGeometry(0.02, 8, 6).translate(0, 1.89, 0.11), '#d01830'));
+  if (look.cap && !look.hat) parts.push(C(new THREE.SphereGeometry(0.128, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, 1.83, -0.005), look.cap), C(new THREE.CylinderGeometry(0.11, 0.11, 0.015, 16, 1, false, -Math.PI / 2, Math.PI).scale(1, 1, 1.2).translate(0, 1.835, 0.09), look.cap));
   if (look.backpack) parts.push(C(new THREE.CapsuleGeometry(0.15, 0.2, 4, 10).scale(1.15, 1, 0.6).translate(0, 1.3, -0.2), look.backpack), ...[1, -1].map(sx => C(new THREE.BoxGeometry(0.04, 0.4, 0.2).translate(sx * 0.11, 1.38, -0.05), '#1a1a1a')));
   if (look.glasses) parts.push(C(new THREE.BoxGeometry(0.2, 0.035, 0.02).translate(0, 1.808, 0.112), '#0a0a0a'), ...[1, -1].map(s => C(new THREE.CylinderGeometry(0.028, 0.028, 0.012, 12).rotateX(Math.PI / 2).translate(s * 0.042, 1.805, 0.118), '#101418')));
   const body = new THREE.Mesh(merge(parts), M.human);
@@ -1062,8 +1069,8 @@ function makeHuman(look) {
     const lm = new THREE.Mesh(lower, M.human); lm.castShadow = true; j.add(lm);
     return [p, j];
   };
-  const upperArm = merge([C(new THREE.SphereGeometry(0.075, 10, 8).translate(0, -0.02, 0), look.shirt), C(new THREE.CapsuleGeometry(0.058, 0.2, 4, 10).translate(0, -0.15, 0), look.shirt)]);
-  const foreArm = merge([C(new THREE.CapsuleGeometry(0.048, 0.2, 4, 10).translate(0, -0.14, 0), look.skin), C(new THREE.SphereGeometry(0.052, 10, 8).scale(0.85, 1.15, 0.7).translate(0, -0.3, 0.01), look.skin)]);
+  const upperArm = merge([C(new THREE.SphereGeometry(0.075, 10, 8).translate(0, -0.02, 0), top), C(new THREE.CapsuleGeometry(0.058, 0.2, 4, 10).translate(0, -0.15, 0), top)]);
+  const foreArm = merge([C(new THREE.CapsuleGeometry(0.048, 0.2, 4, 10).translate(0, -0.14, 0), look.jacket || look.skin), C(new THREE.SphereGeometry(0.052, 10, 8).scale(0.85, 1.15, 0.7).translate(0, -0.3, 0.01), look.skin)]);
   const shortsL = !!look.shorts;
   const thigh = merge([C(new THREE.CapsuleGeometry(0.083, 0.3, 4, 10).translate(0, -0.21, 0), look.pants)]);
   const shin = merge([C(new THREE.CapsuleGeometry(0.066, 0.32, 4, 10).translate(0, -0.2, 0), shortsL ? look.skin : look.pants),
@@ -1073,7 +1080,7 @@ function makeHuman(look) {
   const [legL, kneeL] = mkLimb(0.095, 0.93, thigh, shin, -0.42);
   const [legR, kneeR] = mkLimb(-0.095, 0.93, thigh, shin, -0.42);
   body.castShadow = true; g.add(body); // keep body at children[4]
-  if (look.gun) { const gun = new THREE.Mesh(merge([C(new THREE.BoxGeometry(0.035, 0.07, 0.2).translate(0, -0.3, 0.09), '#111'), C(new THREE.BoxGeometry(0.03, 0.1, 0.045).translate(0, -0.36, 0.03), '#1a1a1a')]), M.human); elbowR.add(gun); }
+  if (look.gun) { const gun = new THREE.Mesh(merge([C(new THREE.BoxGeometry(0.035, 0.07, 0.2).translate(0, -0.3, 0.09), look.gunSkin || '#111'), C(new THREE.BoxGeometry(0.03, 0.1, 0.045).translate(0, -0.36, 0.03), look.gunSkin ? '#1a1a1a' : '#1a1a1a')]), look.gunSkin ? M.gunSkin : M.human); elbowR.add(gun); }
   scene.add(g);
   return { g, armL, armR, legL, legR, elbowL, elbowR, kneeL, kneeR, phase: Math.random() * 6 };
 }
@@ -1331,7 +1338,7 @@ function enterCar() {
   if (state.inCar) { exitCar(false); return; }
   if (MP.on && !state.interior) { const rv = nearRemoteVehicle(4.5); if (rv) { let nl = 1e9; for (const c of cars) if (c.active && !c.dead) nl = Math.min(nl, Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z)); if (Math.hypot(rv.x - player.pos.x, rv.z - player.pos.z) < nl) { enterAsPassenger(rv); return; } } }
   let best = null, bd = 5;
-  for (const c of cars) { if (!c.active || c.dead || c.evSlot !== undefined || c.netEv !== undefined || c.netTruck || c.polMirror !== undefined || c.polHeli || c.rb) continue; const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d < bd) { bd = d; best = c; } }
+  for (const c of cars) { if (!c.active || c.dead || c.evSlot !== undefined || c.netEv !== undefined || c.netTruck || c.polMirror !== undefined || c.polHeli || c.rb || c.bmVan) continue; const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d < bd) { bd = d; best = c; } }
   if (!best) return;
   if (best.display) { floatText('Bu araç satılık — galeriden al!'); return; }
   const netCar = best.mode === 'net';
@@ -2520,6 +2527,7 @@ function drawMinimap() {
   drawCrewZonesMap(g, toMap, r);
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
+  if (BM.van && !BM.van.dead && Math.hypot(BM.x - player.pos.x, BM.z - player.pos.z) < 220) { dot(BM.x, BM.z, '#a040ff', 10, false); const [px, py] = toMap(BM.x, BM.z); g.font = '12px sans-serif'; g.fillText('🕶', px, py + 1); }
   for (const rp of MP.remotes.values()) { { const hunt = state.cop && rp.wn > 0; dot(rp.x, rp.z, hunt ? (Math.sin(state.now * 10) > 0 ? '#ff2040' : '#ffffff') : rp.info.cop ? '#3a7aff' : rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, hunt || rp.bounty || sameCrew(rp) ? 11 : 8, true); if (hunt) { const [px, py] = toMap(rp.x, rp.z); if (Math.hypot(px - r, py - r) < r - 12) { g.font = 'bold 11px sans-serif'; g.fillStyle = '#ffd23a'; g.fillText('★'.repeat(rp.wn), px, py - 14); } } } if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
   if (state.heist) { let [px, py] = toMap(state.heist.x, state.heist.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '17px sans-serif'; g.fillText('💼', px, py + 1); }
@@ -2841,7 +2849,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2852,7 +2860,8 @@ function shopItems(type) {
   if (type === 'school') return schoolItems();
   if (type === 'station') return stationItems();
   if (type === 'prop') return propItems();
-  if (type === 'clothes') return clothesItems();
+  if (type === 'clothes') return [...clothesItems(), ...styleShopItems()];
+  if (type === 'bm') return bmItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2923,7 +2932,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold
     }));
     accountSaved();
   } catch (e) { }
@@ -2938,6 +2947,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold;
     return d;
   } catch (e) { return null; }
 }
@@ -3031,7 +3041,7 @@ function propItems() {
 
 // ============================================================ ECONOMY / STATS / ACHIEVEMENTS
 const S = () => state.stats;
-function earn(amt, label) { state.money += amt; S().earned += amt; ledger(label, amt); crewShare(amt, label); }
+function earn(amt, label) { state.money += amt; S().earned += amt; ledger(label, amt); crewShare(amt, label); repFromEarn(amt, label); }
 function ledger(label, amt) { state.ledger.unshift({ t: clockStr(), label, amt }); if (state.ledger.length > 8) state.ledger.pop(); }
 function clockStr() { const h = Math.floor(state.time), m = Math.floor((state.time - h) * 60); return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
 const ownedCars = () => cars.filter(c => c.owned && !c.display && !c.delivery && !c.home);
@@ -4390,8 +4400,8 @@ function buildWrecks() {
 function openChest(c) {
   c.openUntil = state.now + 600; c.lid.rotation.x = -1.2; c.coins.visible = true;
   const amt = Math.round(MR(600, 2200) / 10) * 10, bar = Math.random() < 0.2;
-  earn(amt + (bar ? 3000 : 0), '💰 Batık hazinesi'); AudioSys.cash(); AudioSys.pickup(); haptic([30, 30, 60]);
-  showBig(bar ? '🏅 ALTIN KÜLÇE!' : '💰 HAZİNE SANDIĞI', '#ffc830', 2.5, `${c.wreck} batığı · +$${amt + (bar ? 3000 : 0)}`);
+  earn(amt, '💰 Batık hazinesi'); if (bar) invAdd('goldbar', 1); AudioSys.cash(); AudioSys.pickup(); haptic([30, 30, 60]);
+  showBig(bar ? '🏅 ALTIN KÜLÇE!' : '💰 HAZİNE SANDIĞI', '#ffc830', 2.5, `${c.wreck} batığı · +$${amt}${bar ? ' + 🏅 altın külçe (çantada · kara borsada sat ya da takas et)' : ''}`);
 }
 function updateWrecks(dt) {
   for (const c of CHESTS) if (c.openUntil && state.now > c.openUntil) { c.openUntil = 0; c.lid.rotation.x = 0; c.coins.visible = false; }
@@ -4960,6 +4970,172 @@ function updateStory(dt, m) {
   if (ok) nextStoryStage(m);
 }
 
+// ============================================================ RANKS, WEAPON SKINS, COSTUMES, BLACK MARKET, INVENTORY & PLAYER TRADES
+const RANKS = [
+  { name: 'Çaylak', icon: '🔰', rep: 0, skin: ['Mat Siyah', '#1a1a1c'] },
+  { name: 'Tetikçi', icon: '🎯', rep: 300, skin: ['Krom', '#d8dde2'] },
+  { name: 'Mafya Babası', icon: '🎩', rep: 1500, skin: ['Kızıl Ejder', '#b01822'] },
+  { name: 'Vista Kralı', icon: '👑', rep: 5000, skin: ['Altın', '#e8b830'] },
+];
+const rankOf = rep => { let k = 0; RANKS.forEach((R, i) => { if (rep >= R.rep) k = i; }); return k; };
+const myRank = () => rankOf(state.rep || 0);
+function addRep(n, why) {
+  if (!(n > 0)) return;
+  const before = myRank(); state.rep = (state.rep || 0) + n;
+  const after = myRank();
+  if (after > before) {
+    const R = RANKS[after];
+    showBig(`${R.icon} YENİ RÜTBE: ${R.name.toUpperCase()}`, '#ffd23a', 4, `${R.skin[0]} silah kaplaması ve yeni kostümler açıldı`);
+    AudioSys.success(); haptic([40, 40, 40, 120]); if (MP.on) { sendInfo(); mpSend({ t: 'chat', m: `${R.icon} ${R.name} rütbesine yükseldim!` }); }
+  }
+  updateRankHud();
+}
+const REP_SKIP = /💸|Çete payı|Admin|Mülk geliri|maaşı|Nakit|Kara borsa|Takas/;
+function repFromEarn(amt, label) { if (!REP_SKIP.test(label) && amt > 0) addRep(Math.max(1, Math.round(amt / 100)), label); }
+function updateRankHud() {
+  const R = RANKS[myRank()], next = RANKS[myRank() + 1], el = $('rankHud'); if (!el) return;
+  const t = `${R.icon} ${R.name} · ${state.rep || 0}${next ? ' / ' + next.rep : ''} itibar`;
+  if (el.textContent !== t) el.textContent = t;
+}
+// ---------------- weapon skins (shown on the gun in your hand, online too)
+const SKINS = RANKS.map((R, i) => ({ name: R.skin[0], col: R.skin[1], rank: i }));
+SKINS.push({ name: 'Kara Borsa Altını', col: '#ffd700', rank: 99, bm: true });
+function skinItems() {
+  const it = [{ sec: `Silah kaplaması · rütben: ${RANKS[myRank()].icon} ${RANKS[myRank()].name}` }];
+  for (const S2 of SKINS) {
+    const own = S2.bm ? state.bmGold : myRank() >= S2.rank, cur = (state.look.gunSkin || '#1a1a1c') === S2.col;
+    it.push({ name: `<i class="sw" style="background:${S2.col};box-shadow:0 0 8px ${S2.col}"></i>${S2.name}`, desc: S2.bm ? 'Sadece Gizli Kara Borsa\'dan' : `${RANKS[S2.rank].icon} ${RANKS[S2.rank].name} rütbesi (${RANKS[S2.rank].rep} itibar)`, price: 0, btn: 'TAK', dis: cur ? 'TAKILI' : own ? null : 'KİLİTLİ', buy: () => { state.look.gunSkin = S2.col; applyLook(); } });
+  }
+  return it;
+}
+// ---------------- costumes & new clothes
+const COSTUMES = [
+  { name: '🏖 Plaj', rank: 0, set: { shirt: '#2a9ab8', pants: '#c9b48a', shorts: true, glasses: true, cap: null, hat: null, jacket: null } },
+  { name: '🏍 Motorcu', rank: 0, set: { shirt: '#18181c', pants: '#16161a', shorts: false, jacket: '#2a2420', hat: 'beanie', hatColor: '#18181c', cap: null, glasses: true } },
+  { name: '✈ Pilot', rank: 1, set: { shirt: '#f0eee8', pants: '#1e2e5a', shorts: false, jacket: '#1e2e5a', hat: null, cap: '#1e2e5a', glasses: true } },
+  { name: '🕴 Takım elbise', rank: 2, set: { shirt: '#f0eee8', pants: '#16161a', shorts: false, jacket: '#16161a', hat: 'fedora', hatColor: '#16161a', cap: null, glasses: false } },
+  { name: '👑 Vista Kralı', rank: 3, set: { shirt: '#18181c', pants: '#f0eee8', shorts: false, jacket: '#c8a030', hat: 'crown', hatColor: '#e8b830', cap: null, glasses: true } },
+];
+function styleShopItems() {
+  const L = state.look, it = [{ sec: 'Ceket' }];
+  const sw = (n, hex) => `<i class="sw" style="background:${hex}"></i>${n}`;
+  it.push({ name: '🧥 Ceketsiz', desc: 'Ceketi çıkar', price: 0, btn: 'ÇIKAR', dis: !L.jacket ? 'GİYİLİ' : null, buy: () => { L.jacket = null; applyLook(); } });
+  for (const [n, hex] of [['Deri', '#2a2420'], ['Lacivert blazer', '#1e2e5a'], ['Kırmızı bomber', '#a01820'], ['Kamuflaj', '#5a6a3a'], ['Beyaz', '#e8e6e0']]) it.push({ name: sw('Ceket · ' + n, hex), desc: 'Online herkese görünür', price: 450, dis: L.jacket === hex ? 'GİYİLİ' : null, buy: () => { L.jacket = hex; applyLook(); } });
+  it.push({ sec: 'Şapka' }, { name: '🎩 Şapkasız', desc: 'Fötr / bere / taç çıkar', price: 0, btn: 'ÇIKAR', dis: !L.hat ? 'GİYİLİ' : null, buy: () => { L.hat = null; applyLook(); } });
+  for (const [t, n, hex, price, rank] of [['fedora', 'Fötr · Siyah', '#16161a', 300, 0], ['fedora', 'Fötr · Krem', '#d8c8a8', 300, 0], ['beanie', 'Bere · Gri', '#5a5a60', 150, 0], ['beanie', 'Bere · Turuncu', '#e07020', 150, 0], ['crown', 'Altın taç', '#e8b830', 25000, 3]])
+    it.push({ name: sw(n, hex), desc: rank ? `${RANKS[rank].icon} ${RANKS[rank].name} rütbesine özel` : 'Şapka', price, dis: L.hat === t && L.hatColor === hex ? 'GİYİLİ' : myRank() < rank ? 'KİLİTLİ' : null, buy: () => { L.hat = t; L.hatColor = hex; L.cap = null; applyLook(); } });
+  it.push({ sec: 'Özel kostümler' });
+  for (const C of COSTUMES) it.push({ name: C.name, desc: C.rank ? `${RANKS[C.rank].icon} ${RANKS[C.rank].name} rütbesi gerekir` : 'Komple kombin', price: 400 + C.rank * 600, dis: myRank() < C.rank ? 'KİLİTLİ' : null, buy: () => { Object.assign(L, C.set); applyLook(); } });
+  return [...it, ...skinItems()];
+}
+// ---------------- inventory (tradeable valuables)
+const ITEMS = { goldbar: { name: 'Altın külçe', icon: '🏅', value: 3000 }, diamond: { name: 'Elmas yüzük', icon: '💍', value: 9000 }, chute: { name: 'Paraşüt', icon: '🪂', value: 300 } };
+const invCount = k => k === 'chute' ? state.chute : (state.inv && state.inv[k]) || 0;
+function invAdd(k, n) { if (k === 'chute') { state.chute = Math.max(0, state.chute + n); return; } state.inv = state.inv || {}; state.inv[k] = Math.max(0, (state.inv[k] || 0) + n); }
+// ---------------- Gizli Kara Borsa minibüsü: same place for everybody (time-slot seeded), moves every 6 minutes
+const BM = { slot: -1, van: null, npc: null, x: 0, z: 0, stock: [], area: '' };
+const BM_SPOTS = [];
+const BM_LIST = [
+  { id: 'gold', name: '✨ Kara Borsa Altını kaplama', desc: 'Kimsede olmayan parlak altın silah kaplaması', price: 25000, ok: () => !state.bmGold, buy: () => { state.bmGold = true; state.look.gunSkin = '#ffd700'; applyLook(); } },
+  { id: 'ghost', name: '🚗 "Kara Hayalet" süper araç', desc: 'Mat siyah, zırhlı, motor 3/3 · garajına kaydedilir', price: 45000, buy: () => { const a = player.yaw, r = collide(player.pos.x + Math.sin(a) * 7, player.pos.z + Math.cos(a) * 7, 1.5, 0.5), c = createCar('super', '#0c0c0e', r.x, r.z, a, 'free'); c.owned = true; c.up.armor = 1; c.up.engine = 3; c.up.grip = 3; saveGame(); } },
+  { id: 'rpg', name: '🚀 Roketatar + 10 roket', desc: 'Kayıt dışı askeri malzeme', price: 8000, buy: () => { state.ownedW[4] = true; state.ammo[4] += 10; } },
+  { id: 'pass', name: '🛂 Sahte pasaport', desc: 'Nüfus Müdürlüğü\'ne uğramadan uçuş için', price: 3000, ok: () => !hasDoc('pass'), buy: () => { state.docs.id = true; state.docs.pass = true; } },
+  { id: 'chute', name: '🪂 2 Paraşüt', desc: 'Askeri stok', price: 500, buy: () => invAdd('chute', 2) },
+  { id: 'diamond', name: '💍 Elmas yüzük', desc: `Değerli eşya · takas edilebilir · geri satış $${Math.round(ITEMS.diamond.value * 0.7)}`, price: 9000, buy: () => invAdd('diamond', 1) },
+  { id: 'clean', name: '🧹 Sicil temizliği', desc: 'Aranma yıldızlarını anında sil', price: 2500, ok: () => state.wanted > 0, buy: () => { state.heat = 0; state.wanted = 0; } },
+  { id: 'armor', name: '🦺 Askeri zırh + tüfek mermisi', desc: 'Zırh %100 · +300 tüfek mermisi', price: 1500, buy: () => { state.armor = 100; state.ownedW[2] = true; state.ammo[2] += 300; } },
+];
+function buildBlackMarket() {
+  const r = mulberry32(4242);
+  for (let k = 0; k < 400 && BM_SPOTS.length < 14; k++) {
+    const b = blocks[Math.floor(r() * N)][Math.floor(r() * N)]; if (b.park) continue;
+    const x = b.cx + (r() - 0.5) * 62, z = b.cz + (r() - 0.5) * 62;
+    if (insideBuilding(x, 0.5, z) || collide(x, z, 2.6, 0.5).hit || !collide(x, z, 6, 0.5).hit) continue;
+    if (BM_SPOTS.some(s => Math.hypot(s[0] - x, s[1] - z) < 120)) continue;
+    BM_SPOTS.push([x, z, AREA_NAMES[b.dist] || 'Şehir']);
+  }
+}
+function updateBlackMarket() {
+  const slot = Math.floor(Date.now() / 360000);
+  if (slot !== BM.slot && BM_SPOTS.length) {
+    BM.slot = slot; const r = mulberry32(slot * 97 + 13), [x, z, area] = BM_SPOTS[Math.floor(r() * BM_SPOTS.length)];
+    BM.x = x; BM.z = z; BM.area = area;
+    const pool = BM_LIST.slice(); BM.stock = []; while (BM.stock.length < 5 && pool.length) BM.stock.push(pool.splice(Math.floor(r() * pool.length), 1)[0]);
+    if (!BM.van) { BM.van = createCar('van', '#14141a', x, z, 0, 'free'); BM.van.bmVan = true; BM.van.delivery = true; BM.npc = makeHuman({ skin: '#8a5a3a', shirt: '#14141a', pants: '#14141a', hair: '#111', shoes: '#111', glasses: true, cap: '#14141a' }); }
+    const h = r() * Math.PI * 2; BM.van.group.position.set(x, groundY(x, z), z); BM.van.h = h; BM.van.group.rotation.set(0, h, 0); BM.van.y = groundY(x, z); BM.van.vx = BM.van.vz = 0; BM.van.active = true; BM.van.group.visible = true; BM.van.dead = false; BM.van.mode = 'free'; BM.van.air = false; BM.van.health = BM.van.maxHealth; BM.van.paint.material = BM.van.paintM;
+    BM.npc.g.position.set(x + Math.cos(h) * 2.6, groundY(x, z), z - Math.sin(h) * 2.6); BM.npc.g.rotation.y = h;
+    BM.nx = x + Math.cos(h) * 3.6; BM.nz = z - Math.sin(h) * 3.6;
+  }
+  if (BM.npc && BM.van && !BM.van.dead && !state.interact && !state.inCar && !state.interior && Math.hypot(player.pos.x - BM.nx, player.pos.z - BM.nz) < 2) state.interact = { label: '🕶 GİZLİ KARA BORSA', fn: () => openShop('bm') };
+}
+function bmItems() {
+  const it = [{ sec: `🕶 Bu stok ${Math.ceil(6 - (Date.now() / 60000) % 6)} dk sonra başka yere taşınıyor` }];
+  for (const o of BM.stock) it.push({ name: o.name, desc: o.desc, price: o.price, dis: o.ok && !o.ok() ? 'GEREKSİZ' : null, close: o.id === 'ghost', buy: o.buy });
+  it.push({ sec: 'Mal sat (değerin %70\'i)' });
+  for (const k of ['goldbar', 'diamond']) { const I = ITEMS[k], n = invCount(k), pay = Math.round(I.value * 0.7); it.push({ name: `${I.icon} ${I.name} ×${n}`, desc: `Birini $${pay}'a sat`, price: 0, btn: 'SAT', dis: n ? null : 'YOK', buy: () => { invAdd(k, -1); earn(pay, '🕶 Kara borsa satışı'); } }); }
+  return it;
+}
+// ---------------- player-to-player trades
+const TRADE = { out: null, inc: null };
+function openTrade(id) {
+  const r = MP.remotes.get(id); if (!r) return;
+  if (TRADE.out) { floatText('⏳ Önceki teklifin bekleniyor'); return; }
+  const mine = cars.filter(c => c.owned && !c.dead && c !== state.inCar && !c.home);
+  mpModal(`<b>🤝 ${esc(r.info.name)} ile takas</b><small>Ne veriyorsun, karşılığında ne kadar istiyorsun?</small>
+    <div class="trRow"><span>💵 Para ver</span><input id="trMoney" type="number" min="0" value="0"></div>
+    ${['goldbar', 'diamond', 'chute'].map(k => `<div class="trRow"><span>${ITEMS[k].icon} ${ITEMS[k].name} (${invCount(k)})</span><input id="trI_${k}" type="number" min="0" max="${invCount(k)}" value="0"></div>`).join('')}
+    <div class="trRow"><span>🚗 Araç ver</span><select id="trCar"><option value="">— yok —</option>${mine.map(c => `<option value="${cars.indexOf(c)}">${esc(carName(c))} · ${Math.round(Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z))} m</option>`).join('')}</select></div>
+    <div class="trRow"><span>🔁 Karşılığında iste ($)</span><input id="trWant" type="number" min="0" value="0"></div>
+    <div class="mmBtns"><button data-act="trSend" data-to="${esc(id)}">TEKLİF GÖNDER</button><button data-act="close" class="grey">Vazgeç</button></div>`);
+}
+function sendTrade(to) {
+  const v = id => Math.max(0, Math.floor(+($(id) || {}).value || 0));
+  const give = { money: Math.min(v('trMoney'), Math.floor(state.money)), items: {}, car: null }, want = v('trWant');
+  for (const k of ['goldbar', 'diamond', 'chute']) { const n = Math.min(v('trI_' + k), invCount(k)); if (n) give.items[k] = n; }
+  const ci = ($('trCar') || {}).value; let car = null;
+  if (ci !== '' && ci !== undefined) { car = cars[+ci]; if (car && car.owned) give.car = { kind: car.kind, hex: carHex(car), up: car.up }; else car = null; }
+  if (!give.money && !Object.keys(give.items).length && !give.car && !want) { floatText('Boş teklif'); return; }
+  // lock what is offered
+  state.money -= give.money; for (const k in give.items) invAdd(k, -give.items[k]);
+  if (car) { car.owned = false; car.active = false; car.group.visible = false; }
+  TRADE.out = { to, give, want, car, t: 30 };
+  mpSend({ t: 'trade', to, give, want }); closeModal(); floatText('🤝 Teklif gönderildi · 30 sn');
+}
+function refundTrade(why) {
+  const T = TRADE.out; if (!T) return; TRADE.out = null;
+  state.money += T.give.money; for (const k in T.give.items) invAdd(k, T.give.items[k]);
+  if (T.car) { T.car.owned = true; T.car.active = true; T.car.group.visible = true; }
+  floatText(why || '🤝 Teklif geri çekildi');
+}
+const describeGive = g => [g.money ? `$${g.money.toLocaleString('tr-TR')}` : '', ...Object.entries(g.items || {}).map(([k, n]) => `${ITEMS[k].icon}×${n}`), g.car ? `🚗 ${carName({ kind: g.car.kind })}` : ''].filter(Boolean).join(' + ') || 'hiçbir şey';
+function handleTrade(d) {
+  const r = MP.remotes.get(d.id);
+  switch (d.t) {
+    case 'trade':
+      if (!r || TRADE.inc) { mpSend({ t: 'trade_no', to: d.id }); return true; }
+      TRADE.inc = { from: d.id, give: d.give || {}, want: Math.max(0, +d.want || 0), t: 30 };
+      mpModal(`<b>🤝 ${esc(r.info.name)} takas teklif ediyor</b><small>Sana veriyor: <b>${describeGive(d.give || {})}</b><br>Karşılığında istiyor: <b>$${(+d.want || 0).toLocaleString('tr-TR')}</b></small><div class="mmBtns"><button data-act="trAcc" ${state.money < (+d.want || 0) ? 'disabled' : ''}>KABUL</button><button data-act="trDec" class="grey">Reddet</button></div>`);
+      AudioSys.tone(660, 0.15, 0.2, 'square'); return true;
+    case 'trade_ok': if (TRADE.out && TRADE.out.to === d.id) { const T = TRADE.out; TRADE.out = null; if (T.want) earn(T.want, '🤝 Takas'); if (T.car) { scene.remove(T.car.group); const i = cars.indexOf(T.car); if (i >= 0) cars.splice(i, 1); } saveGame(); showBig('🤝 TAKAS TAMAM', '#7dff9a', 2.5, `${r ? r.info.name : ''} kabul etti${T.want ? ' · +$' + T.want : ''}`); AudioSys.cash(); } return true;
+    case 'trade_no': if (TRADE.out && TRADE.out.to === d.id) refundTrade(`🤝 ${r ? r.info.name : 'Oyuncu'} teklifi reddetti`); return true;
+  }
+  return false;
+}
+function answerTrade(ok) {
+  const I = TRADE.inc; if (!I) return; TRADE.inc = null; closeModal();
+  if (!ok || state.money < I.want) { mpSend({ t: 'trade_no', to: I.from }); return; }
+  state.money -= I.want; if (I.want) ledger('🤝 Takas', -I.want);
+  if (I.give.money) earn(Math.min(1e8, I.give.money), '🤝 Takas');
+  for (const k in I.give.items || {}) if (ITEMS[k]) invAdd(k, Math.min(50, I.give.items[k]));
+  if (I.give.car && CAR_SPECS[I.give.car.kind] && !CAR_SPECS[I.give.car.kind].plane) { const a = player.yaw, rr = collide(player.pos.x + Math.sin(a) * 6, player.pos.z + Math.cos(a) * 6, 1.5, 0.5), c = createCar(I.give.car.kind, I.give.car.hex, rr.x, rr.z, a, 'free'); c.owned = true; Object.assign(c.up, I.give.car.up || {}); applyCarStyle(c, c.up.neon, c.up.rim); }
+  mpSend({ t: 'trade_ok', to: I.from }); saveGame(); showBig('🤝 TAKAS TAMAM', '#7dff9a', 2.5, describeGive(I.give)); AudioSys.cash();
+}
+function updateTrades(dt) {
+  if (TRADE.out) { TRADE.out.t -= dt; if (TRADE.out.t <= 0) { mpSend({ t: 'trade_no', to: TRADE.out.to }); refundTrade('⏳ Teklif zaman aşımına uğradı'); } }
+  if (TRADE.inc) { TRADE.inc.t -= dt; if (TRADE.inc.t <= 0) answerTrade(false); }
+  if (!MP.on && TRADE.out) refundTrade();
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -5217,7 +5393,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank() }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -5385,6 +5561,7 @@ function applyPacket(d) {
   if (handleAccount(d)) return;
   if (handleBigHeist(d)) return;
   if (handleCops(d)) return;
+  if (handleTrade(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -5439,7 +5616,7 @@ function vehVisual(kind, color) {
   c.remote = true; return c;
 }
 function drawTag(r) {
-  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + (r.info.cop ? '👮 ' : '') + crewTag(r.info.crew) + r.info.name;
+  const bagC = MODES.ctf && MODES.ctf.carrier === r.id, nm = (r.acct && r.acct.role === 'admin' ? '🛡 ' : '') + (r.info.cop ? '👮 ' : '') + ((RANKS[r.info.rank] || RANKS[0]).icon + ' ') + crewTag(r.info.crew) + r.info.name;
   const key = `${nm}|${r.hp}|${r.wn}|${r.bounty || 0}|${r.bubbleT > 0 ? r.bubble : ''}|${bagC}|${sameCrew(r)}`;
   if (key === r.tagKey) return; r.tagKey = key;
   const cv = r.tag.material.map.image; cv.width = 256; cv.height = 128; const g = cv.getContext('2d');
@@ -6403,7 +6580,7 @@ function initModesUI() {
     const b = e.target.closest('button'); if (!b || b.disabled) return; e.stopPropagation();
     if (b.dataset.col) { m.querySelectorAll('[data-col]').forEach(x => x.classList.toggle('on', x === b)); return; }
     const a = b.dataset.act;
-    if (a === 'close') closeModal();
+    if (a === 'close') { closeModal(); if (TRADE.inc) answerTrade(false); }
     if (a === 'crewMake') {
       const name = ($('crewName').value || '').trim().slice(0, 14) || 'Çete', col = (m.querySelector('[data-col].on') || {}).dataset?.col || MP.color;
       MP.crew = { id: myNetId() + Date.now().toString(36), name, tag: name.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü0-9]/g, '').slice(0, 4).toUpperCase() || 'ÇETE', color: col, owner: MP.name };
@@ -6420,6 +6597,9 @@ function initModesUI() {
       MP.crew = state.crewInv.crew; saveCrew(); sendInfo(); mpSend({ t: 'crew_ok', to: state.crewInv.from }); showBig('👥 ÇETEYE KATILDIN', MP.crew.color, 2.5, crewTag(MP.crew) + MP.crew.name); closeModal();
     }
     if (a === 'crewDec') closeModal();
+    if (a === 'trSend') sendTrade(b.dataset.to);
+    if (a === 'trAcc') answerTrade(true);
+    if (a === 'trDec') answerTrade(false);
   });
 }
 function mpListAction(v) {
@@ -6427,12 +6607,13 @@ function mpListAction(v) {
   else if (v === 'crewleave') { MP.crew = null; saveCrew(); sendInfo(); floatText('👥 Çeteden ayrıldın'); renderMpList(); }
   else if (v === 'dm' || v === 'ctf') { mpSend({ t: 'mode_req', to: 'h', k: v, x: r1(player.pos.x), z: r1(player.pos.z) }); if (MP.host) hostStartMode(v, player.pos.x, player.pos.z); $('mpList').style.display = 'none'; }
   else if (v.startsWith('pay:')) openPay(v.slice(4));
+  else if (v.startsWith('trade:')) { $('mpList').style.display = 'none'; openTrade(v.slice(6)); }
   else if (v.startsWith('inv:')) { const r = MP.remotes.get(v.slice(4)); if (r && MP.crew) { mpSend({ t: 'crew_inv', to: r.id, crew: MP.crew }); floatText(`👥 ${r.info.name} davet edildi`); } }
 }
 function renderMpActions() {
   let h = `<div class="mpSec">Çete</div><div class="mpAct">${MP.crew ? `<span><i style="background:${MP.crew.color}"></i>${esc(crewTag(MP.crew) + MP.crew.name)}</span><button data-mp="crewleave" class="red">Ayrıl</button>` : '<span>Çeten yok</span><button data-mp="crew">👥 Çete kur</button>'}</div>`;
   h += `<div class="mpSec">Oyuncular</div>`;
-  for (const r of MP.remotes.values()) h += `<div class="mpAct"><span><i style="background:${sameCrew(r) ? MP.crew.color : r.info.color}"></i>${esc(crewTag(r.info.crew) + r.info.name)}</span><button data-mp="pay:${esc(r.id)}">💸</button>${MP.crew && !sameCrew(r) ? `<button data-mp="inv:${esc(r.id)}">👥 Davet</button>` : ''}</div>`;
+  for (const r of MP.remotes.values()) h += `<div class="mpAct"><span><i style="background:${sameCrew(r) ? MP.crew.color : r.info.color}"></i>${esc(crewTag(r.info.crew) + r.info.name)}</span><button data-mp="pay:${esc(r.id)}">💸</button><button data-mp="trade:${esc(r.id)}">🤝</button>${MP.crew && !sameCrew(r) ? `<button data-mp="inv:${esc(r.id)}">👥 Davet</button>` : ''}</div>`;
   if (!MP.remotes.size) h += '<div class="mpAct"><span>Odada başka oyuncu yok</span></div>';
   h += `<div class="mpSec">Modlar</div><div class="mpAct"><button data-mp="dm" ${MODES.dm ? 'disabled' : ''}>⚔ Deathmatch · 3 dk</button><button data-mp="ctf" ${MODES.ctf ? 'disabled' : ''}>💰 Altın Çanta · 4 dk</button></div>`;
   return h;
@@ -7252,7 +7433,7 @@ function onRemoteKill(d) {
   const victim = MP.remotes.get(d.id), killer = d.killer === MP.myId ? null : MP.remotes.get(d.killer);
   if (victim) { victim.dead = true; setTimeout(() => { if (victim) victim.dead = false; }, 4000); }
   if (d.killer === MP.myId) {
-    SB.k++; SB.streak++; S().kills++; copKill(d);
+    SB.k++; SB.streak++; S().kills++; copKill(d); addRep(25, 'PvP');
     floatText(`☠ ${victim ? victim.info.name : 'Oyuncu'} alt edildi`); AudioSys.tone(220, 0.25, 0.25, 'sawtooth', 0.5);
     if (d.bounty > 0) { earn(d.bounty, '🎯 Ödül avı'); showBig('ÖDÜL ALINDI!', '#ff3050', 3, `+$${d.bounty} · ${victim ? victim.info.name : ''}`); AudioSys.cash(); }
     if (SB.streak === BOUNTY_STREAK) showBig('BAŞINA ÖDÜL KONDU', '#ff3050', 3, `$${myBounty()} · diğer oyuncular seni avlayabilir!`);
@@ -7266,8 +7447,8 @@ function updateStage3(dt) {
   SB.t += dt; if (SB.t > 3) sendScore();
 }
 function renderScoreboard() {
-  const rows = [{ name: crewTag(MP.crew) + MP.name + ' (sen)', color: MP.color, k: SB.k, d: SB.d, rw: S().racesWon, m: Math.round(state.money), b: myBounty(), me: true }];
-  for (const r of MP.remotes.values()) { const s = r.sb || {}; rows.push({ name: crewTag(r.info.crew) + r.info.name, color: r.info.color, k: s.k || 0, d: s.d || 0, rw: s.rw || 0, m: s.m || 0, b: s.b || 0, dist: Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z)) }); }
+  const rows = [{ name: RANKS[myRank()].icon + ' ' + crewTag(MP.crew) + MP.name + ' (sen)', color: MP.color, k: SB.k, d: SB.d, rw: S().racesWon, m: Math.round(state.money), b: myBounty(), me: true }];
+  for (const r of MP.remotes.values()) { const s = r.sb || {}; rows.push({ name: (RANKS[r.info.rank] || RANKS[0]).icon + ' ' + crewTag(r.info.crew) + r.info.name, color: r.info.color, k: s.k || 0, d: s.d || 0, rw: s.rw || 0, m: s.m || 0, b: s.b || 0, dist: Math.round(Math.hypot(r.x - player.pos.x, r.z - player.pos.z)) }); }
   rows.sort((a, b) => b.k - a.k || a.d - b.d);
   return `<table class="sbT"><tr><th>#</th><th>Oyuncu</th><th>☠</th><th>💀</th><th>🏁</th><th>💵</th><th>🎯</th></tr>${rows.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td><i style="background:${r.color}"></i>${esc(r.name)}${r.dist != null ? ` <small>${r.dist} m</small>` : ''}</td><td>${r.k}</td><td>${r.d}</td><td>${r.rw}</td><td>$${(r.m / 1000).toFixed(1)}k</td><td>${r.b ? '<b class="bty">☠ $' + r.b + '</b>' : '—'}</td></tr>`).join('')}</table>`;
 }
@@ -7775,6 +7956,8 @@ function loop(now) {
   updateStation();
   updateWrecks(dt);
   updateCargo(dt);
+  updateBlackMarket();
+  updateTrades(dt);
   updateAirport(dt);
   updateIslands(dt);
   updateFlightJob(dt);
@@ -7821,6 +8004,7 @@ function loop(now) {
   updateHUD(dt);
   updateContextButtons();
   updateCopHud();
+  updateRankHud();
   AudioSys.update(dt, pd);
   if (!renderer.shadowMap.autoUpdate && frame % 2 === 0) renderer.shadowMap.needsUpdate = true;
   if (composer) composer.render(); else renderer.render(scene, camera);

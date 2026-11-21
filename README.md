@@ -53,7 +53,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🎫 Bilet gişesi** (terminal içi): adalara hızlı seyahat (uçuş sineması), adalardaki gişeden dönüş uçuşu. **Uçuş görevleri**: 📦 Ada Kargosu ($4.000), ⭕ Halka Parkuru (10 hava halkası, $3.000 + süre bonusu), 📸 Şehir Turu ($2.500)
 - **🎯 Nişangâh**: mermi tam nişangâhın gösterdiği yere gider (mobilde hafif nişan yardımı)
 - **🚪 Özel iç mekanlar**: dans eden kalabalık ve müzikli Gece Kulübü; Lüks Villa içi (yatakta uyu & kaydet, gardırop)
-- **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir
+- **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir. **Ceketler** (deri, blazer, bomber, kamuflaj, beyaz), **fötr / bere / altın taç**, **özel kostümler** (Plaj, Motorcu, Pilot, Takım elbise, Vista Kralı) — bazıları rütbe ister; online'da herkes aynı kıyafeti görür
+- **🏅 İtibar rütbeleri**: görev, soygun, yarış, hazine ve PvP ile itibar kazan (her $100 = 1, PvP leşi = 25): 🔰 Çaylak → 🎯 Tetikçi (300) → 🎩 Mafya Babası (1.500) → 👑 Vista Kralı (5.000). Rütbe sağ üstte, online'da isim etiketinde ve skor tablosunda görünür
+- **🔫 Silah kaplamaları**: rütbeye özel Mat Siyah / Krom / Kızıl Ejder / Altın (Vista Moda'da) + sadece kara borsada satılan parlak **Kara Borsa Altını** — elindeki silahta, diğer oyunculara da görünür
+- **🕶 Gizli Kara Borsa**: siyah minibüs her 6 dakikada şehrin başka bir ara sokağına taşınır (online'da herkes için aynı yer ve aynı stok). Stoktan rastgele 5 ürün: Kara Borsa Altını kaplama, "Kara Hayalet" zırhlı süper araç, roketatar, sahte pasaport, paraşüt, elmas yüzük, sicil temizliği, askeri zırh. Altın külçe ve elmas yüzük de burada satılır
+- **🎒 Değerli eşyalar**: batık sandıklarından çıkan 🏅 altın külçe ve 💍 elmas yüzük çantada saklanır, satılabilir ya da takas edilebilir
 - **📷 Fotoğraf modu** (telefon → Foto): oyunu durdurur, kamerayı serbestçe döndür, JPG olarak kaydet
 - **⚙️ Ayarlar** (telefon): FPS göstergesi, otomatik çözünürlük, titreşim, kamera hassasiyeti, grafik kalitesi, kaydı sıfırla
 - **Daha yumuşak grafik**: dizli/dirsekli, yüzlü yeni karakterler; yuvarlatılmış araç gövdeleri ve jantlı tekerlekler; daha yuvarlak ağaçlar; bina saçakları; Orta kalitede FXAA kenar yumuşatma
@@ -88,6 +92,7 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏴 Çete bölge savaşları** (online): şehir 4 bölgeye + havalimanına ayrılır, her bölgede bayrak var. Çete üyeleri bayrağın 16 m yakınında yaya beklerse bölgeyi ~60 sn'de ele geçirir (kalabalık daha hızlı). Rakip çete bayrağı ~45 sn'de indirip savaş başlatır; sahip çeteye ⚔ uyarı gider, iki çete aynı anda oradaysa ilerleme durur. Bölge sahibi çete üyeleri her 2 dakikada bölge başına $500 vergi alır; haritada bölge sınırları çete renginde görünür, sahiplik oda sahibinde kalıcı tutulur
 - **👥 Çeteler** (skor tablosu L / 🌐): isim + renk seçip çete kur, oyuncuları davet et; isim etiketinde [ETİKET], haritada çete rengi, **dost ateşi kapalı**, bir üye para kazandığında 250 m içindeki çete arkadaşlarına %25 çete payı (kazanandan düşülmez)
 - **💸 Para transferi**: skor tablosunda oyuncunun yanındaki 💸 ile $100-$5.000 gönder
+- **🤝 Takas**: skor tablosunda oyuncunun yanındaki 🤝 → para, altın külçe, elmas yüzük, paraşüt ve/veya kendi aracını ver, karşılığında para iste. Teklif edilenler gönderilince kilitlenir; karşı taraf kabul ederse eşyalar/araç ona geçer (araç yanında belirir, yükseltmeleriyle), reddederse ya da 30 sn içinde cevap gelmezse her şey geri döner
 - **🚁 Yolcu**: arkadaşının sürdüğü araba, tekne, helikopter ya da uçağın yanında F / 🚗 → yolcu koltuğu, camdan ateş edebilirsin
 - **⚔ Deathmatch** (3 dk): başlatanın etrafında kırmızı bölge; bölgeye giren katılır (+120 mermi), ölen bölgede yeniden doğar, en çok indiren $5.000 kazanır
 - **💰 Altın Çanta** (4 dk): yakında doğan altın çantayı kap — taşıyan %30 yavaşlar, herkes onu ışık sütunu ve haritadan görür; ölünce çanta düşer; 60 sn tutan (ya da süre bitince en uzun tutan) $8.000 kazanır
