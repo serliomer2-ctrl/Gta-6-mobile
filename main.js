@@ -330,6 +330,7 @@ function init() {
   buildCity();
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
   buildAirport();
+  buildIslands();
   buildDoorMeshes();
   buildOcean();
   buildProps();
@@ -350,6 +351,7 @@ function init() {
   buildDockAndPads();
   buildRoofAccess();
   buildSpecialVehicles();
+  buildPlanes();
   buildGang();
   buildStuntRamps();
   buildTurfs();
@@ -695,7 +697,7 @@ function buildProps() {
   const tI = new THREE.InstancedMesh(trunk, trunkMat, palms.length), fI = new THREE.InstancedMesh(frondGeo, leafMat, palms.length);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   palms.forEach(([x, z, r, s], i) => {
-    const bb = blockAt(x, z), y = x > SHORE_X ? sandHeight(x) : (bb ? (bb.park || bb.dist === 'residential' ? 0.31 : 0.25) : 0.02);
+    const bb = blockAt(x, z), y = x > WATERLINE + 150 ? groundY(x, z) : x > SHORE_X ? sandHeight(x) : (bb ? (bb.park || bb.dist === 'residential' ? 0.31 : 0.25) : 0.02);
     m4.compose(ps.set(x, y, z), q.setFromAxisAngle(up, r), sc.set(s, s, s)); tI.setMatrixAt(i, m4); fI.setMatrixAt(i, m4);
   });
   const sh = QUALITY !== 'low';
@@ -766,6 +768,7 @@ function blockAt(x, z) {
   return (Math.abs(x - b.cx) <= BLOCK / 2 && Math.abs(z - b.cz) <= BLOCK / 2) ? b : null;
 }
 function groundY(x, z) {
+  if (x > WATERLINE + 150) { const I = islandAt(x, z, 25); if (I) return Math.max(islandGround(I, x, z), sandHeight(x)); }
   let g = x > SHORE_X ? sandHeight(x) : (blockAt(x, z) ? 0.25 : 0);
   { const r = rampHeight(x, z); if (r > g) g = r; }
   if (x > BEACH_X0 && onDock(x, z)) g = Math.max(g, DOCK.y);
@@ -789,10 +792,12 @@ function collide(x, z, r, y = 0, bounds = true) {
   const i0 = Math.floor((x - r - OFF) / CELL), i1 = Math.floor((x + r - OFF) / CELL), j0 = Math.floor((z - r - OFF) / CELL), j1 = Math.floor((z + r - OFF) / CELL);
   for (let i = Math.max(0, i0); i <= Math.min(N - 1, i1); i++) for (let j = Math.max(0, j0); j <= Math.min(N - 1, j1); j++)
     for (const b of blocks[i][j].bld) { if (y > b.h) continue; pushOut(b, r); }
-  if (nearAir(z)) for (const b of EXTRA_BLD) { if (y > b.h || (b.y0 && y + 1.7 < b.y0)) continue; pushOut(b, r); }
+  if (nearAir(z, x)) for (const b of EXTRA_BLD) { if (y > b.h || (b.y0 && y + 1.7 < b.y0)) continue; pushOut(b, r); }
   x = _cx; z = _cz;
   // world bounds
-  if (bounds) {
+  const isl = bounds && x > WATERLINE + 150 ? islandAt(x, z, 40) : null;
+  if (isl) { const dx = x - isl.x, dz = z - isl.z, d = Math.hypot(dx, dz), m = isl.R - 2 - r; if (d > m) { x = isl.x + dx / d * m; z = isl.z + dz / d * m; hitRes.hit = true; hitRes.nx -= dx / d; hitRes.nz -= dz / d; } }
+  else if (bounds) {
     if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
     if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; }
   }
@@ -800,7 +805,7 @@ function collide(x, z, r, y = 0, bounds = true) {
   hitRes.x = x; hitRes.z = z; return hitRes;
 }
 function insideBuilding(x, y, z) {
-  if (nearAir(z)) for (const o of EXTRA_BLD) if (y < o.h && y > (o.y0 || -1) && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true;
+  if (nearAir(z, x)) for (const o of EXTRA_BLD) if (y < o.h && y > (o.y0 || -1) && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true;
   const b = blockAt(x, z); if (!b) return false;
   for (const o of b.bld) if (y < o.h && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true;
   return false;
@@ -816,7 +821,7 @@ const nearestNode = (x, z) => [clamp(Math.round((x - OFF) / CELL), 0, N), clamp(
 const EXTRA_BLD = [];        // airport & other off-grid structures (same AABB format as block.bld, optional y0 = underside)
 const AIR = { x0: -430, x1: 350, z0: 452, z1: 830 };
 const inAirport = (x, z) => x > AIR.x0 && x < AIR.x1 && z > AIR.z0 && z < AIR.z1;
-const nearAir = z => z > AIR.z0 - 20;
+const nearAir = (z, x = 0) => z > AIR.z0 - 20 || x > WATERLINE + 150;   // airport or islands
 // actual top surface of a collision box at (x,z): flat roof, pitched house roof or arched hangar roof
 function bldTop(o, x, z) {
   if (o.arch) { const a = o.arch, d = x - a.cx; return a.base + a.k * Math.sqrt(Math.max(0, a.r * a.r - d * d)); }
@@ -829,7 +834,7 @@ function surfaceY(x, z, yRef) {
   let s = groundY(x, z);
   const lim = yRef + 0.6, b = blockAt(x, z);
   if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) { const t = bldTop(o, x, z); if (t <= lim && t > s) s = t; }
-  if (nearAir(z)) for (const o of EXTRA_BLD) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) { const t = bldTop(o, x, z); if (t <= lim && t > s) s = t; }
+  if (nearAir(z, x)) for (const o of EXTRA_BLD) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) { const t = bldTop(o, x, z); if (t <= lim && t > s) s = t; }
   return s;
 }
 // find a free spot next to a vehicle at the vehicle's own height (roof / helipad / ground) — no more teleport to y=0
@@ -1272,7 +1277,9 @@ function bikeCrash(c, impact) {
 }
 function damageCar(c, amt, fromCrash) {
   if (c.dead) return;
+  if (c.netTruck) { if (MP.on) mpSend({ t: 'tkd', to: 'h', a: Math.round(amt) }); return; }
   if (NW.client && c.mode === 'net') { mpSend({ t: 'cd', to: 'h', i: c.wIdx, a: Math.round(amt) }); return; }
+  if (c.event === 'truck' && !c._rh) c.lastHit = 'h';
   if (c.up && c.up.armor) amt *= 0.5;
   c.health -= amt;
   if (c.mode === 'player' && fromCrash) state.health -= amt * 0.12;
@@ -1286,6 +1293,7 @@ function explodeCar(c) {
   c.vy = 7; c.air = true;
   if (c.police) addHeat(1.2);
   if (state.inCar === c) { exitCar(true); state.health -= 45; }
+  else if (c.svIdx !== undefined && !c._netBoom && !c.svTaken) svSend(c, false);
   setTimeout(() => {
     if (!c.dead || c.police || c.display || c.delivery) return;
     if (c.home) { respawnSpecial(c); return; }
@@ -1327,29 +1335,33 @@ function enterCar() {
   if (best.spec.bike) { best.group.add(player.human.g); player.human.g.position.set(0, 0.45, -0.28); player.human.g.rotation.set(0.32, 0, 0); }
   else player.human.g.visible = false;
   if (state.soundMode === 0) floatText('📻 VISTA FM 101.4');
-  document.body.classList.add('incar'); document.body.classList.toggle('inheli', !!best.spec.heli);
+  document.body.classList.add('incar'); document.body.classList.toggle('inheli', !!(best.spec.heli || best.spec.plane)); document.body.classList.toggle('inplane', !!best.spec.plane); setFlightButtons(best);
+  if (best.svIdx !== undefined) svSend(best, true);
   if (best.spec.heli) floatText('🚁 Motor ısınıyor… ▲ YÜKSEL ile kalk');
+  if (best.spec.plane) floatText(`✈ ▲ GAZ ile hızlan · ${Math.round(best.spec.vr * 3.6)} km/s'de joystick yukarı = kalkış`);
   AudioSys.door();
 }
 function exitCar(forced) {
   const c = state.inCar; if (!c) return;
   if (state.stunt && (forced || !(c.spec.heli && c.y - heliFloor(c) > 1.2))) endStunt(false);
   if (c.spec.heli && !forced && c.y - heliFloor(c) > 1.2) { floatText('🚁 Önce yere in'); return; }
+  if (c.spec.plane && !forced && (c.y - planeFloor(c.group.position.x, c.group.position.z) > 1.2 || c.speed > 4)) { floatText('✈ Önce in ve dur'); return; }
   const sp = carSpeed(c);
   c.mode = c.dead ? 'dead' : 'free'; c.driver = false; state.inCar = null;
+  if (c.svIdx !== undefined) svSend(c, false);
   if (NW.client && c.wIdx >= 0) netCarRelease(c);
   { const [x, y, z] = exitSpot(c); player.pos.set(x, y, z); player.vy = 0; player.onGround = true; } // driver side, at the vehicle's height
   if (c.spec.boat) {
     const bx = c.group.position.x, bz = c.group.position.z;
     if (bx < DOCK.x1 + 8 && Math.abs(bz - DOCK.z) < 12) player.pos.set(clamp(bx, DOCK.x0 + 1, DOCK.x1 - 1), DOCK.y, DOCK.z);
-    else { player.pos.set(WATERLINE - 3, 0.05, clamp(bz, BOUNDS.z0, BOUNDS.z1)); floatText('🏊 Kıyıya yüzdün'); }
+    else { const I = islandAt(bx, bz, 60); if (I) { const dx = bx - I.x, dz = bz - I.z, dd = Math.hypot(dx, dz) || 1, px = I.x + dx / dd * (I.R - 5), pz = I.z + dz / dd * (I.R - 5); player.pos.set(px, groundY(px, pz), pz); floatText('🏊 Adaya yüzdün'); } else { player.pos.set(WATERLINE - 3, 0.05, clamp(bz, BOUNDS.z0, BOUNDS.z1)); floatText('🏊 Kıyıya yüzdün'); } }
   }
   if (c.spec.heli) c.vy = 0;
   if (player.human.g.parent !== scene) scene.add(player.human.g);
   player.human.g.rotation.set(0, c.h, 0); player.human.g.children[4].position.y = 0;
   player.human.g.visible = true; player.yaw = c.h;
   if (sp > 12 && !forced) state.health -= 8;
-  document.body.classList.remove('incar', 'inheli');
+  document.body.classList.remove('incar', 'inheli', 'inplane');
   AudioSys.door();
 }
 function updatePlayerFoot(dt) {
@@ -1407,6 +1419,7 @@ function updatePlayerCar(dt) {
   let throttle = clamp(input.my + (input.gas ? 1 : 0) - (input.brake ? 1 : 0), -1, 1);
   if (c.spec.boat) boatPhysics(c, dt, throttle, clamp(input.mx, -1, 1));
   else if (c.spec.heli) heliPhysics(c, dt, throttle, clamp(input.mx, -1, 1), (input.up ? 1 : 0) - (input.down ? 1 : 0));
+  else if (c.spec.plane) { const gk = !!(keys.KeyG || keys.TGear); if (gk && !c._gk) togglePlaneGear(c); c._gk = gk; planePhysics(c, dt, { thr: (input.up || input.gas ? 1 : 0) - (input.down || input.brake ? 1 : 0), pitch: clamp(input.my, -1, 1), roll: clamp(input.mx, -1, 1) }); }
   else carPhysics(c, dt, throttle, clamp(input.mx, -1, 1), input.hand);
   if (!state.inCar) return; // crashed off bike
   updateStunt(c, state.realDt);
@@ -1733,7 +1746,11 @@ function spawnPickups() {
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.2, 40).rotateX(-Math.PI / 2).translate(0, 0.1, 0), new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
   markerGroup.add(beam, ring); markerGroup.visible = false; scene.add(markerGroup);
 }
-function spawnCash(x, z, amt, respawn, kind = 'cash') { if (pickups.length < 110) pickups.push({ x, z, amt, respawn, kind, t: Math.random() * 6 }); }
+function spawnCash(x, z, amt, respawn, kind = 'cash') {
+  if (MP.on && !MP.host) { mpSend({ t: 'pu_req', to: 'h', x: r1(x), z: r1(z), amt, rs: respawn ? 1 : 0, k: kind }); return; }
+  const p = puSpawnLocal(x, z, amt, respawn, kind);
+  if (p && MP.on && MP.host) mpSend({ t: 'pu', a: [puRow(p)] });
+}
 const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s4 = new THREE.Vector3(1, 1, 1), e4 = new THREE.Euler();
 function updatePickups(dt) {
   let n = 0;
@@ -1750,7 +1767,8 @@ function updatePickups(dt) {
       }
       for (let k = 0; k < 8; k++) FX.add.spawn(p.x, 1, p.z, MR(-2, 2), MR(1, 4), MR(-2, 2), 0.5, 0.3, 0, 0.3, 2, 0.6, 1, 6);
       pickups.splice(i, 1);
-      if (p.respawn) { const [x, z] = randomSidewalk(); setTimeout(() => spawnCash(x, z, RI(5, 30) * 10, true, p.kind), p.kind === 'cash' ? 0 : 45000); }
+      if (MP.on && !MP.host) mpSend({ t: 'pu_take', to: 'h', i: p.id });
+      else { if (MP.on) mpSend({ t: 'pu_rm', i: p.id }); puRespawn(p); }
       continue;
     }
   }
@@ -2007,7 +2025,7 @@ function carCollisions() {
   for (let a = 0; a < act.length; a++) for (let b = a + 1; b < act.length; b++) {
     const A = act[a], B = act[b], pa = A.group.position, pb = B.group.position;
     if ((A.mode === 'ai' || A.mode === 'net') && (B.mode === 'ai' || B.mode === 'net')) continue;
-    if (A.spec.heli || B.spec.heli || A.spec.boat || B.spec.boat) continue;
+    if (A.spec.heli || B.spec.heli || A.spec.boat || B.spec.boat || A.spec.plane || B.spec.plane) continue;
     if (Math.abs(pa.x - pb.x) > 6 || Math.abs(pa.z - pb.z) > 6) continue;
     for (const sa of [1, -1]) for (const sb of [1, -1]) {
       const oa = A.spec.co ?? 1.2, ob = B.spec.co ?? 1.2;
@@ -2145,14 +2163,14 @@ function updateCamera(dt) {
     camera.fov = damp(camera.fov, 48, 3, dt); camera.updateProjectionMatrix(); input.lookDX = input.lookDY = 0; return;
   }
   const c = state.inCar;
-  const tx = player.pos.x, ty = player.pos.y + (c ? (c.spec.heli ? 2.6 : 1.7) : 1.55), tz = player.pos.z;
+  const tx = player.pos.x, ty = player.pos.y + (c ? (c.spec.heli ? 2.6 : c.spec.plane ? (c.spec.len > 10 ? 3.4 : 2.4) : 1.7) : 1.55), tz = player.pos.z;
   camYaw -= input.lookDX * settings.sens; camPitch = clamp(camPitch + input.lookDY * settings.sens, -0.35, 1.25);
   if (input.lookDX || input.lookDY) state.lastLookInput = state.now;
   input.lookDX = input.lookDY = 0;
   let dist = state.interior ? 3 : state.passenger ? 8.5 : 4.6;
   if (c) {
     const sp = carSpeed(c);
-    dist = (c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
+    dist = (c.spec.plane ? (c.spec.len > 10 ? 24 : 17) : c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
     if (state.now - state.lastLookInput > 1.3 && sp > 2) {
       const behind = (carFwd(c) < -1 ? c.h : c.h + Math.PI);
       camYaw += wrapA(behind - camYaw) * (1 - Math.exp(-3.5 * dt));
@@ -2248,7 +2266,7 @@ function initInput() {
     const up = e => { e.preventDefault(); keys[key] = false; el.classList.remove('down'); };
     el.addEventListener('touchend', up, opts); el.addEventListener('touchcancel', up, opts);
   };
-  btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown');
+  btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown'); btn('bGear', 'TGear');
   btn('bEnter', 'TEnter', enterCar);
   btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact);
   $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
@@ -2280,7 +2298,7 @@ function floatText(t) {
   $('hud').appendChild(el); requestAnimationFrame(() => { el.style.transform = 'translateY(-40px)'; el.style.opacity = 0; }); setTimeout(() => el.remove(), 1300);
 }
 let mapBase, mapCtx, lastStars = -1;
-const MAP = { x0: -HALF - 150, x1: WATERLINE + 160, z0: -HALF - 150, z1: AIR.z1 + 70 }; MAP.size = Math.max(MAP.x1 - MAP.x0, MAP.z1 - MAP.z0);
+const MAP = { x0: -HALF - 150, x1: 1720, z0: -860, z1: 1360 }; MAP.size = Math.max(MAP.x1 - MAP.x0, MAP.z1 - MAP.z0);
 function buildMinimapBase() {
   const S = Math.round(MAP.size * 0.887), k = S / MAP.size, X = x => (x - MAP.x0) * k, Z = z => (z - MAP.z0) * k;
   mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = S;
@@ -2293,6 +2311,7 @@ function buildMinimapBase() {
     g.fillStyle = b.park ? '#3d8a44' : '#2a2d33'; g.fillRect(X(b.cx - BLOCK / 2), Z(b.cz - BLOCK / 2), BLOCK * k, BLOCK * k);
     g.fillStyle = '#454a54'; for (const o of b.bld) g.fillRect(X(o.x0), Z(o.z0), (o.x1 - o.x0) * k, (o.z1 - o.z0) * k);
   }
+  drawIslandsMap(g, X, Z, k);
   drawAirportMap(g, X, Z, k);
   MAP.k = k; MAP.S = S; MAP.X = X; MAP.Z = Z;
   mapCtx = $('minimap').getContext('2d');
@@ -2318,7 +2337,7 @@ function drawMinimap() {
   };
   for (const c of cars) if (c.active && c.police && c.mode === 'police') dot(c.group.position.x, c.group.position.z, Math.sin(state.now * 12) > 0 ? '#ff2040' : '#2060ff', 8, true);
   g.font = '18px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  for (const c of cars) if (c.home && !c.dead && c !== state.inCar) { const [px, py] = toMap(c.group.position.x, c.group.position.z); if (Math.hypot(px - r, py - r) < r - 10) g.fillText(c.spec.heli ? '🚁' : '🚤', px, py); }
+  for (const c of cars) if (c.home && c.active && !c.dead && c !== state.inCar) { const [px, py] = toMap(c.group.position.x, c.group.position.z); if (Math.hypot(px - r, py - r) < r - 10) g.fillText(c.spec.heli ? '🚁' : c.spec.plane ? '✈' : '🚤', px, py); }
   for (const c of cars) if (c.owned && !c.dead && c !== state.inCar) dot(c.group.position.x, c.group.position.z, '#40a0ff', 6, false);
   g.font = '22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (const s of SHOPS) { let [px, py] = toMap(s.x, s.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 15, 0, 7); g.fill(); g.strokeStyle = s.mapCol; g.lineWidth = 3; g.stroke(); g.fillText(s.icon, px, py + 1); }
@@ -2327,6 +2346,7 @@ function drawMinimap() {
   for (const t of TURFS) if (t.x !== undefined && !turfOwned(t.id)) { const [px, py] = toMap(t.x, t.z); if (Math.hypot(px - r, py - r) < r - 10) { g.fillStyle = t.color; g.beginPath(); g.arc(px, py, 11, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillText('⚔', px, py + 1); } }
   if (state.truck && state.truck.active && !state.truck.looted) { let [px, py] = toMap(state.truck.group.position.x, state.truck.group.position.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '18px sans-serif'; g.fillText('💰', px, py + 1); }
   if (state.waypoint) dot(state.waypoint.x, state.waypoint.z, '#c060ff', 9, true);
+  if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   for (const rp of MP.remotes.values()) { dot(rp.x, rp.z, rp.bounty ? '#ff2a3a' : rp.info.color, rp.bounty ? 11 : 8, true); if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
   if (state.heist) { let [px, py] = toMap(state.heist.x, state.heist.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.font = '17px sans-serif'; g.fillText('💼', px, py + 1); }
@@ -2643,12 +2663,13 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'elev' ? '🛗 ASANSÖR' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
 function shopItems(type) {
   if (type === 'elev') return elevItems();
+  if (type === 'ticket') return ticketItems();
   if (type === 'prop') return propItems();
   if (type === 'clothes') return clothesItems();
   const own = i => state.ownedW[i];
@@ -3087,7 +3108,7 @@ function waveH(x, z) {
   const t = state.now, k = smooth(WATERLINE, WATERLINE + 40, x);
   return -0.25 + k * (Math.sin(x * 0.045 + t * 0.8) * 0.35 + Math.sin(z * 0.06 - t * 0.6 + x * 0.02) * 0.25 + Math.sin((x + z) * 0.1 + t * 1.3) * 0.12);
 }
-function roofHeight(x, z) { const b = blockAt(x, z); let h = 0; if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); if (nearAir(z)) for (const o of EXTRA_BLD) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); return h; }
+function roofHeight(x, z) { const b = blockAt(x, z); let h = 0; if (b) for (const o of b.bld) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); if (nearAir(z, x)) for (const o of EXTRA_BLD) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) h = Math.max(h, o.h); return h; }
 const heliFloor = c => Math.max(groundY(c.group.position.x, c.group.position.z), roofHeight(c.group.position.x, c.group.position.z));
 function buildDockAndPads() {
   const wood = new THREE.MeshStandardMaterial({ map: noiseTex('#8a6a48', ['#7a5a3a', '#9a7a56', '#6a4a30'], 128, 2500, 1, 6), roughness: 0.9 });
@@ -3139,6 +3160,7 @@ function boatPhysics(c, dt, thr, steer) {
   const xmin = WATERLINE + 3.5;
   if (x < xmin) { x = xmin; c.vx = Math.abs(c.vx) * 0.2; if (Math.abs(vF) > 8 && c.mode === 'player') { AudioSys.crash(0.5); damageCar(c, Math.abs(vF)); } }
   x = Math.min(x, SHORE_X + 1500); z = clamp(z, -2800, 2800);
+  for (const I of ISLES) { const dx = x - I.x, dz = z - I.z, dd = Math.hypot(dx, dz); if (dd < I.R + 3) { x = I.x + dx / dd * (I.R + 3); z = I.z + dz / dd * (I.R + 3); c.vx *= 0.5; c.vz *= 0.5; } }
   if (x < DOCK.x1 + 1.5 && Math.abs(z - DOCK.z) < DOCK.w / 2 + 1.4) { const sd = z >= DOCK.z ? 1 : -1; if (x > DOCK.x1 - 0.5) x = DOCK.x1 + 1.5; else z = DOCK.z + sd * (DOCK.w / 2 + 1.4); c.vz *= -0.3; }
   c.group.position.x = x; c.group.position.z = z;
   const w = waveH(x, z), wf = waveH(x + s2 * 2.5, z + c2 * 2.5), wb = waveH(x - s2 * 2.5, z - c2 * 2.5);
@@ -3202,7 +3224,8 @@ function heliPhysics(c, dt, fwdIn, turnIn, liftIn) {
 }
 function respawnSpecial(c) {
   const h = c.home; c.dead = false; c.health = c.maxHealth; c.paint.material = c.paintM; c.mode = 'free'; c.vx = c.vz = c.vy = 0; c.air = false;
-  if (c.spec.heli) { c.y = h[1]; c.group.position.set(h[0], h[1], h[2]); c.h = h[3]; } else { c.group.position.set(h[0], 0, h[1]); c.h = h[2]; c.y = 0; }
+  if (c.spec.heli) { c.y = h[1]; c.group.position.set(h[0], h[1], h[2]); c.h = h[3]; } else { c.y = c.spec.plane ? groundY(h[0], h[1]) : 0; c.group.position.set(h[0], c.y, h[1]); c.h = h[2]; }
+  if (c.spec.plane) { c.speed = c.thr = c.pitch = c.roll = 0; c.gear = true; }
   c.group.rotation.set(0, c.h, 0); c.group.visible = true; c.active = true;
 }
 function buildSpecialVehicles() {
@@ -3210,6 +3233,348 @@ function buildSpecialVehicles() {
   createBoat('#c81e28', DOCK.x1 - 14, DOCK.z - DOCK.w / 2 - 1.6, Math.PI / 2);
   createHeli('#1a3a6a', HELIPADS[0][0], HELIPADS[0][1], HELIPADS[0][2], 0);
   createHeli('#e8e8e8', HELIPADS[1][0], HELIPADS[1][1], HELIPADS[1][2], -Math.PI / 2);
+}
+
+
+// ============================================================ ISLANDS (reachable by plane, boat, helicopter or ticket)
+const ISLE_TOP = 1.6;
+const ISLES = [
+  { id: 'palm', name: 'Palmiye Adası', code: 'VB101', price: 450, x: 1150, z: -650, R: 165, desc: 'Tatil adası · otel, havuz, plaj · uçak pisti', strip: [0, 20, 260], kiosk: [-95, 46], plane: [115, 42, -Math.PI / 2, '#e0a020'] },
+  { id: 'fener', name: 'Fener Adası', code: 'VB204', price: 350, x: 1500, z: 420, R: 115, desc: 'Deniz feneri ve bekçi evi · deniz uçağı iskelesi', kiosk: [-40, 30] },
+  { id: 'mercan', name: 'Mercan Koyu', code: 'VB330', price: 550, x: 980, z: 1150, R: 160, desc: 'Bungalovlar ve plaj barı · uçak pisti', strip: [0, -20, 230], kiosk: [-80, 6], plane: [92, -42, -Math.PI / 2, '#2a9a6a'] },
+];
+ISLES.blk = { cx: 0, cz: 0, bld: EXTRA_BLD, doors: [] };
+for (const I of ISLES) { I.kx = I.x + I.kiosk[0]; I.kz = I.z + I.kiosk[1]; I.arrive = [I.kx, I.kz + 6, 0]; }
+AIRPORT.arrive = [-30, 527, Math.PI];
+function islandAt(x, z, m = 0) { if (x < WATERLINE + 150) return null; for (const I of ISLES) if (Math.hypot(x - I.x, z - I.z) < I.R + m) return I; return null; }
+const islandGround = (I, x, z) => Math.min(ISLE_TOP, (I.R - Math.hypot(x - I.x, z - I.z)) * 0.07);
+function inStrip(I, x, z) { if (!I.strip) return false; const [sx, sz, len] = I.strip; return Math.abs(x - I.x - sx) < len / 2 && Math.abs(z - I.z - sz) < 9; }
+function buildIslands() {
+  const S = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...o });
+  const sandC = new THREE.Color('#d8c48a'), sandW = new THREE.Color('#c9b27a'), grassC = new THREE.Color('#4f8a3a'), grassD = new THREE.Color('#3e7430');
+  const terrainM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  const stripTex = len => canvasTex(1024, 72, g => { g.fillStyle = '#3c3e42'; g.fillRect(0, 0, 1024, 72); speckle(g, 1024, 72, 9000, ['#34363a', '#46484c'], 1, 2); g.fillStyle = '#e8e8e2'; g.fillRect(0, 4, 1024, 3); g.fillRect(0, 65, 1024, 3); for (let x = 40; x < 984; x += 36) g.fillRect(x, 34, 20, 4); for (const x0 of [8, 996]) for (let i = 0; i < 6; i++) g.fillRect(x0 - (x0 > 500 ? 20 : 0), 12 + i * 9, 20, 4); });
+  const white = S(0xf4f2ec), wood = S(0x8a6440), thatch = S(0xb89a5a, { roughness: 1 }), blue = S(0x2a6ab8), red = S(0xc82a2a), dark = S(0x30343a, { metalness: 0.4, roughness: 0.5 });
+  const glassM = new THREE.MeshStandardMaterial({ color: 0x4a6a80, metalness: 0.7, roughness: 0.1 });
+  const hotelTex = canvasTex(256, 256, g => { g.fillStyle = '#f4f0e6'; g.fillRect(0, 0, 256, 256); for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) { g.fillStyle = '#5a7a92'; g.fillRect(6 + x * 32, 14 + y * 64, 22, 34); g.fillStyle = '#e8e2d4'; g.fillRect(2 + x * 32, 52 + y * 64, 30, 6); } }); hotelTex.wrapS = hotelTex.wrapT = THREE.RepeatWrapping; hotelTex.repeat.set(3, 1);
+  const hotelM = new THREE.MeshStandardMaterial({ map: hotelTex, roughness: 0.8 });
+  for (const I of ISLES) {
+    const grp = new THREE.Group(); I.group = grp; scene.add(grp);
+    const L = new Map(), add = (mat, geo) => { if (!L.has(mat)) L.set(mat, []); L.get(mat).push(geo); };
+    const gy = (x, z) => groundY(I.x + x, I.z + z);
+    const bx = (x, y, z, w, h, d, mat) => add(mat, new THREE.BoxGeometry(w, h, d).translate(I.x + x, y + h / 2, I.z + z));
+    const cy = (x, y, z, r, h, mat, seg = 10, r2 = r) => add(mat, new THREE.CylinderGeometry(r, r2, h, seg).translate(I.x + x, y + h / 2, I.z + z));
+    const coll = (x, z, w, d, h, y0) => { const o = { x0: I.x + x - w / 2, x1: I.x + x + w / 2, z0: I.z + z - d / 2, z1: I.z + z + d / 2, h, isle: I.id }; if (y0) o.y0 = y0; EXTRA_BLD.push(o); return o; };
+    // terrain
+    const sz = I.R * 2 + 40, tg = new THREE.PlaneGeometry(sz, sz, 64, 64); tg.rotateX(-Math.PI / 2); tg.translate(I.x, 0, I.z);
+    const tp = tg.attributes.position, cols = [];
+    for (let i = 0; i < tp.count; i++) {
+      const x = tp.getX(i), z = tp.getZ(i), y = Math.max(-1.5, Math.min(ISLE_TOP, (I.R - Math.hypot(x - I.x, z - I.z)) * 0.07)); tp.setY(i, y);
+      const n = Math.sin(x * 0.3) * Math.cos(z * 0.27); const c = y < 0.75 ? sandC.clone().lerp(sandW, 0.5 + n * 0.5) : grassC.clone().lerp(grassD, 0.5 + n * 0.5); cols.push(c.r, c.g, c.b);
+    }
+    tg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); tg.computeVertexNormals();
+    const tm = new THREE.Mesh(tg, terrainM); tm.receiveShadow = true; grp.add(tm);
+    // air strip
+    if (I.strip) {
+      const [sx, sz2, len] = I.strip;
+      const st = new THREE.Mesh(new THREE.PlaneGeometry(len, 18).rotateX(-Math.PI / 2).translate(I.x + sx, ISLE_TOP + 0.04, I.z + sz2), new THREE.MeshStandardMaterial({ map: stripTex(len), roughness: 0.85 }));
+      st.receiveShadow = true; grp.add(st);
+    }
+    // ticket kiosk (fly back)
+    const [kx, kz] = I.kiosk, ky = gy(kx, kz);
+    bx(kx, ky, kz - 1.4, 3.2, 2.7, 2.2, blue); bx(kx, ky + 2.7, kz - 1.4, 3.8, 0.2, 2.8, white); bx(kx, ky, kz - 0.2, 3.2, 1.05, 0.4, white);
+    coll(kx, kz - 1.4, 3.2, 2.6, ky + 2.9);
+    { const sm = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.7), new THREE.MeshBasicMaterial({ map: canvasTex(256, 52, g => { g.fillStyle = '#1d4f8a'; g.fillRect(0, 0, 256, 52); g.fillStyle = '#fff'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✈ VISTA BAY AIR', 128, 28); }) })); sm.position.set(I.x + kx, ky + 3.25, I.z + kz - 0.02); grp.add(sm); }
+    const palm = (x, z) => PALMS.push([I.x + x, 0, I.z + z]);
+    for (let a = 0; a < Math.PI * 2; a += 0.21) { const r = I.R - 14 - (Math.sin(a * 7) + 1) * 5, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!inStrip(I, I.x + x, I.z + z) && Math.hypot(x - kx, z - kz) > 8) palm(x, z); }
+    if (I.id === 'palm') {
+      const hy = gy(10, -58);
+      add(hotelM, new THREE.BoxGeometry(46, 13, 18).translate(I.x + 10, hy + 6.5, I.z - 58));
+      bx(10, hy + 13, -58, 47, 0.5, 19, white); bx(10, hy, -48.4, 10, 3.2, 1.2, glassM);
+      const ob = coll(10, -58, 46, 18, hy + 13.5);
+      registerDoor(ISLES.blk, I.x + 10, I.z - 58, 46, 18, hy, 'deco', 0, 0, 13); Object.assign(DOORS[DOORS.length - 1], { name: 'Palmiye Otel', bld: ob });
+      bx(30, hy - 0.05, -30, 16, 0.2, 8, white); add(new THREE.MeshStandardMaterial({ color: 0x3ab0e0, roughness: 0.05, metalness: 0.1, emissive: 0x0a3a5a, emissiveIntensity: 0.4 }), new THREE.BoxGeometry(14, 0.1, 6).translate(I.x + 30, hy + 0.1, I.z - 30));
+      for (let k = 0; k < 9; k++) { const a = 2.2 + k * 0.16, r = I.R - 8, x = Math.cos(a) * r, z = Math.sin(a) * r, y = gy(x, z); cy(x, y, z, 0.05, 2.3, white, 6); add(k % 2 ? red : blue, new THREE.ConeGeometry(1.6, 0.6, 10).translate(I.x + x, y + 2.5, I.z + z)); bx(x + 1.3, y, z, 0.8, 0.3, 2, white); }
+    } else if (I.id === 'fener') {
+      const lx = 35, lz = 0, ly = gy(lx, lz);
+      cy(lx, ly, lz, 2.3, 22, white, 18, 3.3); for (const yy of [5, 12, 19]) cy(lx, ly + yy, lz, 2.85 - yy * 0.045, 2.2, red, 18, 2.95 - yy * 0.045);
+      cy(lx, ly + 22, lz, 3, 0.4, dark, 18); cy(lx, ly + 22.4, lz, 1.7, 2.2, glassM, 12); add(red, new THREE.ConeGeometry(2, 1.6, 12).translate(I.x + lx, ly + 25.4, I.z + lz));
+      coll(lx, lz, 6.4, 6.4, ly + 26);
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(7, 60, 16, 1, true).rotateZ(Math.PI / 2).translate(30, 0, 0), new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      const piv = new THREE.Group(); piv.position.set(I.x + lx, ly + 23.5, I.z + lz); piv.add(beam); grp.add(piv); I.beam = piv;
+      const hy = gy(8, -25); bx(8, hy, -25, 10, 4.2, 8, white); add(red, new THREE.BoxGeometry(10.6, 0.3, 8.6).translate(I.x + 8, hy + 4.35, I.z - 25));
+      const ob = coll(8, -25, 10, 8, hy + 4.5);
+      registerDoor(ISLES.blk, I.x + 8, I.z - 25, 10, 8, hy, 'house', 0, 0, 4.2); Object.assign(DOORS[DOORS.length - 1], { name: 'Fener Bekçisi Evi', bld: ob, noRoof: true });
+      for (let k = 0; k < 12; k++) bx(-20 + k * 2.2, -1, I.R - 4 + 8, 1.4, 1.6, 1.6, wood);  // little pier for sea planes / boats
+    } else {
+      for (let k = 0; k < 6; k++) {
+        const a = 0.9 + k * 0.3, r = I.R - 28, x = Math.cos(a) * r, z = Math.sin(a) * r, y = gy(x, z);
+        for (const [ox, oz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) cy(x + ox, y, z + oz, 0.12, 0.8, wood, 6);
+        bx(x, y + 0.8, z, 5, 3, 5, wood); add(thatch, new THREE.ConeGeometry(4.3, 2.4, 4).rotateY(Math.PI / 4).translate(I.x + x, y + 5, I.z + z));
+        const ob = coll(x, z, 5, 5, y + 4.2);
+        registerDoor(ISLES.blk, I.x + x, I.z + z, 5, 5, y + 0.8, 'house', 1, 0, 3); Object.assign(DOORS[DOORS.length - 1], { name: 'Bungalov', bld: ob, noRoof: true });
+      }
+      const by = gy(25, 55); bx(25, by, 55, 8, 1.1, 2.2, wood); for (const [ox, oz] of [[-4, -1.5], [4, -1.5], [-4, 1.5], [4, 1.5]]) cy(25 + ox, by, 55 + oz, 0.12, 3, wood, 6); add(thatch, new THREE.BoxGeometry(10, 0.4, 5).translate(I.x + 25, by + 3.1, I.z + 55));
+      coll(25, 55, 8, 2.2, by + 1.1);
+    }
+    const shadows = QUALITY !== 'low';
+    for (const [mat, list] of L) { const m = new THREE.Mesh(merge(list), mat); m.castShadow = shadows; m.receiveShadow = true; grp.add(m); }
+  }
+}
+// ---------------- tickets, fast travel and the flight cinematic
+function flyTo(I) {
+  if (state.wanted > 0) { floatText('🚨 Aranırken uçağa alınmazsın'); AudioSys.fail(); return false; }
+  const el = $('flightCine'), dest = I ? `${I.code} · ${I.name.toUpperCase()}` : 'VB900 · VISTA BAY HAVALİMANI';
+  el.innerHTML = `<div class="fcSky"><div class="fcPlane">✈</div></div><b>${dest}</b><small>${I ? 'Kemerlerinizi bağlayın · iyi uçuşlar!' : 'Vista Bay\'e dönüyorsunuz'}</small>`; el.classList.add('on');
+  AudioSys.tone(520, 0.3, 0.15, 'sine'); AudioSys.tone(780, 0.45, 0.15, 'sine', 1, 0.3);
+  setTimeout(() => {
+    if (state.interior) { state.interior = null; interiorLight.intensity = 0; disposeGen(); }
+    if (state.inCar) exitCar(true);
+    const [x, z, yaw] = I ? I.arrive : AIRPORT.arrive;
+    player.pos.set(x, groundY(x, z), z); player.yaw = yaw; camYaw = yaw + Math.PI; player.vy = 0; player.onGround = true;
+  }, 700);
+  setTimeout(() => { el.classList.remove('on'); floatText(I ? `🏝 ${I.name}` : '✈ Vista Bay Havalimanı'); }, 3600);
+  return true;
+}
+function ticketItems() {
+  const it = [{ sec: 'Uçuşlar · hızlı seyahat' }];
+  for (const I of ISLES) it.push({ name: `✈ ${I.code} · ${I.name}`, desc: I.desc, price: I.price, dis: state.wanted > 0 ? 'ARANIYORSUN' : null, close: true, buy: () => flyTo(I) });
+  it.push({ sec: 'Uçuş görevleri · uçağı sen uçur' });
+  for (const k in FLIGHT_JOBS) { const J = FLIGHT_JOBS[k]; it.push({ name: J.name, desc: J.desc, price: 0, btn: 'BAŞLA', dis: state.mission || state.flightJob ? 'MEŞGULSÜN' : null, close: true, buy: () => startFlightJob(k) }); }
+  it.push({ sec: 'Kontroller' }, { name: '🕹 Pilotluk', desc: 'GAZ ▲/▼ (Space / C) · joystick/W-S: burun yukarı-aşağı · A-D: yatış ve dönüş · G / ⚙: iniş takımı · inişte teker açık, yavaş ve düz gel', price: 0, btn: '✓', dis: '✓', buy: () => { } });
+  return it;
+}
+function updateIslands(dt) {
+  for (const I of ISLES) {
+    if (!I.group) continue;
+    const d = Math.hypot(camera.position.x - I.x, camera.position.z - I.z);
+    I.group.visible = !state.interior && d < I.R + (QUALITY === 'low' ? 700 : 1200) + Math.max(0, camera.position.y) * 2;
+    if (I.beam) { I.beam.visible = I.group.visible && nightF > 0.25; I.beam.rotation.y = state.now * 0.8; }
+  }
+  if (state.interior || state.dead) return;
+  const I = islandAt(player.pos.x, player.pos.z, 10);
+  if (I !== updateIslands.cur) { updateIslands.cur = I; if (I) floatText(`🏝 ${I.name}`); }
+  if (!I || state.inCar || state.interact) return;
+  if (Math.hypot(player.pos.x - I.kx, player.pos.z - (I.kz + 0.6)) < 1.8) state.interact = { label: `🎫 DÖNÜŞ UÇUŞU · $${I.price}`, fn: () => { if (state.money < I.price) { floatText('💸 Paran yetmiyor'); AudioSys.fail(); return; } if (state.wanted > 0) { floatText('🚨 Aranırken uçağa alınmazsın'); return; } state.money -= I.price; state.shownMoney = state.money; ledger('✈ Dönüş bileti', -I.price); flyTo(null); } };
+}
+function drawIslandsMap(g, X, Z, k) {
+  for (const I of ISLES) {
+    g.fillStyle = '#d8c48a'; g.beginPath(); g.arc(X(I.x), Z(I.z), I.R * k, 0, 7); g.fill();
+    g.fillStyle = '#3d7a34'; g.beginPath(); g.arc(X(I.x), Z(I.z), (I.R - 14) * k, 0, 7); g.fill();
+    if (I.strip) { const [sx, sz, len] = I.strip; g.fillStyle = '#34363b'; g.fillRect(X(I.x + sx - len / 2), Z(I.z + sz - 9), len * k, 18 * k); }
+  }
+}
+// ---------------- flight jobs (started from the terminal ticket desk)
+const FLIGHT_JOBS = {
+  cargo: { name: '📦 Ada Kargosu', desc: 'Kargo uçağını Palmiye Adası ya da Mercan Koyu pistine indir ve dur · $4.000', time: 300 },
+  rings: { name: '⭕ Halka Parkuru', desc: 'Şehrin üstündeki 10 hava halkasından 3 dakikada geç · $3.000 + süre bonusu', time: 180 },
+  tour: { name: '📸 Şehir Turu', desc: 'Turistleri 4 noktanın üstünden alçaktan (<250 m) geçir, sonra havalimanına in · $2.500', time: 360 },
+};
+const RING_PATH = [[150, 45, 770], [420, 90, 560], [470, 160, 240], [250, 210, 0], [0, 220, -220], [-260, 210, -120], [-320, 180, 160], [-160, 120, 380], [60, 80, 560], [-200, 40, 770]];
+let jobGroup = null;
+function startFlightJob(k) {
+  const J = FLIGHT_JOBS[k]; if (state.mission || state.flightJob) return;
+  if (state.interior) { state.interior = null; interiorLight.intensity = 0; disposeGen(); }
+  let c = state.jobPlane;
+  if (!c || c.dead || !cars.includes(c) || state.inCar === c) { c = createPlane('plane', k === 'cargo' ? '#d8d2c0' : k === 'rings' ? '#ff6a1a' : '#3a8ad8', -150, 650, Math.PI / 2, false); state.jobPlane = c; }
+  else { const y = groundY(-150, 650); c.group.position.set(-150, y, 650); c.y = y; c.h = Math.PI / 2; c.speed = c.thr = c.pitch = c.roll = c.vy = 0; c.gear = true; c.mode = 'free'; c.active = true; c.group.visible = true; c.health = c.maxHealth; }
+  c.job = true;
+  player.pos.set(-150, 0, 644); player.yaw = 0; camYaw = Math.PI;
+  const j = { k, stage: 0, time: J.time, plane: c, i: 0 };
+  if (k === 'cargo') j.dest = pick(ISLES.filter(I => I.strip));
+  if (k === 'tour') { let best = null; for (const row of blocks) for (const b of row) for (const o of b.bld) if (!best || o.h > best.h) best = o; j.pts = [[(best.x0 + best.x1) / 2, (best.z0 + best.z1) / 2, 'Gökdelenler'], [DOCK.x1, DOCK.z, 'Sahil iskelesi'], [ISLES[1].x + 35, ISLES[1].z, 'Deniz feneri'], [AIRPORT.tower.x, AIRPORT.tower.z, 'Kontrol kulesi']]; }
+  if (jobGroup) { scene.remove(jobGroup); jobGroup.traverse(o => o.geometry && o.geometry.dispose()); }
+  jobGroup = new THREE.Group(); scene.add(jobGroup);
+  if (k === 'rings') {
+    j.rings = RING_PATH.map((p, i) => {
+      const n = RING_PATH[Math.min(i + 1, RING_PATH.length - 1)], pr = RING_PATH[Math.max(i - 1, 0)], yaw = Math.atan2(n[0] - pr[0], n[2] - pr[2]);
+      const m = new THREE.Mesh(new THREE.TorusGeometry(11, 0.7, 8, 32), new THREE.MeshBasicMaterial({ color: 0xffc020, transparent: true, opacity: 0.85 }));
+      m.position.set(p[0], p[1], p[2]); m.rotation.y = yaw; jobGroup.add(m); return m;
+    });
+  } else {
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 300, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })); beam.position.y = 150; jobGroup.add(beam); j.beam = beam;
+  }
+  state.flightJob = j;
+  showBig(J.name.toUpperCase(), '#4aa8ff', 3, 'Uçağa bin (F / 🚗) · GAZ ▲ ile hızlan');
+}
+function jobTarget(j) {
+  if (j.stage === 0) { const p = j.plane.group.position; return [p.x, p.z, 'Uçağa bin']; }
+  if (j.k === 'cargo') { const [sx, sz] = j.dest.strip; return [j.dest.x + sx, j.dest.z + sz, `${j.dest.name} pistine in ve dur`]; }
+  if (j.k === 'rings') { const p = RING_PATH[j.i]; return [p[0], p[2], `Halka ${j.i + 1}/${RING_PATH.length}`]; }
+  if (j.i < j.pts.length) { const p = j.pts[j.i]; return [p[0], p[1], `${p[2]} üstünden alçaktan geç (${j.i + 1}/4)`]; }
+  return [(AIRPORT.rwy.x0 + AIRPORT.rwy.x1) / 2, AIRPORT.rwy.z, 'Havalimanı pistine in ve dur'];
+}
+function endFlightJob(ok, msg) {
+  const j = state.flightJob; if (!j) return;
+  state.flightJob = null; if (jobGroup) { scene.remove(jobGroup); jobGroup.traverse(o => o.geometry && o.geometry.dispose()); jobGroup = null; }
+  if (ok) { const pay = j.k === 'cargo' ? 4000 : j.k === 'rings' ? 3000 + Math.round(j.time) * 15 : 2500; earn(pay, '✈ ' + FLIGHT_JOBS[j.k].name.slice(2)); S().missions++; showBig('UÇUŞ TAMAMLANDI!', '#7dff9a', 3, `+$${pay}${msg ? ' · ' + msg : ''}`); AudioSys.success(); AudioSys.cash(); }
+  else { S().fails++; showBig('UÇUŞ BAŞARISIZ', '#ff5050', 3, msg || ''); AudioSys.fail(); }
+}
+function updateFlightJob(dt) {
+  const j = state.flightJob; if (!j) return;
+  const c = j.plane, el = $('mission');
+  j.time -= dt;
+  if (c.dead) return endFlightJob(false, 'Uçak düştü');
+  if (j.time <= 0) return endFlightJob(false, 'Süre doldu');
+  const inPlane = state.inCar === c, p = c.group.position;
+  if (j.stage === 0 && inPlane) { j.stage = 1; floatText('✈ Kalkış için hızlan, joystick yukarı'); }
+  const onGround = c.y - planeFloor(p.x, p.z) < 0.25, stopped = onGround && c.speed < 6;
+  if (j.stage === 1 && inPlane) {
+    if (j.k === 'cargo' && stopped && inStrip(j.dest, p.x, p.z)) return endFlightJob(true, `Kargo ${j.dest.name}'na teslim edildi`);
+    if (j.k === 'rings') {
+      const r = RING_PATH[j.i];
+      if (Math.hypot(p.x - r[0], c.y - r[1], p.z - r[2]) < 12) { j.rings[j.i].visible = false; j.i++; AudioSys.tone(880 + j.i * 40, 0.15, 0.2, 'triangle'); haptic(30); if (j.i >= RING_PATH.length) return endFlightJob(true, `${Math.round(j.time)} sn kaldı`); }
+    }
+    if (j.k === 'tour') {
+      if (j.i < j.pts.length) { const t = j.pts[j.i], alt = c.y - groundY(p.x, p.z); if (Math.hypot(p.x - t[0], p.z - t[1]) < 70 && alt < 250 && !onGround) { j.i++; floatText(`📸 ${t[2]} · turistler mutlu!`); AudioSys.pickup(); } }
+      else if (stopped && Math.abs(p.z - AIRPORT.rwy.z) < 25 && p.x > AIRPORT.rwy.x0 && p.x < AIRPORT.rwy.x1) return endFlightJob(true, 'Turistler indi');
+    }
+  }
+  if (j.rings) j.rings.forEach((m, i) => { m.material.color.setHex(i === j.i ? 0x40ff80 : 0xffc020); m.scale.setScalar(i === j.i ? 1 + Math.sin(state.now * 4) * 0.06 : 1); });
+  const [tx, tz, text] = jobTarget(j);
+  if (j.beam) { j.beam.visible = j.stage === 1; j.beam.position.x = tx; j.beam.position.z = tz; }
+  j.tx = tx; j.tz = tz;
+  el.style.display = 'block'; el.style.borderLeftColor = '#4aa8ff';
+  const html = `<b>${FLIGHT_JOBS[j.k].name}</b><br>${text} · ${Math.round(Math.hypot(tx - player.pos.x, tz - player.pos.z))} m<br><small>⏱ ${Math.ceil(j.time)} sn</small>`;
+  if (html !== updateFlightJob.h) { updateFlightJob.h = html; el.innerHTML = html; }
+}
+
+// ============================================================ AIRPLANES (prop "Vista Hawk" + "Skyline Jet")
+CAR_SPECS.plane = { W: 11, wr: 0.3, max: 72, acc: 7.5, vr: 30, vs: 23, plane: true, cr: 3, co: 0, len: 8.4 };
+CAR_SPECS.jet = { W: 13.5, wr: 0.42, max: 118, acc: 10.5, vr: 46, vs: 36, plane: true, cr: 4, co: 0, len: 14 };
+let wingMat = null;
+function createPlane(kind, color, x, z, h, home = true) {
+  const s = CAR_SPECS[kind], jet = kind === 'jet', L = s.len, group = new THREE.Group(); group.rotation.order = 'YXZ';
+  const inner = new THREE.Group(); group.add(inner);
+  const paintM = paintMat(color);
+  if (!wingMat) wingMat = new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.35, metalness: 0.3 });
+  const fy = jet ? 2.0 : 1.55, R = jet ? 1.05 : 0.62, nose = R * (jet ? 2.2 : 1.5);
+  const body = merge([
+    new THREE.CylinderGeometry(R, R * 0.95, L * 0.6, 18).rotateX(Math.PI / 2).translate(0, fy, L * 0.06),
+    new THREE.CylinderGeometry(R * 0.95, R * 0.22, L * 0.4, 18).rotateX(Math.PI / 2).translate(0, fy + R * 0.22, -L * 0.44),
+    new THREE.SphereGeometry(R, 18, 12).scale(1, 1, nose / R).translate(0, fy, L * 0.36),
+  ]);
+  const paint = new THREE.Mesh(body, paintM);
+  const fin = jet ? 2.5 : 1.6, wy = jet ? fy - R * 0.45 : fy + R * 0.62;
+  const wingGeos = [
+    new THREE.BoxGeometry(0.16, fin, jet ? 2.4 : 1.3).translate(0, fy + R * 0.4 + fin / 2, -L * 0.56),
+    new THREE.BoxGeometry(jet ? 5.2 : 3.6, 0.12, jet ? 1.6 : 1.1).translate(0, jet ? fy + R * 0.4 + fin - 0.1 : fy + R * 0.3, -L * 0.58),
+  ];
+  if (jet) for (const sd of [1, -1]) wingGeos.push(new THREE.BoxGeometry(s.W / 2, 0.2, 2.6).translate(sd * s.W / 4, 0, 0).rotateY(sd * 0.32).translate(0, wy, -0.6));
+  else wingGeos.push(new THREE.BoxGeometry(s.W, 0.16, 1.7).translate(0, wy, L * 0.1), ...[1, -1].map(sd => new THREE.BoxGeometry(0.1, R * 1.1, 0.12).rotateZ(sd * 0.55).translate(sd * 1.1, fy + R * 0.05, L * 0.1)));
+  const wings = new THREE.Mesh(merge(wingGeos), wingMat);
+  const glass = new THREE.Mesh(jet
+    ? merge([new THREE.SphereGeometry(R * 0.8, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.45).scale(0.9, 0.55, 1.4).rotateX(0.5).translate(0, fy + R * 0.32, L * 0.33), ...[1, -1].flatMap(sd => Array.from({ length: 8 }, (_, k) => new THREE.BoxGeometry(0.06, 0.32, 0.42).translate(sd * R * 0.97, fy + 0.25, L * 0.22 - k * 0.95)))])
+    : new THREE.SphereGeometry(R * 0.86, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5).scale(0.95, 0.75, 1.7).translate(0, fy + R * 0.38, L * 0.2), M.carGlass);
+  inner.add(paint, wings, glass);
+  let prop = null;
+  if (jet) {
+    const eng = new THREE.Mesh(merge([1, -1].map(sd => new THREE.CylinderGeometry(0.48, 0.4, 2.8, 14).rotateX(Math.PI / 2).translate(sd * 2.9, wy - 0.55, 0.2))), M.trim); inner.add(eng);
+  } else {
+    prop = new THREE.Group(); prop.position.set(0, fy, L * 0.36 + nose + 0.05);
+    const pm = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.5 });
+    prop.add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.1, 0.05), pm), new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.4, 12).rotateX(Math.PI / 2), wingMat));
+    inner.add(prop);
+  }
+  // landing gear (wheel bottoms at y = 0)
+  const wr = jet ? 0.42 : 0.3, gg = [], gx = jet ? 1.7 : 1.25;
+  for (const [x2, z2] of [[0, L * 0.3], [gx, -0.3], [-gx, -0.3]]) {
+    gg.push(new THREE.CylinderGeometry(wr, wr, 0.22, 14).rotateZ(Math.PI / 2).translate(x2, wr, z2));
+    gg.push(new THREE.BoxGeometry(0.1, fy - R * 0.8 - wr, 0.1).translate(x2 * 0.85, wr + (fy - R * 0.8 - wr) / 2, z2));
+  }
+  const gearG = new THREE.Mesh(merge(gg), M.trim); inner.add(gearG);
+  const sh = QUALITY !== 'low'; paint.castShadow = wings.castShadow = sh;
+  const y = groundY(x, z);
+  group.position.set(x, y, z); group.rotation.y = h; scene.add(group);
+  const c = baseVehicle(group, inner, paint, paintM, kind, s, h, { prop, gearG, gear: true, thr: 0, speed: 0, pitch: 0, roll: 0, propA: 0, home: home ? [x, z, h] : null });
+  c.y = y; c.health = jet ? 200 : 150; cars.push(initCar(c)); return c;
+}
+let _pfWater = false;
+function planeFloor(x, z) { const g = groundY(x, z); _pfWater = g < -0.2; return Math.max(_pfWater ? -0.25 : g, roofHeight(x, z)); }
+function togglePlaneGear(c) {
+  if (c.y - planeFloor(c.group.position.x, c.group.position.z) < 0.5) { floatText('⚙ Yerdeyken iniş takımı kaldırılamaz'); return; }
+  c.gear = !c.gear; AudioSys.tone(c.gear ? 300 : 420, 0.5, 0.12, 'sawtooth', 1); floatText(c.gear ? '⚙ İniş takımı AÇIK' : '⚙ İniş takımı KAPALI');
+}
+function planePhysics(c, dt, ctl) {
+  const s = c.spec, p = c.group.position, on = !!ctl && c.mode === 'player' && !c.dead;
+  const floor = planeFloor(p.x, p.z);
+  const ground = c.y <= floor + 0.08;
+  if (on) c.thr = clamp(c.thr + ctl.thr * 0.55 * dt, 0, 1); else c.thr = Math.max(0, c.thr - dt * 0.6);
+  if (c.dead) { c.thr = 0; c.vy = (c.vy || 0) - 9.8 * dt; }
+  const eng = 1 + 0.15 * ((c.up && c.up.engine) || 0), v = c.speed;
+  let acc = c.thr * s.acc * eng - s.acc * (v / s.max) * (v / s.max);
+  if (ground) {
+    acc -= 0.35;
+    if (c.thr < 0.02) acc -= on && ctl.thr < 0 ? 6 : 3;
+    if (!c.gear && v > 1) { acc -= 7; if (v > 6 && Math.random() < dt * 8) FX.norm.spawn(p.x + MR(-1, 1), p.y + 0.2, p.z + MR(-1, 1), MR(-1, 1), MR(0.5, 1.5), MR(-1, 1), 1.2, 1.2, 2.5, 0.8, 0.8, 0.82, 0.4, 0); }
+  } else acc -= 9.8 * Math.sin(c.pitch) * 0.6;
+  c.speed = Math.max(0, v + acc * dt);
+  const lift = clamp((c.speed - s.vs) / (s.vr - s.vs), 0, 1);
+  const pitchIn = on ? ctl.pitch : 0, rollIn = on ? ctl.roll : 0;
+  if (ground) {
+    const want = c.speed > s.vr * 0.85 && pitchIn > 0 ? pitchIn * 0.2 : 0;
+    c.pitch = damp(c.pitch, want, 3, dt); c.roll = damp(c.roll, 0, 6, dt);
+    c.h -= rollIn * 0.85 * Math.min(1, c.speed / 4) * dt;
+    c.vy = c.pitch > 0.05 && lift >= 0.95 && !c.dead ? c.speed * Math.sin(c.pitch) : 0;
+  } else if (!c.dead) {
+    c.pitch = clamp(c.pitch + pitchIn * 0.9 * dt * (0.4 + 0.6 * lift), -0.75, 0.75);
+    if (c.speed < s.vs) c.pitch = damp(c.pitch, -0.45, 1.2, dt); else if (!on) c.pitch = damp(c.pitch, -0.12, 0.5, dt);
+    c.roll = damp(c.roll, rollIn * 1.0, 2.2, dt);
+    c.h -= 9.8 * Math.tan(c.roll) / Math.max(c.speed, 15) * 1.15 * dt;
+    const tvy = c.speed * Math.sin(c.pitch) - (1 - lift) * 12 - Math.abs(Math.sin(c.roll)) * c.speed * 0.04;
+    c.vy = damp(c.vy || 0, tvy, 2.5, dt);
+  }
+  const hs = c.speed * Math.cos(c.pitch);
+  c.vx = Math.sin(c.h) * hs; c.vz = Math.cos(c.h) * hs;
+  let x = p.x + c.vx * dt, z = p.z + c.vz * dt;
+  c.y = Math.min(900, c.y + c.vy * dt);
+  // buildings / hangars / towers
+  if ((Math.abs(x) < HALF + 40 && Math.abs(z) < HALF + 40) || nearAir(z, x)) {
+    const r = collide(x, z, s.cr, c.y + 1.2, false);
+    if (r.hit) {
+      const imp = c.speed; x = r.x; z = r.z;
+      if (imp > 14 && !c.dead) { damageCar(c, 999, true); state.shake = 1; }
+      else { c.speed *= 0.3; if (imp > 3) { damageCar(c, imp * 3, true); AudioSys.crash(0.5); } }
+    }
+  }
+  if (Math.hypot(x, z) > 2500) { const k = 2500 / Math.hypot(x, z); x *= k; z *= k; if (on) floatText('↩ Hava sahası sınırı'); }
+  // ground contact: landing or crash
+  const nf = planeFloor(x, z);
+  if (c.y <= nf) {
+    if (!ground && !c.dead) {
+      const vImp = -(c.vy || 0), water = _pfWater;
+      if (water) { damageCar(c, 999, true); if (on || c === state.inCar) showBig('DENİZE ÇAKILDIN', '#ff5050', 2.5); }
+      else if (c.gear && vImp < 7 && Math.abs(c.roll) < 0.4 && c.pitch > -0.25) { if (vImp > 4) { damageCar(c, (vImp - 4) * 12, true); floatText('🛬 Sert iniş'); } else if (on && c.speed > 10) floatText('🛬 Yumuşak iniş'); state.shake = Math.min(1, vImp / 10); }
+      else if (!c.gear && vImp < 6 && Math.abs(c.roll) < 0.45) { damageCar(c, 45, true); floatText('⚠ Gövde üstü iniş!'); state.shake = 0.8; AudioSys.crash(0.8); }
+      else { damageCar(c, 999, true); state.shake = 1; }
+    }
+    c.y = nf; c.vy = 0; if (!c.dead) c.pitch = Math.max(c.pitch, 0); c.roll = damp(c.roll, 0, 8, dt);
+    if (_pfWater && !c.dead && c.speed < 3) damageCar(c, 30 * dt, true);
+  }
+  p.set(x, c.y, z);
+  c.group.rotation.set(-c.pitch, c.h, c.roll);
+  c.gearG.visible = c.gear;
+  if (c.prop) { c.propA += (on || c.thr > 0 ? 8 + c.thr * 60 : 0) * dt; c.prop.rotation.z = c.propA; }
+}
+function setFlightButtons(c) {
+  const pl = c && c.spec.plane;
+  $('bUp').innerHTML = pl ? '▲<br>GAZ' : '▲<br>YÜKSEL'; $('bDown').innerHTML = pl ? '▼<br>GAZ' : '▼<br>ALÇAL';
+}
+function updatePlaneHud() {
+  const el = $('planeHud'), c = state.inCar;
+  if (!c || !c.spec.plane) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const alt = Math.max(0, c.y - planeFloor(c.group.position.x, c.group.position.z)), stall = alt > 2 && c.speed < c.spec.vs;
+  const bars = '▮'.repeat(Math.round(c.thr * 10)) + '▯'.repeat(10 - Math.round(c.thr * 10));
+  const key = `${Math.round(alt)}|${bars}|${c.gear}|${stall}|${Math.round(c.speed)}`;
+  if (key === updatePlaneHud.k) return; updatePlaneHud.k = key;
+  el.innerHTML = `✈ İRTİFA <b>${Math.round(alt)} m</b> · GAZ <b>${bars}</b> · ${c.gear ? '⬇ TEKER' : '⬆ TEKER'}${alt < 1 && c.speed < c.spec.vr && c.thr > 0.3 ? ` · <span class="tip">kalkış: ${Math.round(c.spec.vr * 3.6)} km/s + joystick yukarı</span>` : ''}${stall ? ' · <span class="warn">⚠ STALL — burnu indir, gaz ver</span>' : ''}`;
+}
+function buildPlanes() {
+  createPlane('plane', '#c8202a', 160, 668, 0);
+  createPlane('plane', '#1f5fbf', 276, 668, 0);
+  createPlane('jet', '#f2f2f2', -40, 628, 0);
+  for (const I of ISLES) if (I.plane) createPlane('plane', I.plane[3], I.x + I.plane[0], I.z + I.plane[1], I.plane[2]);
 }
 
 // ============================================================ GANG (industrial district fights back)
@@ -3432,6 +3797,8 @@ function collectPackage(p) {
   saveGame();
 }
 function updateEvents(dt) {
+  if (MP.on && !MP.host) { updateNetTruck(dt); return; }
+  if (MP.on) hostStreamTruck(dt);
   const tr = state.truck;
   if (tr && tr.active) {
     const d = Math.hypot(tr.group.position.x - player.pos.x, tr.group.position.z - player.pos.z);
@@ -3439,10 +3806,11 @@ function updateEvents(dt) {
     if (tr.dead && !tr.looted) {
       tr.looted = true; const p = tr.group.position;
       for (let k = 0; k < 10; k++) { const a = Math.random() * Math.PI * 2, rr = MR(1.5, 6); spawnCash(p.x + Math.cos(a) * rr, p.z + Math.sin(a) * rr, Math.round(MR(250, 650) / 10) * 10, false); }
-      addHeat(1.5); S().robberies++;
+      if (!MP.on || (tr.lastHit || 'h') === 'h') { addHeat(1.5); S().robberies++; }
+      if (MP.on) mpSend({ t: 'ev', k: 'loot', by: tr.lastHit || 'h' });
       showBig('SOYGUN!', '#7dff9a', 3, 'Para balyaları etrafa saçıldı — topla!'); haptic([50, 30, 50]);
     }
-    if (!tr.dead && tr.eventT > 200 && d > 150) { tr.active = false; tr.group.visible = false; floatText('💰 Para kamyonu bölgeden ayrıldı'); }
+    if (!tr.dead && tr.eventT > 200 && (MP.on ? nearestPlayerDist(tr.group.position.x, tr.group.position.z) : d) > 150) { tr.active = false; tr.group.visible = false; floatText('💰 Para kamyonu bölgeden ayrıldı'); }
     if (tr.ai && tr.health < tr.maxHealth && !tr.dead) tr.ai.panic = 4;
   }
   state.eventT -= dt;
@@ -3453,7 +3821,8 @@ function updateEvents(dt) {
       if (!c) { c = createCar('armored', '#4a5644', 0, 0, 0, 'ai'); c.event = 'truck'; state.truck = c; }
       c.dead = false; c.paint.material = c.paintM; c.maxHealth = c.health = 520; c.active = true; c.group.visible = true; c.looted = false; c.eventT = 0;
       c.group.rotation.set(0, 0, 0); c.vx = c.vz = c.vy = 0; c.air = false;
-      placeOnRoad(c, 'near'); c.ai.cruise = 10;
+      placeOnRoad(c, 'near', MP.on ? popCenter() : player.pos); c.ai.cruise = 10; c.lastHit = null;
+      if (MP.on) mpSend({ t: 'ev', k: 'truck' });
       showBig('💰 ZIRHLI PARA KAMYONU', '#ffd23a', 3, 'Yakınlarda para taşıyor · durdur ve patlat!');
       AudioSys.tone(660, 0.2, 0.2, 'square'); AudioSys.tone(880, 0.3, 0.2, 'square', 1, 0.2);
     }
@@ -4077,7 +4446,7 @@ function clientRecv(d) {
   if (!d || !d.t) return;
   if (d.t === 'welcome') {
     MP.myId = d.id; for (const p of d.players) ensureRemote(p.id, p.info);
-    rebuildWorldFromHost(d); sendScore();
+    rebuildWorldFromHost(d); applySharedManifest(d); sendScore();
     applyWorld(d); mpFeed(`🌐 Odaya katıldın · ${d.players.length + 1} oyuncu`); return;
   }
   if (d.t === 'join') { ensureRemote(d.id, d.info); mpFeed(`🟢 ${d.info.name} katıldı`); AudioSys.tone(880, 0.12, 0.12, 'sine'); return; }
@@ -4133,6 +4502,7 @@ function handleNet3(d) {
   return false;
 }
 function applyPacket(d) {
+  if (handleShared(d)) return;
   if (handleNet3(d)) return;
   if (handleStage2(d)) return;
   const r = MP.remotes.get(d.id); if (!r) return;
@@ -4176,7 +4546,7 @@ function removeRemote(id) {
 }
 function vehVisual(kind, color) {
   if (!CAR_SPECS[kind]) kind = 'sedan';
-  const c = kind === 'bike' ? createBike(color, 0, -9999, 0, 'free') : kind === 'boat' ? createBoat(color, 0, -9999, 0) : kind === 'heli' ? createHeli(color, 0, 0, -9999, 0) : createCar(kind, color, 0, -9999, 0, 'free');
+  const c = kind === 'bike' ? createBike(color, 0, -9999, 0, 'free') : kind === 'boat' ? createBoat(color, 0, -9999, 0) : kind === 'heli' ? createHeli(color, 0, 0, -9999, 0) : CAR_SPECS[kind].plane ? createPlane(kind, color, 0, -9999, 0, false) : createCar(kind, color, 0, -9999, 0, 'free');
   const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1);
   c.remote = true; return c;
 }
@@ -4226,6 +4596,8 @@ function updateRemotes(dt) {
       c.spin += (s.sp || 0) * dt / c.spec.wr; for (const sp of c.spinners) if (c.spec.bike) sp.rotation.x = c.spin; else sp.rotation.z = -c.spin;
       for (const f of c.fronts) f.rotation.y = -(s.st || 0);
       if (c.rotor) { c.rotorA += 30 * dt; c.rotor.rotation.y = c.rotorA; c.tailRotor.rotation.x = c.rotorA * 1.6; }
+      if (c.prop) { c.propA += 50 * dt; c.prop.rotation.z = c.propA; }
+      if (c.gearG) c.gearG.visible = s.gr !== 0;
       if (c.spec.bike) { if (h.g.parent !== gp) { gp.add(h.g); h.g.position.set(0, 0.45, -0.28); h.g.rotation.set(0.32, 0, 0); } h.g.visible = true; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.kneeL.rotation.x = h.kneeR.rotation.x = 1.5; h.armL.rotation.x = h.armR.rotation.x = -1.15; }
       else h.g.visible = false;
     } else {
@@ -4238,7 +4610,7 @@ function updateRemotes(dt) {
     }
     if (r.bubbleT > 0) r.bubbleT -= dt;
     drawTag(r);
-    r.tag.visible = !far; r.tag.position.set(r.x, r.y + (s.pas ? 3.4 : 0) + (r.veh ? (r.veh.spec.heli ? 4 : r.veh.spec.bike ? 2.6 : 3) : 2.35), r.z);
+    r.tag.visible = !far; r.tag.position.set(r.x, r.y + (s.pas ? 3.4 : 0) + (r.veh ? (r.veh.spec.plane ? 5 : r.veh.spec.heli ? 4 : r.veh.spec.bike ? 2.6 : 3) : 2.35), r.z);
   }
 }
 function applyEmote(h, e, t) {
@@ -4257,7 +4629,7 @@ function myState() {
   const o = { t: 'st', x: f2(p.x), y: f2(c ? c.y : player.pos.y), z: f2(p.z), r: Math.round((c ? c.h : player.yaw) * 1000) / 1000, sp: f2(c ? carFwd(c) : player.speed), hp: Math.max(0, Math.round(state.health)), wn: state.wanted, w: state.weapon, aim: player.aimT > 0 ? 1 : 0, dead: state.dead ? 1 : 0 };
   if (state.passenger) o.pas = state.passenger;
   if (c && c.up) { if (c.up.neon) o.ug = c.up.neon; if (c.up.rim) o.rm = c.up.rim; }
-  if (c) { o.v = c.kind; o.vc = '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace); o.px = f2(c.group.rotation.x); o.rz = f2(c.group.rotation.z); o.st = f2(c.steer); }
+  if (c) { o.v = c.kind; o.vc = '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace); o.px = f2(c.group.rotation.x); o.rz = f2(c.group.rotation.z); o.st = f2(c.steer); if (c.spec.plane) o.gr = c.gear ? 1 : 0; }
   return o;
 }
 function mpUpdate(rdt) {
@@ -4686,9 +5058,10 @@ function markWorld() {
   WORLD_CARS = cars.filter(c => (c.mode === 'ai' || (c.mode === 'free' && !c.driver)) && !c.display && !c.owned && !c.home && !c.police && !c.delivery && !c.event && !c.remote);
   WORLD_CARS.forEach((c, i) => { c.wIdx = i; });
   WORLD_PEDS = peds.filter(p => !p.npc); WORLD_PEDS.forEach((p, i) => { p.wIdx = i; });
+  markShared();
 }
 const carHex = c => '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace);
-function worldManifest() { return { wc: WORLD_CARS.map(c => [c.kind, carHex(c)]), wpl: WORLD_PEDS.map(p => p.look || DEFAULT_LOOK) }; }
+function worldManifest() { return { ...sharedManifest(), wc: WORLD_CARS.map(c => [c.kind, carHex(c)]), wpl: WORLD_PEDS.map(p => p.look || DEFAULT_LOOK) }; }
 const nearestPlayerDist = (x, z) => { let d = Math.hypot(x - player.pos.x, z - player.pos.z); if (MP.on && MP.host) for (const r of MP.remotes.values()) d = Math.min(d, Math.hypot(x - r.x, z - r.z)); return d; };
 function popCenter() { if (!(MP.on && MP.host) || !MP.remotes.size || Math.random() < 1 / (MP.remotes.size + 1)) return player.pos; const rs = [...MP.remotes.values()].filter(r => r.x > -2000); const r = rs.length ? pick(rs) : null; return r ? { x: r.x, z: r.z } : player.pos; }
 // ---------------- client: rebuild world from host manifest
@@ -4789,7 +5162,102 @@ function releaseWorldCar(c, d) {
   c.claimedBy = null; c.active = true; c.group.visible = true; c.mode = d && d.dead ? 'dead' : 'free'; c.driver = false; c.vx = c.vz = 0;
   if (d) { c.h = d.h; c.y = groundY(d.x, d.z); c.group.position.set(d.x, c.y, d.z); c.group.rotation.set(0, c.h, 0); if (d.dead && !c.dead) explodeCar(c); }
 }
-function releaseClaimsOf(id) { for (const c of WORLD_CARS) if (c.claimedBy === id) { const r = MP.remotes.get(id); releaseWorldCar(c, r ? { x: r.x, z: r.z, h: r.r, dead: 0 } : null); } }
+function releaseClaimsOf(id) { svRelease(id); for (const c of WORLD_CARS) if (c.claimedBy === id) { const r = MP.remotes.get(id); releaseWorldCar(c, r ? { x: r.x, z: r.z, h: r.r, dead: 0 } : null); } }
+
+
+// ============================================================ SHARED WORLD 2: special vehicles, pickups, armored truck, looted spots
+// Special vehicles (boats, helicopters, planes) exist once for everybody: taking one hides it for the others
+// (they see you driving it), leaving it puts it back where you left it. Pickups and the armored-truck event are
+// host-authoritative; cooldowns of robbed registers / safes are shared.
+let SV = [];
+const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
+const myNetId = () => MP.host ? 'h' : MP.myId;
+function markShared() { SV = cars.filter(c => c.home); SV.forEach((c, i) => { c.svIdx = i; }); }
+function svSend(c, take) {
+  if (!MP.on || c.svIdx === undefined || c._svLost) return;
+  const p = c.group.position;
+  mpSend({ t: 'sv', i: c.svIdx, k: take ? 1 : 0, p: [r1(p.x), r1(c.y), r1(p.z), r2(c.h)], dd: c.dead ? 1 : 0 });
+}
+function onSV(d) {
+  const c = SV[d.i]; if (!c) return;
+  if (d.k) {
+    if (state.inCar === c) {
+      if (String(d.id) < String(myNetId())) { c._svLost = true; exitCar(true); c._svLost = false; floatText('🚫 Bu aracı başka oyuncu aldı'); }
+      else return;                       // we keep it; the other side gives way when it receives our take
+    }
+    c.svTaken = d.id; c.active = false; c.group.visible = false; c.mode = 'free'; c.driver = false; return;
+  }
+  if (state.inCar === c) return;
+  c.svTaken = null; c.active = true; c.group.visible = true; c.mode = c.dead ? 'dead' : 'free'; c.driver = false;
+  const [x, y, z, h] = d.p; c.group.position.set(x, y, z); c.y = y; c.h = h; c.group.rotation.set(0, h, 0);
+  c.vx = c.vz = c.vy = 0; c.speed = 0; c.thr = 0; c.power = 0; c.pitch = c.roll = 0;
+  if (d.dd && !c.dead) { c._netBoom = true; explodeCar(c); c._netBoom = false; }
+}
+function svRelease(id) {
+  for (const c of SV) if (c.svTaken === id) {
+    const r = MP.remotes.get(id), p = r ? [r1(r.x), r1(r.y), r1(r.z), r2(r.r)] : [c.home[0], groundY(c.home[0], c.home[1]), c.home[1], c.home[2]];
+    const msg = { t: 'sv', i: c.svIdx, k: 0, p, dd: 0, id }; onSV(msg); mpSend(msg);
+  }
+}
+// ---------------- pickups (cash, weapon crates) – ids from the host
+let PU_ID = 0;
+function puSpawnLocal(x, z, amt, respawn, kind, id) {
+  if (pickups.length >= 110) return null;
+  const p = { x, z, amt, respawn, kind, t: Math.random() * 6, id: id ?? ++PU_ID }; pickups.push(p); return p;
+}
+const puRow = p => [p.id, r1(p.x), r1(p.z), p.amt, p.kind];
+function puRemove(id) { const i = pickups.findIndex(p => p.id === id); if (i < 0) return null; return pickups.splice(i, 1)[0]; }
+function puRespawn(p) { if (p.respawn) { const [x, z] = randomSidewalk(); setTimeout(() => spawnCash(x, z, RI(5, 30) * 10, true, p.kind), p.kind === 'cash' ? 0 : 45000); } }
+// ---------------- armored truck mirror on clients
+function updateNetTruck(dt) {
+  const n = NW.truck; if (!n) return;
+  let c = state.truck;
+  if (!c) { c = createCar('armored', '#4a5644', n.p[0], n.p[1], n.p[2], 'free'); c.event = 'truck'; c.netTruck = true; c.ai = null; c.maxHealth = 520; state.truck = c; }
+  c.active = !!n.a; c.group.visible = c.active;
+  if (!c.dead) c.mode = 'net';
+  const gp = c.group.position;
+  if (Math.hypot(gp.x - n.p[0], gp.z - n.p[1]) > 30) gp.set(n.p[0], n.p[3], n.p[1]);
+  else { const k = 1 - Math.exp(-6 * dt); gp.x += (n.p[0] - gp.x) * k; gp.z += (n.p[1] - gp.z) * k; c.h += wrapA(n.p[2] - c.h) * k; }
+  if (!c.dead) { c.y = n.p[3]; gp.y = c.y; c.group.rotation.y = c.h; }
+  c.health = n.hp;
+  if (n.dd && !c.dead) { c._netBoom = true; explodeCar(c); c._netBoom = false; }
+  if (!n.dd && c.dead) { c.dead = false; c.paint.material = c.paintM; c.mode = 'net'; }
+}
+function hostStreamTruck(dt) {
+  const tr = state.truck; if (!tr) return;
+  NW.tkT = (NW.tkT || 0) + dt; if (NW.tkT < 0.2) return; NW.tkT = 0;
+  const p = tr.group.position;
+  mpSend({ t: 'tk', a: tr.active ? 1 : 0, p: [r1(p.x), r1(p.z), r2(tr.h), r1(tr.y)], dd: tr.dead ? 1 : 0, hp: Math.round(tr.health) });
+}
+// ---------------- manifest for late joiners + packet handling
+function sharedManifest() {
+  return {
+    sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
+    pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+  };
+}
+function applySharedManifest(d) {
+  if (d.sv) d.sv.forEach((s, i) => { const c = SV[i]; if (!c) return; if (s[4]) onSV({ i, k: 1, id: s[4] }); else onSV({ i, k: 0, p: s.slice(0, 4), dd: s[5] }); });
+  if (d.pu) { pickups.length = 0; for (const [id, x, z, amt, kind] of d.pu) puSpawnLocal(x, z, amt, false, kind, id); }
+  if (d.gcd) for (const [k, t] of d.gcd) GEN_CD.set(k, state.now + t);
+}
+function handleShared(d) {
+  switch (d.t) {
+    case 'sv': onSV(d); return true;
+    case 'pu': for (const [id, x, z, amt, kind] of d.a) if (!pickups.some(p => p.id === id)) puSpawnLocal(x, z, amt, false, kind, id); return true;
+    case 'pu_rm': puRemove(d.i); return true;
+    case 'pu_req': if (MP.host) spawnCash(d.x, d.z, d.amt, !!d.rs, d.k); return true;
+    case 'pu_take': if (MP.host) { const p = puRemove(d.i); if (p) { mpSend({ t: 'pu_rm', i: d.i }); puRespawn(p); } } return true;
+    case 'tk': if (!MP.host) NW.truck = d; return true;
+    case 'tkd': if (MP.host && state.truck && !state.truck.dead) { const tr = state.truck; tr._rh = true; tr.lastHit = d.id; damageCar(tr, d.a); tr._rh = false; } return true;
+    case 'ev':
+      if (d.k === 'truck') { showBig('💰 ZIRHLI PARA KAMYONU', '#ffd23a', 3, 'Şehirde para taşıyor · herkes peşinde!'); AudioSys.tone(660, 0.2, 0.2, 'square'); AudioSys.tone(880, 0.3, 0.2, 'square', 1, 0.2); }
+      else if (d.k === 'loot') { showBig('SOYGUN!', '#7dff9a', 3, 'Para balyaları etrafa saçıldı — ilk kapan alır!'); haptic([50, 30, 50]); if (d.by === myNetId()) { addHeat(1.5); S().robberies++; } }
+      return true;
+    case 'gcd': GEN_CD.set(d.k, state.now + d.cd); return true;
+  }
+  return false;
+}
 
 // ============================================================ MP STAGE 3: PvP, scoreboard, bounty, customization sync
 const SB = { k: 0, d: 0, streak: 0, t: 0 };          // own session score
@@ -5064,14 +5532,14 @@ function genInteriorFor(door) {
       if (rng() < 0.5) npc(rcx - 2, rz0 + 1.5, 0);
     },
     terminal() {
-      for (let x = rx0 + 5; x < rx1 - 3; x += 4.6) { box(x, 0, rz0 + 2.6, 3, 1.05, 1, G.white); box(x, 1.5, rz0 + 1.6, 3, 1.1, 0.08, G.screen, false); box(x + 1.8, 0, rz0 + 2.6, 0.6, 0.5, 1, G.black); if (x < rx0 + 20) npc(x, rz0 + 1.9, 0); }
+      for (let x = rx0 + 5; x < rx1 - 3; x += 4.6) { box(x, 0, rz0 + 2.6, 3, 1.05, 1, G.white); box(x, 1.5, rz0 + 1.6, 3, 1.1, 0.08, G.screen, false); box(x + 1.8, 0, rz0 + 2.6, 0.6, 0.5, 1, G.black); if (x < rx0 + 20) npc(x, rz0 + 1.9, 0); if (x < rx0 + 10) spot(x, rz0 + 3.7, 'ticket'); }
       for (let x = rx0 + 3; x < rx1 - 3; x += 7) for (let z = rcz + 1; z < rz1 - 4; z += 2.4) { if (!free(x, z, 3)) continue; box(x, 0, z, 6, 0.45, 0.6, G.fabricA); box(x, 0.45, z + 0.27, 6, 0.45, 0.08, G.fabricA, false); }
       for (const [x, z] of [[ox - 11, rcz - 1], [ox + 11, rcz - 1], [ox - 11, rz1 - 5], [ox + 11, rz1 - 5]]) cyl(x, 0, z, 0.5, FHh, G.white);
       cyl(ox, 0, rcz - 1.5, 1.4, 1.1, G.darkWood); npc(ox, rcz - 1.5 + 0.1, Math.PI);
       for (const s of [-1, 1]) { box(ox + s * (W / 2 - 0.03), 1.6, oz, 0.05, 5, D - 6, G.win, false); plant(ox + s * 4, rz1 - 1.2); }
       const board = new THREE.Mesh(new THREE.PlaneGeometry(12, 4), new THREE.MeshBasicMaterial({ map: canvasTex(768, 256, g => {
         g.fillStyle = '#0b0f16'; g.fillRect(0, 0, 768, 256); g.fillStyle = '#ffd23a'; g.font = 'bold 34px Arial'; g.fillText('✈ KALKIŞLAR', 20, 42);
-        g.font = 'bold 26px monospace'; const rows = [['VB101', 'PALMİYE ADASI', '14:20', 'ZAMANINDA'], ['VB204', 'FENER ADASI', '15:05', 'BİNİŞ'], ['VB330', 'MERCAN KOYU', '16:40', 'ZAMANINDA'], ['VB415', 'KUZEY BURNU', '18:10', 'RÖTAR']];
+        g.font = 'bold 26px monospace'; const rows = [['VB101', 'PALMİYE ADASI', '14:20', 'ZAMANINDA'], ['VB204', 'FENER ADASI', '15:05', 'BİNİŞ'], ['VB330', 'MERCAN KOYU', '16:40', 'ZAMANINDA'], ['VB500', 'ŞEHİR TURU', '18:10', 'BİNİŞ']];
         rows.forEach((r, i) => { const y = 92 + i * 42; g.fillStyle = '#e8e8e8'; g.fillText(r[0], 20, y); g.fillText(r[1], 130, y); g.fillText(r[2], 470, y); g.fillStyle = r[3] === 'RÖTAR' ? '#ff6a4a' : '#6aff8a'; g.fillText(r[3], 580, y); });
       }), toneMapped: false }));
       board.position.set(ox + 4, Y + 5.2, z0 + 0.1); I.FG[K].add(board); I.board = board;
@@ -5171,12 +5639,13 @@ const cdKey = (I, s) => `${I.door.id}:${s.kind}:${s.f}`;
 const cdTag = (I, s, label) => { const l = cdLeft(cdKey(I, s)); return l > 0 ? `${label.split(' ')[0]} BOŞ · ${Math.ceil(l)} sn sonra` : label; };
 function genReward(I, s, cd, range, heat, chance, label) {
   const key = cdKey(I, s); if (cdLeft(key) > 0) { floatText('⏳ Burası yakın zamanda boşaltıldı'); AudioSys.fail(); return false; }
-  GEN_CD.set(key, state.now + cd);
+  GEN_CD.set(key, state.now + cd); if (MP.on) mpSend({ t: 'gcd', k: key, cd });
   const amt = Math.round(MR(range[0], range[1]) / 10) * 10; earn(amt, label); AudioSys.cash(); haptic(30); floatText(`${label} +$${amt}`);
   if (heat && Math.random() < chance) { addHeat(heat); setTimeout(() => floatText('🚨 Polis haberdar edildi!'), 700); }
   return true;
 }
 const SPOTS = {
+  ticket: { label: () => '🎫 BİLET GİŞESİ · uçuşlar & görevler', fn: () => openShop('ticket') },
   bed: { label: () => '🛏 DİNLEN', fn: () => { state.health = 100; floatText('😴 Dinlendin · can doldu'); } },
   elev: { label: () => '🛗 ASANSÖR', fn: () => openShop('elev') },
   roof: { label: s => s.ladder ? '🪜 ÇATIYA ÇIK' : '🏙 ÇATIYA ÇIK', fn: (s, I) => goRoof(I.door) },
@@ -5185,7 +5654,7 @@ const SPOTS = {
   loot: { label: (s, I) => cdTag(I, s, '🧳 ÇEKMECELERİ KARIŞTIR'), fn: (s, I) => genReward(I, s, 240, [40, 260], 1, 0.3, '🧳 Ev hırsızlığı') },
   stock: { label: (s, I) => cdTag(I, s, '📦 STOKLARI KARIŞTIR'), fn: (s, I) => { if (genReward(I, s, 300, [60, 220], 0, 0, '📦 Stok satışı') && state.ownedW[1]) { state.ammo[1] += 30; floatText('🔫 +30 mermi bulundu'); } } },
   safe: { label: (s, I) => cdTag(I, s, '🔐 KASAYI KIR · 4 sn bekle'), fn: (s, I) => { if (cdLeft(cdKey(I, s)) > 0) { floatText('⏳ Kasa boş'); AudioSys.fail(); return; } state.crack = { s, t: 0, tick: -1 }; } },
-  scout: { label: (s, I) => cdTag(I, s, '🔭 GÖZETLE'), fn: (s, I) => { const key = cdKey(I, s); if (cdLeft(key) > 0) return; GEN_CD.set(key, state.now + 60); const tw = I.type === 'tower'; state.scoutT = tw ? 90 : 45; state.scoutR = tw ? 3000 : 450; showBig('🔭 GÖZETLEME', '#7dd8ff', 2.5, tw ? 'Tüm şehir radarda · gizli paketler haritada' : 'Yakındaki gizli paketler haritada işaretlendi'); AudioSys.pickup(); } },
+  scout: { label: (s, I) => cdTag(I, s, '🔭 GÖZETLE'), fn: (s, I) => { const key = cdKey(I, s); if (cdLeft(key) > 0) return; GEN_CD.set(key, state.now + 60); if (MP.on) mpSend({ t: 'gcd', k: key, cd: 60 }); const tw = I.type === 'tower'; state.scoutT = tw ? 90 : 45; state.scoutR = tw ? 3000 : 450; showBig('🔭 GÖZETLEME', '#7dd8ff', 2.5, tw ? 'Tüm şehir radarda · gizli paketler haritada' : 'Yakındaki gizli paketler haritada işaretlendi'); AudioSys.pickup(); } },
 };
 function updateDoors() {
   if (state.interior || state.inCar || state.dead || state.interact || state.passenger) return;
@@ -5317,6 +5786,7 @@ function loop(now) {
     if (c.mode === 'ai') { const d = Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z); if (d > 300 && frame % 3) continue; updateAI(c, dt); }
     else if (c.mode === 'free' || c.mode === 'dead') {
       if (c.spec.boat) { if (Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < 300) boatPhysics(c, dt, 0, 0); }
+      else if (c.spec.plane) { if (c.speed > 0.05 || c.dead || c.y > planeFloor(c.group.position.x, c.group.position.z) + 0.05) planePhysics(c, dt, null); }
       else if (c.spec.heli) { if (c.power > 0.01 || c.dead || c.y > heliFloor(c) + 0.05) heliPhysics(c, dt, 0, 0, 0); }
       else if (carSpeed(c) > 0.05 || c.air) carPhysics(c, dt, 0, 0, c.mode === 'dead');
     }
@@ -5338,6 +5808,9 @@ function loop(now) {
   updateStage3(dt);
   updateDoors();
   updateAirport(dt);
+  updateIslands(dt);
+  updateFlightJob(dt);
+  updatePlaneHud();
   updateNetWorld(dt);
   updateCrosshair(dt);
   cullChunks(dt);

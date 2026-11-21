@@ -36,6 +36,9 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🏢 Çok katlı binalar**: bina yüksekliğine göre en fazla 8 kat; yürünebilir merdivenler (zikzak merdiven boşluğu, korkuluklar) ve 🛗 asansör (kat seçici + çatı). Katlara göre etkileşimler: 💰 dükkan kasasını soy, 💻 ofiste bilgisayar hackle, 🔐 yönetim katında kasayı kır (4 sn), 🧳 dairelerde çekmeceleri karıştır, 📦 depoda stok, 🛏 dinlen, 🔭 en üst katta gözetle (gizli paketler haritada)
 - **🏙 Çatılar**: düz çatılı binalarda merdiven kulübesi — içeriden "Çatıya çık", çatıdan "Merdivenden in". Helikopterle çatıya inip araçtan çıkınca artık yere ışınlanmazsın, çatıda yürürsün; çatı kenarı seni durdurur (atlamak için ZIPLA), yüksekten düşmek can yakar
 - **✈ Vista Bay Havalimanı** (şehrin güneyi): bağlantı yolu + otopark, cam cepheli Yolcu Terminali (içeride check-in bankoları ve kalkış tablosu), 3 köprü, 3 kemerli hangar, girilebilir 4 katlı Kontrol Kulesi (tepede radar: tüm şehrin paketleri haritada), 730 m pist (şeritler, eşik çizgileri, gece pist/taksi ışıkları), taksi yolu, apron, tel çit, rüzgâr tulumu; mini haritada ✈
+- **🛩 Uçaklar**: 2 pervaneli "Vista Hawk" ve 1 "Skyline Jet" (havalimanında) + adalarda birer uçak. Gerçekçi uçuş: gaz kolu, hız kazanınca kalkış, yatışla dönüş, stall (hız düşünce burun düşer), iniş takımı (G / ⚙); teker kapalı ya da sert/yan inişte hasar, denize çakılırsan patlar. Ekranda irtifa / gaz / teker göstergesi
+- **🏝 3 ada**: Palmiye Adası (otel, havuz, plaj şemsiyeleri, pist), Fener Adası (dönen ışıklı deniz feneri, bekçi evi), Mercan Koyu (bungalovlar, plaj barı, pist) — uçak, helikopter, tekne ya da biletle git; tekneden inince adaya yüzersin
+- **🎫 Bilet gişesi** (terminal içi): adalara hızlı seyahat (uçuş sineması), adalardaki gişeden dönüş uçuşu. **Uçuş görevleri**: 📦 Ada Kargosu ($4.000), ⭕ Halka Parkuru (10 hava halkası, $3.000 + süre bonusu), 📸 Şehir Turu ($2.500)
 - **🎯 Nişangâh**: mermi tam nişangâhın gösterdiği yere gider (mobilde hafif nişan yardımı)
 - **🚪 Özel iç mekanlar**: dans eden kalabalık ve müzikli Gece Kulübü; Lüks Villa içi (yatakta uyu & kaydet, gardırop)
 - **👕 Vista Moda**: gömlek, pantolon/şort, şapka, gözlük, saç rengi ve kesimi — karakterin anında değişir ve kaydedilir
@@ -64,6 +67,7 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🎯 Ödül (bounty)**: üst üste 3 oyuncu alt edenin başına otomatik ödül konur (mini haritada ☠); onu alt eden ödülü kazanır
 - **Özelleştirme senkronu**: garajdan neon alt ışık ve jant rengi, kıyafet mağazasından sırt çantası — hepsi diğer oyunculara görünür
 - **💼 Ortak soygun**: her 5 dakikada zırhlı konvoy tüm oyuncuların haritasında belirir; korumaları temizle, kasayı aç, saçılan para çantalarını kap
+- **Ortak dünya 2**: helikopter, tekne ve uçaklar herkes için tek — biri alınca diğerlerinde kaybolur, bıraktığı yerde herkese görünür; yerdeki paralar ve silah sandıkları herkeste aynı (biri alınca herkesten silinir); zırhlı para kamyonu herkeste aynı yerde, patlatan oyuncu aranır, saçılan parayı ilk kapan alır; soyulan kasa/kasalar herkes için boşalır
 
 Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
 

@@ -229,3 +229,18 @@ body.passenger .btn.foot{display:none}
 .sbT{width:100%;border-collapse:collapse;font-size:14px}.sbT th{color:#ffffff88;font-weight:700;padding:3px 4px;text-align:left}.sbT td{padding:4px;border-top:1px solid #ffffff12}
 .sbT td i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}.sbT td small{color:#ffffff66}.sbT tr.me td{background:#ffffff0c}.sbT .bty{color:#ff3a4a}
 #mpList{width:min(460px,94vw)!important;max-height:70vh;overflow:auto}
+
+/* ---------- AIRPLANE ---------- */
+.btn.plane{display:none}
+body.inplane .btn.plane{display:flex}
+#bGear{right:calc(136px + var(--sr,0px));bottom:198px;background:#3a6ad855;border-color:#9cc4ff;font-size:12px}
+#planeHud{position:absolute;left:50%;bottom:98px;transform:translateX(-50%);display:none;font:700 15px Rajdhani,sans-serif;color:#fff;background:#000000aa;border-radius:10px;padding:6px 14px;letter-spacing:1px;white-space:nowrap;pointer-events:none}
+#planeHud b{color:#7dd8ff}#planeHud .warn{color:#ff5050;animation:blink .5s infinite alternate}#planeHud .tip{color:#ffd23a}
+@keyframes blink{from{opacity:1}to{opacity:.35}}
+#flightCine{position:fixed;inset:0;z-index:30;background:linear-gradient(#0a1a33,#1d4f8a);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0;pointer-events:none;transition:opacity .6s}
+#flightCine.on{opacity:1;pointer-events:auto}
+#flightCine b{font:400 44px "Bebas Neue",Impact;letter-spacing:3px;text-align:center;padding:0 16px}#flightCine small{font:500 18px Rajdhani,sans-serif;opacity:.8}
+.fcSky{width:min(520px,86vw);height:70px;position:relative;border-bottom:2px dashed #ffffff55}
+.fcPlane{position:absolute;left:0;top:10px;font-size:46px;animation:fcFly 3s ease-in-out forwards}
+@keyframes fcFly{from{left:0;transform:rotate(-8deg)}to{left:calc(100% - 50px);transform:rotate(4deg)}}
+@media (max-width:700px){#planeHud{font-size:12px;bottom:auto;top:calc(56px + env(safe-area-inset-top,0px))}}
