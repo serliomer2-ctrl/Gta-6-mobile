@@ -30,6 +30,8 @@ async function schema(db) {
   await db.batch([
     db.prepare('CREATE TABLE IF NOT EXISTS users (k TEXT PRIMARY KEY, name TEXT, salt TEXT, hash TEXT, role TEXT, banned INTEGER DEFAULT 0, data TEXT, created INTEGER, saved INTEGER)'),
     db.prepare('CREATE TABLE IF NOT EXISTS tokens (t TEXT PRIMARY KEY, k TEXT, exp INTEGER)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS graves (id INTEGER PRIMARY KEY AUTOINCREMENT, k TEXT, name TEXT, words TEXT, cause TEXT, died INTEGER, flowers INTEGER DEFAULT 0)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS gflowers (gid INTEGER, k TEXT, day INTEGER, PRIMARY KEY (gid, k, day))'),
   ]);
   schemaReady = true;
 }
@@ -115,6 +117,38 @@ const routes = {
     if (aud !== undefined && p.aud !== String(aud)) return [200, { ok: false, reason: 'aud' }];
     const u = await getUser(db, p.key); if (!u) return [200, { ok: false }];
     return [200, { ok: !u.banned, banned: !!u.banned, user: u.name || p.key, role: u.role || 'player' }];
+  },
+  // ---------------- cemetery: permanent gravestones shared by every player
+  'GET /api/graves': async (req, env, db) => {
+    if (limited(req, 'graves', 60)) return [429, { error: 'rate' }];
+    const { results } = await db.prepare('SELECT id, name, words, cause, died, flowers FROM graves ORDER BY id DESC LIMIT 120').all();
+    return [200, { graves: results }];
+  },
+  'POST /api/graves': async (req, env, db) => {
+    const a = await userFromReq(req, db); if (!a) return [401, { error: 'Oturum geçersiz' }];
+    if (limited(req, 'grave', 4)) return [429, { error: 'Çok sık' }];
+    const last = await db.prepare('SELECT MAX(died) AS t FROM graves WHERE k = ?').bind(a.key).first();
+    if (last && last.t && Date.now() - last.t < 60000) return [429, { error: 'Çok sık' }];
+    const { words, cause } = await body(req, 2048);
+    const clean = (v, n) => String(v || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
+    const g = { name: a.u.name || a.key, words: clean(words, 60), cause: clean(cause, 40), died: Date.now(), flowers: 0 };
+    const res = await db.prepare('INSERT INTO graves (k, name, words, cause, died, flowers) VALUES (?, ?, ?, ?, ?, 0)').bind(a.key, g.name, g.words, g.cause, g.died).run();
+    g.id = res.meta && res.meta.last_row_id;
+    await db.prepare('DELETE FROM graves WHERE k = ? AND id NOT IN (SELECT id FROM graves WHERE k = ? ORDER BY id DESC LIMIT 3)').bind(a.key, a.key).run();
+    return [200, { grave: g }];
+  },
+  'POST /api/graves/flower': async (req, env, db) => {
+    const a = await userFromReq(req, db); if (!a) return [401, { error: 'Oturum geçersiz' }];
+    if (limited(req, 'flower', 30)) return [429, { error: 'rate' }];
+    const { id } = await body(req, 512), gid = Math.floor(+id), day = Math.floor(Date.now() / 86400000);
+    const g = await db.prepare('SELECT id, flowers FROM graves WHERE id = ?').bind(gid).first(); if (!g) return [404, { error: 'Mezar yok' }];
+    const ins = await db.prepare('INSERT OR IGNORE INTO gflowers (gid, k, day) VALUES (?, ?, ?)').bind(gid, a.key, day).run();
+    if (ins.meta && ins.meta.changes) { await db.prepare('UPDATE graves SET flowers = flowers + 1 WHERE id = ?').bind(gid).run(); await db.prepare('DELETE FROM gflowers WHERE day < ?').bind(day - 1).run(); return [200, { flowers: g.flowers + 1 }]; }
+    return [200, { flowers: g.flowers }];
+  },
+  'POST /api/admin/grave': async (req, env, db) => {
+    const a = await userFromReq(req, db); if (!a || a.u.role !== 'admin') return [403, { error: 'Yetki yok' }];
+    const { id } = await body(req, 512); await db.prepare('DELETE FROM graves WHERE id = ?').bind(Math.floor(+id)).run(); return [200, { ok: true }];
   },
   'GET /api/admin/users': async (req, env, db) => {
     const a = await userFromReq(req, db); if (!a || a.u.role !== 'admin') return [403, { error: 'Yetki yok' }];

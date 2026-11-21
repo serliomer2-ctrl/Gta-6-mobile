@@ -32,7 +32,7 @@ const NAME_RE = /^[a-zA-Z0-9_ğüşıöçĞÜŞİÖÇ]{3,14}$/;
 // ---------------- storage (single JSON file, atomic writes)
 let db = { users: {}, tokens: {} };
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch (e) { }
-db.users = db.users || {}; db.tokens = db.tokens || {};
+db.users = db.users || {}; db.tokens = db.tokens || {}; db.graves = db.graves || []; db.graveSeq = db.graveSeq || 0; db.gflowers = db.gflowers || {};
 let saveTimer = null;
 function persist() {
   clearTimeout(saveTimer);
@@ -144,6 +144,36 @@ const routes = {
     if (!u) return [200, { ok: false }];
     if (aud !== undefined && p.aud !== String(aud)) return [200, { ok: false, reason: 'aud' }];
     return [200, { ok: !u.banned, banned: !!u.banned, user: u.name || p.key, role: u.role || 'player' }];
+  },
+  // ---------------- cemetery: permanent gravestones shared by every player
+  'GET /api/graves': async (req) => {
+    if (limited(req, 'graves', 60)) return [429, { error: 'rate' }];
+    return [200, { graves: db.graves.slice(-120).reverse().map(({ k, ...g }) => g) }];
+  },
+  'POST /api/graves': async (req) => {
+    const a = userFromReq(req); if (!a) return [401, { error: 'Oturum geçersiz' }];
+    if (limited(req, 'grave', 4)) return [429, { error: 'Çok sık' }];
+    if (Date.now() - (a.u.lastGrave || 0) < 60000) return [429, { error: 'Çok sık' }];
+    const { words, cause } = await body(req, 2048);
+    const clean = (v, n) => String(v || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
+    const g = { id: ++db.graveSeq, k: a.key, name: a.u.name || a.key, words: clean(words, 60), cause: clean(cause, 40), died: Date.now(), flowers: 0 };
+    a.u.lastGrave = g.died;
+    const mine = db.graves.filter(o => o.k === a.key);
+    if (mine.length >= 3) { const drop = new Set(mine.slice(0, mine.length - 2).map(o => o.id)); db.graves = db.graves.filter(o => !drop.has(o.id)); }
+    db.graves.push(g); if (db.graves.length > 2000) db.graves.splice(0, db.graves.length - 2000);
+    persist(); return [200, { grave: { ...g, k: undefined } }];
+  },
+  'POST /api/graves/flower': async (req) => {
+    const a = userFromReq(req); if (!a) return [401, { error: 'Oturum geçersiz' }];
+    if (limited(req, 'flower', 30)) return [429, { error: 'rate' }];
+    const { id } = await body(req, 512), g = db.graves.find(o => o.id === +id); if (!g) return [404, { error: 'Mezar yok' }];
+    const day = Math.floor(Date.now() / 86400000), key = `${g.id}|${a.key}|${day}`;
+    if (!db.gflowers[key]) { db.gflowers[key] = day; g.flowers++; for (const k in db.gflowers) if (db.gflowers[k] < day - 1) delete db.gflowers[k]; persist(); }
+    return [200, { flowers: g.flowers }];
+  },
+  'POST /api/admin/grave': async (req) => {
+    const a = userFromReq(req); if (!a || a.u.role !== 'admin') return [403, { error: 'Yetki yok' }];
+    const { id } = await body(req, 512); db.graves = db.graves.filter(o => o.id !== +id); persist(); return [200, { ok: true }];
   },
   // ---------------- admin
   'GET /api/admin/users': async (req) => {

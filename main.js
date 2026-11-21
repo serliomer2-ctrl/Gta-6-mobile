@@ -380,6 +380,7 @@ function init() {
   buildMarkets();
   buildHomes();
   buildWedding();
+  buildCemetery();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -2540,6 +2541,7 @@ function drawMinimap() {
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   drawAnomMap(dot);
+  if (!state.interior && CEM.cx !== undefined) dot(CEM.gate[0], CEM.gate[1], CEM.funeral && state.now < CEM.funeral.until ? (Math.sin(state.now * 6) > 0 ? '#ffffff' : '#606060') : '#9a9a96', 7, !!(CEM.funeral && state.now < CEM.funeral.until));
   if (!state.interior) { dot(WED.x, WED.z, '#ff7ab0', 7, false); for (const r of MP.remotes.values()) if (state.spouse && r.info.name === state.spouse.name) dot(r.x, r.z, '#ff7ab0', 11, true); }
   if (!state.interior) drawLifeMap(dot);
   if (BM.van && !BM.van.dead && Math.hypot(BM.x - player.pos.x, BM.z - player.pos.z) < 220) { dot(BM.x, BM.z, '#a040ff', 10, false); const [px, py] = toMap(BM.x, BM.z); g.font = '12px sans-serif'; g.fillText('🕶', px, py + 1); }
@@ -2953,7 +2955,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2968,7 +2970,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || '';
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -3431,6 +3433,8 @@ function initPhone() {
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
     else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
+    else if (d.will) { closePhone(); willModal(); }
+    else if (d.cgps) { state.waypoint = { x: CEM.gate[0], z: CEM.gate[1], label: 'Şehir Mezarlığı' }; floatText('📍 Vista Bay Şehir Mezarlığı işaretlendi'); closePhone(); }
     else if (d.joint) { jointMove(+d.joint); renderPhone('family'); }
     else if (d.famtog) { state.family = !state.family; sendInfo(); saveGame(); renderPhone('family'); }
     else if (d.wgps) { state.waypoint = { x: WED.x, z: WED.z, label: 'Evlendirme Dairesi' }; floatText('📍 Evlendirme Dairesi işaretlendi'); closePhone(); }
@@ -6314,6 +6318,10 @@ function initFamilyUI() {
     if (k === 'byes' && WED.babyReq) { const r = MP.remotes.get(WED.babyReq); mpSend({ t: 'baby_ok', to: WED.babyReq, parents: [MP.name, state.spouse.name] }); showBig('👶 BEBEĞİNİZ DOĞDU!', '#ffd0e8', 4, `${r ? r.info.name : ''} ailenize katıldı · besleyin, oynayın, büyüsün`); if (typeof breakingNews === 'function') breakingNews(`${MP.name} ve ${state.spouse.name} ailesine yeni bir bebek katıldı. Vista Bay nüfusu artıyor!`, true); WED.babyReq = null; }
     if (k === 'bno' && WED.babyReq) { mpSend({ t: 'baby_no', to: WED.babyReq }); WED.babyReq = null; }
   });
+  $('mpModal').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.dataset.cem !== 'will') return;
+    state.lastWords = cleanWords(($('willTxt') || {}).value); saveGame(); closeModal(); floatText(state.lastWords ? `📜 Son sözün kaydedildi: "${state.lastWords}"` : '📜 Son söz silindi (rastgele bir söz yazılır)');
+  });
 }
 function familyPhoneHtml(head) {
   const sp = state.spouse, J = state.joint || { bal: 0 };
@@ -6332,8 +6340,196 @@ function familyPhoneHtml(head) {
     const kids = [...MP.remotes.values()].filter(r => r.info.baby != null && r.info.baby < 100 && (r.info.parents || []).includes(MP.name));
     if (kids.length) h += kids.map(r => `<div class="phRow"><div><b>${babyStage(r.info.baby)} ${esc(r.info.name)}</b><small>Büyüme ${Math.floor(r.info.baby)}% · yanına gidip 🍼 besle / 🧸 oyna</small></div></div>`).join('');
   }
+  h += `<div class="phSec">🪦 Vasiyet</div><div class="phRow"><div><b>"${esc(state.lastWords || 'henüz yazılmadı')}"</b><small>Öldüğünde Vista Bay Şehir Mezarlığı'ndaki taşına yazılır</small></div><button class="phBtn" data-will="1">✏</button></div><button class="phBig" data-cgps="1">📍 Mezarlığı işaretle</button>`;
   return h + '</div>';
 }
+
+// ============================================================ LIFE RP 3: VISTA BAY CITY CEMETERY — permanent gravestones, funerals, flowers
+const CEM = { graves: [], slots: [], key: 'vistabay_graves_v1', lastT: -1e9, texs: new Map(), dig: null, loaded: false, near: null };
+const LAST_WORDS = ['Hız limitleri öneriydi sanıyordum.', 'Bir tur daha atsaydım…', 'Buzdolabında hâlâ karpuz var.', 'Paraşütü açmayı unutma.', 'Hepinizi seviyorum, Vista Bay!', 'O sarı ışık kırmızıydı galiba.', 'Kara borsadan bir şey almayın.', 'Rampa sandığımdan yüksekti.'];
+const cleanWords = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 60);
+const fmtDate = t => new Date(t).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function buildCemetery() {
+  const b = blocks[0][5], cx = b.cx, cz = b.cz, S = BLOCK / 2 - 3;
+  CEM.b = b; CEM.cx = cx; CEM.cz = cz;
+  // gate faces the side nearest to the city centre
+  const gz = cz > 0 ? cz - S : cz + S, gs = cz > 0 ? -1 : 1; CEM.gate = [cx, gz]; CEM.gs = gs;
+  const stoneM = new THREE.MeshStandardMaterial({ color: 0x8a8880, roughness: 0.95 }), darkM = new THREE.MeshStandardMaterial({ color: 0x24282a, metalness: 0.6, roughness: 0.4 });
+  const cypM = new THREE.MeshStandardMaterial({ color: 0x1e3a24, roughness: 1 }), trunkM = new THREE.MeshStandardMaterial({ color: 0x4a3424, roughness: 1 }), chapelM = new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.9 }), roofM = new THREE.MeshStandardMaterial({ color: 0x5a2a20, roughness: 0.8 });
+  const L = new Map(), add = (m, g) => { if (!L.has(m)) L.set(m, []); L.get(m).push(g); }, y0 = groundY(cx, cz);
+  const solid = (x, z, w, d, h) => b.bld.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, h: y0 + h, cem: true });
+  // perimeter wall with a gate
+  for (const [x, z, w, d] of [[cx, cz - S, 2 * S, 0.5], [cx, cz + S, 2 * S, 0.5], [cx - S, cz, 0.5, 2 * S], [cx + S, cz, 0.5, 2 * S]]) {
+    if (Math.abs(z - gz) < 0.1 && d < 1) { for (const s of [-1, 1]) { const ww = S - 2.5, xx = cx + s * (2.5 + ww / 2); add(stoneM, new THREE.BoxGeometry(ww, 1.1, d).translate(xx, y0 + 0.55, z)); solid(xx, z, ww, d, 1.1); add(stoneM, new THREE.BoxGeometry(0.9, 2.4, 0.9).translate(cx + s * 2.5, y0 + 1.2, z)); } continue; }
+    add(stoneM, new THREE.BoxGeometry(w, 1.1, d).translate(x, y0 + 0.55, z)); solid(x, z, w, d, 1.1);
+  }
+  add(darkM, new THREE.TorusGeometry(2.5, 0.08, 6, 20, Math.PI).translate(cx, y0 + 2.4, gz));
+  // cypress trees along the walls
+  for (let k = -3; k <= 3; k++) for (const [x, z] of [[cx + k * 9.5, cz - S + 2], [cx + k * 9.5, cz + S - 2], [cx - S + 2, cz + k * 9.5], [cx + S - 2, cz + k * 9.5]]) { if (Math.hypot(x - cx, z - gz) < 5) continue; add(trunkM, new THREE.CylinderGeometry(0.15, 0.2, 1.2, 6).translate(x, y0 + 0.6, z)); add(cypM, new THREE.ConeGeometry(0.9, 6.5, 8).translate(x, y0 + 4.2, z)); }
+  // little chapel at the back corner
+  const chx = cx + S - 7, chz = cz - gs * (S - 6);
+  add(chapelM, new THREE.BoxGeometry(7, 4.5, 6).translate(chx, y0 + 2.25, chz)); add(roofM, new THREE.ConeGeometry(5.4, 3, 4).rotateY(Math.PI / 4).translate(chx, y0 + 6, chz));
+  add(chapelM, new THREE.BoxGeometry(1.4, 3, 1.4).translate(chx, y0 + 7, chz)); add(darkM, new THREE.BoxGeometry(0.12, 1.2, 0.12).translate(chx, y0 + 9.1, chz)); add(darkM, new THREE.BoxGeometry(0.7, 0.12, 0.12).translate(chx, y0 + 9.3, chz));
+  add(darkM, new THREE.BoxGeometry(1.4, 2.4, 0.1).translate(chx, y0 + 1.2, chz + gs * 3.02)); solid(chx, chz, 7, 6, 4.5);
+  CEM.chapel = [chx, chz + gs * 3.9];
+  // backdrop hill so it sits "on a calm hill" at the edge of town
+  const hill = new THREE.Mesh(new THREE.SphereGeometry(70, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.32, 1), new THREE.MeshStandardMaterial({ color: 0x4a7a3a, roughness: 1 })); hill.position.set(cx - gs * 0, y0 - 2, cz - gs * (S + 62)); scene.add(hill);
+  // grave slots (newest graves fill the rows closest to the gate)
+  const cols = 9, rows = 8;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = cx - 17 + c * 4.25, z = gz - gs * (6 + r * 4.6);
+    if (Math.hypot(x - chx, z - chz) < 7 || Math.abs(x - cx) < 1.6) continue;
+    CEM.slots.push([x, z]);
+  }
+  // sign
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.1), new THREE.MeshBasicMaterial({ map: canvasTex(512, 110, g => { g.fillStyle = '#2a2a28'; g.fillRect(0, 0, 512, 110); g.fillStyle = '#e8e2d4'; g.font = 'bold 38px Georgia'; g.textAlign = 'center'; g.fillText('Vista Bay Şehir Mezarlığı', 256, 50); g.font = 'italic 24px Georgia'; g.fillText('Huzur içinde yatsınlar', 256, 88); }) }));
+  sign.position.set(cx, y0 + 3.3, gz + gs * 0.3); sign.rotation.y = gs > 0 ? 0 : Math.PI; scene.add(sign);
+  for (const [m, list] of L) { const mesh = new THREE.Mesh(merge(list), m); mesh.castShadow = QUALITY !== 'low'; mesh.receiveShadow = true; scene.add(mesh); }
+  // instanced headstones / mounds / flowers
+  const n = CEM.slots.length;
+  CEM.stones = new THREE.InstancedMesh(merge([new THREE.BoxGeometry(0.9, 1.0, 0.18).translate(0, 0.5, 0), new THREE.CylinderGeometry(0.45, 0.45, 0.18, 16, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2).rotateY(Math.PI / 2).translate(0, 1.0, 0)]), new THREE.MeshStandardMaterial({ color: 0x9a9a96, roughness: 0.6 }), n);
+  CEM.mounds = new THREE.InstancedMesh(new THREE.BoxGeometry(1.1, 0.28, 2.0).translate(0, 0.14, 0), new THREE.MeshStandardMaterial({ roughness: 1 }), n);
+  CEM.flowers = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.11, 0), new THREE.MeshStandardMaterial({ roughness: 0.7 }), n * 6);
+  CEM.stems = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 4).translate(0, 0.15, 0), new THREE.MeshStandardMaterial({ color: 0x2a6a2a }), n * 6);
+  for (const m of [CEM.stones, CEM.mounds, CEM.flowers, CEM.stems]) { m.count = 0; m.castShadow = m === CEM.stones && QUALITY !== 'low'; scene.add(m); }
+  CEM.digger = makeHuman({ skin: '#c58c60', shirt: '#5a5a40', pants: '#3a3020', hair: '#2a2a2a', shoes: '#2a2018', glasses: false, cap: '#3a3a30' });
+  CEM.shovel = new THREE.Mesh(merge([new THREE.CylinderGeometry(0.03, 0.03, 1.3, 6).translate(0, -0.6, 0.1), new THREE.BoxGeometry(0.25, 0.32, 0.03).translate(0, -1.3, 0.1)]), darkM); CEM.digger.elbowR.add(CEM.shovel);
+  CEM.digger.g.position.set(chx - 4, y0, chz + gs * 4);
+  loadGraves();
+}
+// ---------------- storage: account server (permanent, shared by everyone) + local / room fallback for guests
+function localGraves() { try { return JSON.parse(localStorage.getItem(CEM.key) || '[]'); } catch (e) { return []; } }
+function saveLocalGraves() { try { localStorage.setItem(CEM.key, JSON.stringify(CEM.graves.filter(g => String(g.id).startsWith('L')).slice(0, 30))); } catch (e) { } }
+async function loadGraves() {
+  let server = [];
+  try { const r = await api('/graves'); server = Array.isArray(r.graves) ? r.graves : []; CEM.server = true; } catch (e) { CEM.server = false; }
+  mergeGraves([...server, ...localGraves()]); CEM.loaded = true;
+}
+function sanitizeGrave(g) {
+  if (!g || (typeof g.id !== 'string' && typeof g.id !== 'number')) return null;
+  return { id: String(g.id).slice(0, 48), name: String(g.name || 'İsimsiz').replace(/[<>]/g, '').slice(0, 16), words: cleanWords(g.words), cause: cleanWords(g.cause).slice(0, 40), died: +g.died || Date.now(), flowers: Math.max(0, Math.min(9999, +g.flowers || 0)) };
+}
+function mergeGraves(list) {
+  const by = new Map(CEM.graves.map(g => [g.id, g]));
+  for (const raw of list) { const g = sanitizeGrave(raw); if (!g) continue; const o = by.get(g.id); if (o) o.flowers = Math.max(o.flowers, g.flowers); else by.set(g.id, g); }
+  CEM.graves = [...by.values()].sort((a, b) => b.died - a.died).slice(0, 120);
+  layoutGraves();
+}
+function layoutGraves() {
+  if (!CEM.stones) return;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0), y0 = groundY(CEM.cx, CEM.cz);
+  const rot = q.setFromAxisAngle(up, CEM.gs > 0 ? Math.PI : 0), n = Math.min(CEM.slots.length, CEM.graves.length);
+  CEM.b.bld = CEM.b.bld.filter(o => !o.grave);
+  let fi = 0;
+  for (let i = 0; i < n; i++) {
+    const g = CEM.graves[i], [x, z] = CEM.slots[i]; g.slot = i;
+    const fresh = Date.now() - g.died < 10 * 60000;
+    m4.compose(p.set(x, y0, z - CEM.gs * 1.1), rot, sc.set(1, 1, 1)); CEM.stones.setMatrixAt(i, m4);
+    m4.compose(p.set(x, y0, z), rot, sc.set(1, fresh ? 1.6 : 1, 1)); CEM.mounds.setMatrixAt(i, m4); CEM.mounds.setColorAt(i, col.set(fresh ? 0x3a2414 : 0x4a6a32));
+    CEM.b.bld.push({ x0: x - 0.5, x1: x + 0.5, z0: z - CEM.gs * 1.1 - 0.15, z1: z - CEM.gs * 1.1 + 0.15, h: y0 + 1.2, grave: true });
+    const fl = Math.min(6, g.flowers);
+    for (let k = 0; k < fl; k++) {
+      const fx = x - 0.4 + (k % 3) * 0.4, fz = z - CEM.gs * (0.75 - Math.floor(k / 3) * 0.25);
+      m4.compose(p.set(fx, y0 + 0.28, fz), q.identity(), sc.set(1, 1, 1)); CEM.stems.setMatrixAt(fi, m4);
+      m4.compose(p.set(fx, y0 + 0.6, fz), q, sc.set(1, 1, 1)); CEM.flowers.setMatrixAt(fi, m4); CEM.flowers.setColorAt(fi, col.setHSL([0, 0.95, 0.12, 0.8, 0.15, 0.55][k], 0.8, 0.55)); fi++;
+      q.setFromAxisAngle(up, CEM.gs > 0 ? Math.PI : 0);
+    }
+  }
+  CEM.stones.count = CEM.mounds.count = n; CEM.flowers.count = CEM.stems.count = fi;
+  for (const m of [CEM.stones, CEM.mounds, CEM.flowers, CEM.stems]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
+  for (const [id, t] of CEM.texs) { scene.remove(t.mesh); t.mesh.material.map.dispose(); t.mesh.material.dispose(); } CEM.texs.clear();
+}
+function stoneLabel(g) {
+  const [x, z] = CEM.slots[g.slot], y0 = groundY(x, z);
+  const tex = canvasTex(192, 200, c => {
+    c.fillStyle = '#9a9a96'; c.fillRect(0, 0, 192, 200); c.fillStyle = '#2a2a28'; c.textAlign = 'center';
+    c.font = '20px Georgia'; c.fillText('✝ Huzur içinde yat', 96, 26);
+    c.font = 'bold 30px Georgia'; c.fillText(g.name.slice(0, 11), 96, 66);
+    c.font = '18px Georgia'; c.fillText(fmtDate(g.died), 96, 92);
+    c.font = 'italic 15px Georgia'; const w = `"${g.words}"`, lines = []; let line = '';
+    for (const word of w.split(' ')) { if (c.measureText(line + ' ' + word).width > 176) { lines.push(line); line = word; } else line = line ? line + ' ' + word : word; } lines.push(line);
+    lines.slice(0, 4).forEach((l, i) => c.fillText(l, 96, 120 + i * 18));
+    c.font = '13px Georgia'; c.fillStyle = '#4a4a48'; c.fillText(`🌹 ${g.flowers}`, 96, 194);
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.88), new THREE.MeshBasicMaterial({ map: tex, color: 0xd8d8d8 }));
+  mesh.position.set(x, y0 + 0.55, z - CEM.gs * 1.1 + CEM.gs * 0.1); mesh.rotation.y = CEM.gs > 0 ? 0 : Math.PI; scene.add(mesh);
+  return { mesh, fl: g.flowers };
+}
+// ---------------- deaths dig a grave
+function lastWords() { return cleanWords(state.lastWords) || pick(LAST_WORDS); }
+async function digGrave(cause) {
+  if (state.now - CEM.lastT < 120) return;            // at most one grave every two minutes per player
+  CEM.lastT = state.now;
+  const name = loggedIn() ? ACC.user : (MP.on ? MP.name : (MP.name || 'Vatandaş')), words = lastWords();
+  let g = null;
+  if (loggedIn() && CEM.server !== false) { try { g = (await api('/graves', { words, cause })).grave; } catch (e) { g = null; } }
+  if (!g) { g = { id: 'L' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), name, words, cause, died: Date.now(), flowers: 0 }; }
+  mergeGraves([g]); saveLocalGraves(); funeral(g, true);
+  if (MP.on) mpSend({ t: 'grave_new', g });
+}
+function funeral(g, mine) {
+  g = CEM.graves.find(o => o.id === String(g.id)) || g;
+  CEM.dig = { id: g.id, t: 40 }; CEM.funeral = { id: g.id, until: state.now + 180 };
+  if (mine) setTimeout(() => floatText(`⚰ Mezarın kazıldı: "${g.words}" · Vista Bay Şehir Mezarlığı`), 4200);
+  else { mpFeed(`⚰ <b>${esc(g.name)}</b> için mezarlıkta cenaze töreni · 🌹 çiçek bırakabilirsin`); floatText(`⚰ ${g.name} için cenaze · mezarlıkta 🌹 bırak`); }
+}
+async function leaveFlower(g) {
+  if (state.money < 20) { floatText('💸 Çiçek için $20 gerekli'); return; }
+  const day = Math.floor(Date.now() / 86400000), k = 'vb_fl_' + g.id + '_' + day;
+  try { if (localStorage.getItem(k)) { floatText('🌹 Bugün bu mezara zaten çiçek bıraktın'); return; } localStorage.setItem(k, '1'); } catch (e) { }
+  state.money -= 20; ledger('🌹 Çiçek', -20);
+  if (!String(g.id).startsWith('L') && loggedIn()) { try { const r = await api('/graves/flower', { id: g.id }); g.flowers = r.flowers; } catch (e) { g.flowers++; } }
+  else g.flowers++;
+  saveLocalGraves(); layoutGraves(); AudioSys.tone(660, 0.3, 0.1, 'sine', 1.2); floatText(`🌹 ${g.name} için çiçek bıraktın · 🌹 ${g.flowers}`);
+  if (MP.on) mpSend({ t: 'grave_fl', gid: g.id, n: g.flowers });
+  if (CEM.funeral && CEM.funeral.id === g.id && state.now < CEM.funeral.until) addRep && addRep(5);
+}
+function willModal() {
+  mpModal(`<b>📜 Son sözün (mezar taşına yazılır)</b><small>Öldüğünde mezar taşında adın, ölüm tarihin ve bu söz yazar. En fazla 60 karakter.</small>
+    <input id="willTxt" maxlength="60" value="${esc(state.lastWords || '')}" placeholder="${esc(pick(LAST_WORDS))}" style="width:100%;margin:8px 0;padding:8px;border-radius:8px;border:1px solid #fff4;background:#0008;color:#fff;font:600 15px Rajdhani,sans-serif">
+    <div class="mmBtns"><button data-cem="will">KAYDET</button><button data-act="close" class="grey">Vazgeç</button></div>`);
+}
+function updateCemetery(dt) {
+  if (!CEM.stones || state.interior) return;
+  const d = Math.hypot(player.pos.x - CEM.cx, player.pos.z - CEM.cz);
+  // gravedigger animation
+  const D = CEM.digger, dg = CEM.dig && CEM.graves.find(g => g.id === CEM.dig.id);
+  if (dg && dg.slot != null) {
+    CEM.dig.t -= dt; const [x, z] = CEM.slots[dg.slot];
+    D.g.position.set(x + 1.1, groundY(x, z), z); D.g.rotation.y = -Math.PI / 2; D.phase += dt * 4;
+    D.armR.rotation.x = -0.6 + Math.sin(D.phase) * 0.7; D.armL.rotation.x = -0.6 + Math.sin(D.phase) * 0.7;
+    if (d < 120 && Math.random() < dt * 8) FX.norm.spawn(x + 0.3, groundY(x, z) + 0.4, z, MR(-1, 1), MR(1.5, 3), MR(-1, 1), 0.2, 0.25, 0.5, 0.25, 0.16, 0.1, 0.9, 14);
+    if (CEM.dig.t <= 0) { CEM.dig = null; D.g.position.set(CEM.chapel[0] - 4, groundY(CEM.cx, CEM.cz), CEM.chapel[1]); D.armR.rotation.x = D.armL.rotation.x = 0; }
+  }
+  if (d > 70) return;
+  // stone text for nearby graves (lazy textures)
+  for (const g of CEM.graves) {
+    if (g.slot == null || g.slot >= CEM.slots.length) continue;
+    const [x, z] = CEM.slots[g.slot], near = Math.hypot(player.pos.x - x, player.pos.z - z) < 22, t = CEM.texs.get(g.id);
+    if (near && (!t || t.fl !== g.flowers) && CEM.texs.size < 30) { if (t) { scene.remove(t.mesh); t.mesh.material.map.dispose(); } CEM.texs.set(g.id, stoneLabel(g)); }
+    else if (!near && t) { scene.remove(t.mesh); t.mesh.material.map.dispose(); t.mesh.material.dispose(); CEM.texs.delete(g.id); }
+  }
+  if (state.interact || state.inCar || state.dead) return;
+  if (Math.hypot(player.pos.x - CEM.chapel[0], player.pos.z - CEM.chapel[1]) < 2) { state.interact = { label: '📜 VASİYET · mezar taşındaki son sözünü yaz', fn: willModal }; return; }
+  let best = null, bd = 1.9;
+  for (const g of CEM.graves) { if (g.slot == null || g.slot >= CEM.slots.length) continue; const [x, z] = CEM.slots[g.slot], dd = Math.hypot(player.pos.x - x, player.pos.z - (z + CEM.gs * 1.3)); if (dd < bd) { bd = dd; best = g; } }
+  if (best) {
+    const g = best; CEM.near = g;
+    state.interact = isAdmin() && keys.ShiftLeft ? { label: `🛡 Mezarı kaldır (admin) · ${g.name}`, fn: () => removeGrave(g) } : { label: `🌹 ÇİÇEK BIRAK ($20) · ${g.name} · ${fmtDate(g.died)}${g.cause ? ' · ' + g.cause : ''}`, fn: () => leaveFlower(g) };
+  }
+}
+async function removeGrave(g) {
+  if (!isAdmin()) return;
+  if (!String(g.id).startsWith('L')) { try { await api('/admin/grave', { id: g.id }); } catch (e) { floatText('Silinemedi: ' + e.message); return; } }
+  CEM.graves = CEM.graves.filter(o => o.id !== g.id); saveLocalGraves(); layoutGraves(); if (MP.on) mpSend({ t: 'grave_del', gid: g.id }); floatText('🛡 Mezar kaldırıldı');
+}
+function handleCemetery(d) {
+  if (d.t === 'grave_new') { if (d.g) { mergeGraves([d.g]); funeral(d.g, false); } return true; }
+  if (d.t === 'grave_fl') { const g = CEM.graves.find(o => o.id === String(d.gid)); if (g && +d.n > g.flowers && +d.n < g.flowers + 5) { g.flowers = +d.n; layoutGraves(); } return true; }
+  if (d.t === 'grave_del') { const rr = MP.remotes.get(d.id); if (rr && rr.acct && rr.acct.role === 'admin') { CEM.graves = CEM.graves.filter(o => o.id !== String(d.gid)); saveLocalGraves(); layoutGraves(); } return true; }
+  return false;
+}
+function cemeteryManifest() { return CEM.graves.filter(g => String(g.id).startsWith('L')).slice(0, 20); }
 
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
@@ -6767,6 +6963,7 @@ function applyPacket(d) {
   if (handleAnom(d)) return;
   if (handleVG(d)) return;
   if (handleFamily(d)) return;
+  if (handleCemetery(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -7513,7 +7710,7 @@ function hostStreamTruck(dt) {
 function sharedManifest() {
   return {
     sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
-    ...modesManifest(), anom: anomManifest(), vg: VG.posts.slice(0, 5).map(p => ({ id: p.id, by: p.by, name: p.name, img: p.img, cap: p.cap, t: p.t, likes: p.likes, npc: p.npc })), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+    ...modesManifest(), cem: cemeteryManifest(), anom: anomManifest(), vg: VG.posts.slice(0, 5).map(p => ({ id: p.id, by: p.by, name: p.name, img: p.img, cap: p.cap, t: p.t, likes: p.likes, npc: p.npc })), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
   };
 }
 function applySharedManifest(d) {
@@ -7525,6 +7722,7 @@ function applySharedManifest(d) {
   if (d.bh) onBigHeist({ ...d.bh, start: 1, mf: 1 });
   if (d.cargo) onCargo(d.cargo);
   if (d.anom) onAnom(d.anom);
+  if (Array.isArray(d.cem)) mergeGraves(d.cem.slice(0, 20));
   if (Array.isArray(d.vg)) for (const p of d.vg.slice().reverse()) handleVG({ t: 'vg_post', id: p.by, p });
   if (d.cz) for (const id in d.cz) if (CZ.st[id]) Object.assign(CZ.st[id], d.cz[id]);
 }
@@ -8638,6 +8836,7 @@ function onLocalDeath() {
     else playerDown('BAYILDIN', 'Hastanede uyandın');
     sendScore();
   } else playerDown('BAYILDIN', 'Hastanede uyandın');
+  digGrave(killer ? `${killer.info.name} tarafından vuruldu` : state.swim ? 'Boğuldu' : state.wanted >= 3 ? 'Polisle çatışmada' : state.inCar ? 'Trafik kazası' : 'Talihsiz bir kaza');
   state.lastHitBy = null;
 }
 function onRemoteKill(d) {
@@ -9182,6 +9381,7 @@ function loop(now) {
   updateGunFear(dt);
   updateNeeds(dt);
   updateFamily(dt);
+  updateCemetery(dt);
   document.body.classList.toggle('inHome', state.interior === 'home');
   if (state.ownedW[5] && state.ammo[5] < 60) { state.laserT = (state.laserT || 0) + dt; if (state.laserT > 0.5) { state.laserT = 0; state.ammo[5]++; } }
   document.body.classList.toggle('hasHover', !!state.hoverOwned && !state.inCar);

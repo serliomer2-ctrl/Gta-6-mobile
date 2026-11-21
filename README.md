@@ -88,6 +88,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **NPC eş**: evinde seni bekler, konuşur; her oyun gününde bir kez yemek hazırlar (🍔 +45, 💧 +30, can +25)
 - **👶 Aile kur & bebek olarak doğ**: evli çift nikah dairesinde ya da telefonda "Aile kur"u açar. Odaya katılan bir oyuncuya (ya da telefonda 👪 Aile → "Bebekleri olarak doğ") ailenin bebeği olarak doğma teklifi gelir; ebeveyn kabul edince ailenin yanında küçük bir bebek olarak doğar (parası ve eşyaları korunur). Bebek → Çocuk → Genç → Yetişkin: ebeveynler yanına gidip 🍼 BESLE (poşetten yiyecek, büyüme +8) ve 🧸 OYNA (+4) yaptıkça, ailesinin yanında vakit geçirdikçe büyür ve boyu uzar. Bebekken silah kullanamaz, büyüyene kadar araç süremez (yolcu olabilir); diğer oyuncular onu küçük ve 👶 etiketli görür
 
+- **🪦 Vista Bay Şehir Mezarlığı** (Banliyö'nün kenarındaki tepenin eteğinde; telefonda 👪 Aile → 📍): taş duvarlı, demir kapılı, servi ağaçlı, şapelli mezarlık. Bir oyuncu öldüğünde mezarcı onun için yeni bir mezar kazar (taze toprak, kürek sallayan mezarcı, toprak sıçraması) ve **kalıcı bir mezar taşı** dikilir: ✝ Huzur içinde yat · kullanıcı adı · ölüm tarihi · son sözü · 🌹 çiçek sayısı. Ölüm sebebi (kimin vurduğu, boğulma, trafik kazası, polisle çatışma) mezarın önünde yazar
+- **📜 Vasiyet**: şapelin kapısında ya da telefonda 👪 Aile → 🪦 ile mezar taşına yazılacak son sözünü yaz (60 karakter; yazmazsan esprili bir söz seçilir)
+- **🌹 Çiçek bırak & cenaze**: mezarın önünde E → $20'a çiçek bırak (her mezara günde bir kez); çiçekler mezarın üstünde görünür. Odada biri ölünce herkese "⚰ cenaze töreni" bildirimi gider, mezarlık haritada 3 dk yanıp söner; törende çiçek bırakana +5 itibar
+- **Kalıcılık**: hesapla giriş yapan oyuncuların mezarları hesap sunucusunda saklanır — herkes, her odada, her cihazda aynı mezarlığı görür (en yeni 120 mezar; oyuncu başına son 3 mezar). Misafir oyuncuların mezarları o cihazda ve odadaki herkeste görünür. Admin, Shift basılıyken mezarın önünde uygunsuz mezarları kaldırabilir
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
@@ -146,6 +151,8 @@ Oyun GitHub Pages'te kalır, hesaplar Cloudflare Workers + D1 veritabanında ça
 7. Bu repoda `api-config.js` içine adresi yaz: `window.VB_API = 'https://vista-bay-api.<hesap-adın>.workers.dev';` → commit → GitHub Pages güncellenince oyunda **👤 Giriş / Kayıt** butonu çıkar
 
 Notlar: ücretsiz planda günde 100.000 veritabanı yazması ve 100.000 istek var (oyun bulut kaydını en fazla dakikada bir gönderir). İstersen `api.serli.net` gibi kendi alt alan adını da bağlayabilirsin ama bunun için alan adının Cloudflare'de olması gerekir — zorunlu değil.
+
+> **Güncelleme (mezarlık):** Mezar taşları için Worker'a yeni uç noktalar eklendi (`/api/graves`). Cloudflare panelinde Worker → **Edit code** → `cloudflare/worker.js` dosyasının yeni halini yapıştırıp **Deploy** de. Tablolar (graves, gflowers) ilk istekte kendiliğinden oluşur; başka ayar gerekmez. Güncellemezsen oyun çalışmaya devam eder, mezarlar sadece cihazda ve odada tutulur.
 
 ### Alternatif: kendi Node.js sunucunda çalıştırma
 
