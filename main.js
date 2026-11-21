@@ -70,7 +70,7 @@ const state = {
   money: 0, shownMoney: 0, health: 100, armor: 0, heat: 0, wanted: 0, time: 16.4, inCar: null,
   mission: null, missionCooldown: 0, dead: false, deadTimer: 0, fireCd: 0, lastLookInput: 0,
   shake: 0, combo: 0, now: 0, crimeTimer: 0,
-  weapon: 0, ammo: [Infinity, 150, 0, 0, 0], ownedW: [true, true, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
+  weapon: 0, ammo: [Infinity, 150, 0, 0, 0, 0], ownedW: [true, true, false, false, false, false], shopOpen: null, saveT: 0, interact: null, soundMode: 0, policeSee: false, crashHeatT: 0,
   props: {}, spawnProp: null, ach: {}, ledger: [], lastHour: null, waypoint: null, phoneOpen: false, phoneApp: 'home', contractOffers: [], shopZone: null,
   stats: { kills: 0, missions: 0, fails: 0, contracts: 0, earned: 0, spent: 0, dist: 0, topSpeed: 0, maxWanted: 0, jacked: 0, play: 0, stunts: 0, robberies: 0, racesWon: 0, heists: 0 }, turf: {}, packages: {}, stuntsDone: {}, truck: null, eventT: 150, timeScale: 1, timeTarget: 1, realDt: 0, stunt: null, curTurf: undefined, story: 0, look: null, dialog: null, photo: null, hidden: false, noSave: false, emote: null, interior: null, passenger: null, mpRace: null, raceInv: null, incoming: null, heist: null, spawnProt: 0, lastHitBy: null, lastHitT: -99, rain: 0, rainTarget: 0, weatherT: 70, lightning: 0, radioOn: true, weather: 'clear', cloud: 0.32, cloudTarget: 0.32, fog: 0, fogTarget: 0, docs: {}, chute: 0, sky: null, cabin: null, lesson: null
 };
@@ -356,6 +356,7 @@ function init() {
   buildPoliceStation();
   buildCrewZones();
   buildBlackMarket();
+  vgLoad();
   buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
@@ -1385,13 +1386,13 @@ function exitCar(forced) {
   AudioSys.door();
 }
 function updatePlayerFoot(dt) {
-  if (state.swim || shouldSwim()) { if (!state.swim) startSwim(); updateSwim(dt); return; }
-  if (baseJumpCheck()) return;
+  if (!state.hover && (state.swim || shouldSwim())) { if (!state.swim) startSwim(); updateSwim(dt); return; }
+  if (!state.hover && baseJumpCheck()) return;
   const ix = input.mx, iy = input.my, mag = Math.min(1, Math.hypot(ix, iy));
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
   let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
   const run = input.sprint || mag > 0.92;
-  const target = (mag > 0.08 ? (run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1);
+  const target = (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1);
   player.speed = damp(player.speed, target, 10, dt);
   if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; if (player.aimT <= 0) player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-12 * dt))); }
   else { mx = Math.sin(player.yaw); mz = Math.cos(player.yaw); }
@@ -1403,8 +1404,8 @@ function updatePlayerFoot(dt) {
   }
   const r = state.interior ? interiorCollide(x, z, 0.38, player.pos.y) : collide(x, z, 0.38, player.pos.y + 0.2, x > WATERLINE - 10 ? 'sea' : true); x = r.x; z = r.z;
   // jump & gravity on the highest surface below the feet (ground, roof, stairs, storey)
-  const g = surfaceY(x, z, player.pos.y);
-  if (input.jump && player.onGround) { player.vy = 5.8; player.onGround = false; }
+  const g = state.hover ? Math.max(surfaceY(x, z, player.pos.y), x > WATERLINE - 10 ? WATER_Y : -1e9) + 0.22 : surfaceY(x, z, player.pos.y);
+  if (input.jump && player.onGround) { player.vy = state.hover ? 7.5 : 5.8; player.onGround = false; }
   player.vy -= 18 * dt; player.pos.y += player.vy * dt;
   if (player.pos.y <= g) {
     if (g - player.pos.y < 0.6 || !player.onGround) {
@@ -1432,7 +1433,8 @@ function updatePlayerFoot(dt) {
   const h = player.human;
   h.g.position.copy(player.pos); h.g.rotation.y = player.yaw;
   h.legL.rotation.z = h.legR.rotation.z = 0;
-  animHuman(h, player.onGround ? player.speed : 0, dt, player.aimT > 0);
+  animHuman(h, player.onGround && !state.hover ? player.speed : 0, dt, player.aimT > 0);
+  if (state.hover) { h.legL.rotation.x = 0.25; h.legR.rotation.x = -0.2; h.kneeL.rotation.x = h.kneeR.rotation.x = 0.35; h.g.position.y += 0.1; }
   if (state.emote) applyEmote(h, state.emote.type, state.emote.t);
   if (!player.onGround) { h.legL.rotation.x = -0.6; h.legR.rotation.x = 0.3; }
 }
@@ -1473,6 +1475,7 @@ const WEAPONS = [
   { name: 'TÜFEK', icon: '🎯', cd: 0.12, range: 75, cone: 0.3, carDmg: 12, pellets: 1, vol: 1.1, spread: 0.02 },
   { name: 'POMPALI', icon: '💥', cd: 0.85, range: 24, cone: 0.55, carDmg: 34, pellets: 7, vol: 1.6, spread: 0.13 },
   { name: 'ROKETATAR', icon: '🚀', cd: 1.3, range: 140, cone: 0.25, rocket: true, vol: 1 },
+  { name: 'LAZER', icon: '🟢', cd: 0.16, range: 120, cone: 0.3, carDmg: 40, pellets: 1, vol: 0.5, laser: true },
 ];
 function nextWeapon(dir = 1) {
   const L = WEAPONS.length; for (let k = 1; k <= L; k++) { const i = (state.weapon + dir * k + L * 2) % L; if (state.ownedW[i] && state.ammo[i] > 0) { state.weapon = i; break; } }
@@ -1496,6 +1499,7 @@ function updateRockets(dt) {
       if (insideBuilding(p.x, p.y, p.z) || p.y <= groundY(p.x, p.z) + 0.1) hit = true;
       for (const c of cars) if (c.active && c !== state.inCar && Math.abs(c.group.position.x - p.x) < 2.2 && Math.abs(c.group.position.z - p.z) < 2.2 && Math.abs(c.y + 0.8 - p.y) < 1.6) hit = true;
       for (const q of peds) if (!q.dead && Math.hypot(q.x - p.x, q.z - p.z) < 1 && p.y < 2.3) hit = true;
+      if (ANOM.ufo && !ANOM.ufo.fall && p.distanceTo(ANOM.ufo.g.position) < 8) { hit = true; ufoDamage(260); }
     }
     FX.norm.spawn(p.x, p.y, p.z, MR(-0.3, 0.3), MR(-0.3, 0.3), MR(-0.3, 0.3), 1.3, 0.4, 1.8, 0.75, 0.75, 0.78, 0.5, -0.3);
     FX.add.spawn(p.x, p.y, p.z, 0, 0, 0, 0.08, 0.55, 0, 3, 1.5, 0.4, 1, 0);
@@ -1504,6 +1508,7 @@ function updateRockets(dt) {
 }
 function killPed(p, byPlayer) {
   if (p.dead) return;
+  if (p.npc === 'zombie' && !p._zk) { zombieHit(p, true); return; }
   if (NW.client && p.net && p.wIdx >= 0) mpSend({ t: 'pk', to: 'h', i: p.wIdx });
   p.dead = true; p.deadT = 18;
   p.h.g.rotation.x = -Math.PI / 2;
@@ -2161,7 +2166,7 @@ function initFX() {
     let n = 0;
     for (let i = tr.length - 1; i >= 0; i--) { tr[i].t -= dt; if (tr[i].t <= 0) tr.splice(i, 1); }
     for (const t of tr) {
-      const k = t.t / 0.12 * 3, c = t.red ? [k, k * 0.35, k * 0.2] : [k, k * 0.85, k * 0.45];
+      const k = t.t / 0.12 * 3, c = t.red === 'g' ? [k * 0.3, k, k * 0.6] : t.red ? [k, k * 0.35, k * 0.2] : [k, k * 0.85, k * 0.45];
       TP.set(t.a, n * 6); TP.set(t.b, n * 6 + 3); TC.set(c, n * 6); TC.set(c.map(v => v * 0.3), n * 6 + 3); n++;
     }
     tg.setDrawRange(0, n * 2); tg.attributes.position.needsUpdate = tg.attributes.color.needsUpdate = true;
@@ -2386,7 +2391,8 @@ function initInput() {
     if (state.phoneOpen) { if (e.code === 'Escape') closePhone(); return; }
     if (e.code === 'KeyE' && !state.shopOpen) { if (!interact()) enterCar(); }
     else if (e.code === 'KeyF' || e.code === 'Enter') enterCar();
-    if (/^Digit[1-5]$/.test(e.code)) selectWeapon(+e.code[5] - 1);
+    if (/^Digit[1-6]$/.test(e.code)) selectWeapon(+e.code[5] - 1);
+    if (e.code === 'KeyH') toggleHover();
     if (e.code === 'KeyX') nextWeapon();
     if (e.code === 'KeyR') toggleRadio();
     if (e.code === 'KeyL' && MP.on) { const l = $('mpList'); l.style.display = l.style.display === 'block' ? 'none' : 'block'; if (l.style.display === 'block') renderMpList(); }
@@ -2444,7 +2450,7 @@ function initInput() {
   };
   btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown'); btn('bGear', 'TGear'); btn('bDive', 'TDive');
   btn('bEnter', 'TEnter', enterCar);
-  btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact);
+  btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact); btn('bHover', 'THov', toggleHover);
   $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
 }
 function readInput() {
@@ -2527,6 +2533,7 @@ function drawMinimap() {
   drawCrewZonesMap(g, toMap, r);
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
+  drawAnomMap(dot);
   if (BM.van && !BM.van.dead && Math.hypot(BM.x - player.pos.x, BM.z - player.pos.z) < 220) { dot(BM.x, BM.z, '#a040ff', 10, false); const [px, py] = toMap(BM.x, BM.z); g.font = '12px sans-serif'; g.fillText('🕶', px, py + 1); }
   for (const rp of MP.remotes.values()) { { const hunt = state.cop && rp.wn > 0; dot(rp.x, rp.z, hunt ? (Math.sin(state.now * 10) > 0 ? '#ff2040' : '#ffffff') : rp.info.cop ? '#3a7aff' : rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, hunt || rp.bounty || sameCrew(rp) ? 11 : 8, true); if (hunt) { const [px, py] = toMap(rp.x, rp.z); if (Math.hypot(px - r, py - r) < r - 12) { g.font = 'bold 11px sans-serif'; g.fillStyle = '#ffd23a'; g.fillText('★'.repeat(rp.wn), px, py - 14); } } } if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
@@ -2932,7 +2939,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned
     }));
     accountSaved();
   } catch (e) { }
@@ -2947,7 +2954,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned;
     return d;
   } catch (e) { return null; }
 }
@@ -3141,6 +3148,7 @@ function startContract(k) {
 }
 function hideBounty(m) { for (const p of [m.boss, ...m.guards]) { p.dead = true; p.h.g.visible = false; p.h.g.rotation.x = 0; } }
 function hitPed(p) {
+  if (p.npc === 'zombie') { zombieHit(p, false); return; }
   if (p.npc === 'gang') gangAggro();
   if (p.npc && p.hp > 1) {
     p.hp--; if (state.mission && state.mission.guards) state.mission.alert = true;
@@ -3309,7 +3317,7 @@ function cleanupRico(m) {
 }
 
 // ============================================================ SMARTPHONE UI
-const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
 function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
 function openPhone() {
   if (state.shopOpen || state.dead || state.dialog || state.photo) return;
@@ -3376,6 +3384,11 @@ function renderPhone(app) {
       <div class="phRow"><div><b>🏁 Stunt atlayışları ${Object.keys(state.stuntsDone).length}/${ramps.length}</b><small>Rampalardan hızla atla · ilk atlayış x2 bonus</small></div></div></div>`;
   } else if (app === 'wallet') {
     h = walletHtml(head);
+  } else if (app === 'vg') {
+    h = vgHtml(head);
+  } else if (app === 'news') {
+    h = head('📰 Haberler', '#b01822') + `<div class="phBody"><p class="phNote">${ANCHOR} · VISTA HABER 105.5 (arabada R ile kanal değiştir)</p>${NEWS.last.length ? NEWS.last.map(n => `<div class="phRow"><div><b>${esc(n.m)}</b><small>${n.t}</small></div></div>`).join('') : '<div class="phEmpty">Henüz son dakika yok</div>'}
+      <div class="phSec">03:00 Anomalisi</div><div class="phRow"><div><b>${ANOM.cur ? (ANOM.cur.k === 'ufo' ? '👽 UFO şehrin üstünde!' : '🧟 Sis Adası\'nda salgın!') : 'Her gece saat 03:00\'te bir şey oluyor…'}</b><small>Ödüller: 🟢 lazer silahı · 🛹 hoverboard ${state.ownedW[5] ? '· lazer sende ✓' : ''} ${state.hoverOwned ? '· hoverboard sende ✓' : ''}</small></div></div></div>`;
   } else if (app === 'props') {
     const next = Math.ceil((1 - (state.time % 1)) * HOUR_SEC);
     h = head('🏠 Emlak', '#d88a10') + `<div class="phBody"><div class="phBal"><small>Saatlik gelir · sonraki ödeme ${next} sn</small><b>+$${propIncome()}</b></div>
@@ -3391,6 +3404,7 @@ function initPhone() {
     e.preventDefault(); e.stopPropagation();
     const d = t.dataset;
     if (d.app === 'photo') startPhoto();
+    else if (d.vglike) { vgLike(d.vglike); renderPhone('vg'); }
     else if (d.app) renderPhone(d.app);
     else if (d.set) { settings[d.set] = !settings[d.set]; saveSettings(); $('fps').style.display = settings.fps ? 'block' : 'none'; renderPhone('settings'); }
     else if (d.sens) { settings.sens = clamp(Math.round((settings.sens + 0.2 * +d.sens) * 10) / 10, 0.4, 2.4); saveSettings(); renderPhone('settings'); }
@@ -3566,6 +3580,7 @@ const ISLE_TOP = 1.6;
 const ISLES = [
   { id: 'palm', name: 'Palmiye Adası', code: 'VB101', price: 450, x: 1150, z: -650, R: 165, desc: 'Tatil adası · otel, havuz, plaj · uçak pisti', strip: [0, 20, 260], kiosk: [-95, 46], plane: [115, 42, -Math.PI / 2, '#e0a020'] },
   { id: 'fener', name: 'Fener Adası', code: 'VB204', price: 350, x: 1500, z: 420, R: 115, desc: 'Deniz feneri ve bekçi evi · deniz uçağı iskelesi', kiosk: [-40, 30] },
+  { id: 'sis', name: 'Sis Adası', code: 'VB666', price: 600, x: 1760, z: -230, R: 120, desc: 'Terk edilmiş ada · harabeler ve mezarlık · gece 03:00\'te tuhaf şeyler oluyor', kiosk: [-60, 50] },
   { id: 'mercan', name: 'Mercan Koyu', code: 'VB330', price: 550, x: 980, z: 1150, R: 160, desc: 'Bungalovlar ve plaj barı · uçak pisti', strip: [0, -20, 230], kiosk: [-80, 6], plane: [92, -42, -Math.PI / 2, '#2a9a6a'] },
 ];
 ISLES.blk = { cx: 0, cz: 0, bld: EXTRA_BLD, doors: [] };
@@ -3576,7 +3591,7 @@ const islandGround = (I, x, z) => Math.min(ISLE_TOP, (I.R - Math.hypot(x - I.x, 
 function inStrip(I, x, z) { if (!I.strip) return false; const [sx, sz, len] = I.strip; return Math.abs(x - I.x - sx) < len / 2 && Math.abs(z - I.z - sz) < 9; }
 function buildIslands() {
   const S = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...o });
-  const sandC = new THREE.Color('#d8c48a'), sandW = new THREE.Color('#c9b27a'), grassC = new THREE.Color('#4f8a3a'), grassD = new THREE.Color('#3e7430');
+  const sisC = new THREE.Color('#4a4a36'), sisD = new THREE.Color('#3a3226'), sandC = new THREE.Color('#d8c48a'), sandW = new THREE.Color('#c9b27a'), grassC = new THREE.Color('#4f8a3a'), grassD = new THREE.Color('#3e7430');
   const terrainM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
   const stripTex = len => canvasTex(1024, 72, g => { g.fillStyle = '#3c3e42'; g.fillRect(0, 0, 1024, 72); speckle(g, 1024, 72, 9000, ['#34363a', '#46484c'], 1, 2); g.fillStyle = '#e8e8e2'; g.fillRect(0, 4, 1024, 3); g.fillRect(0, 65, 1024, 3); for (let x = 40; x < 984; x += 36) g.fillRect(x, 34, 20, 4); for (const x0 of [8, 996]) for (let i = 0; i < 6; i++) g.fillRect(x0 - (x0 > 500 ? 20 : 0), 12 + i * 9, 20, 4); });
   const white = S(0xf4f2ec), wood = S(0x8a6440), thatch = S(0xb89a5a, { roughness: 1 }), blue = S(0x2a6ab8), red = S(0xc82a2a), dark = S(0x30343a, { metalness: 0.4, roughness: 0.5 });
@@ -3595,7 +3610,7 @@ function buildIslands() {
     const tp = tg.attributes.position, cols = [];
     for (let i = 0; i < tp.count; i++) {
       const x = tp.getX(i), z = tp.getZ(i), y = Math.max(-1.5, Math.min(ISLE_TOP, (I.R - Math.hypot(x - I.x, z - I.z)) * 0.07)); tp.setY(i, y);
-      const n = Math.sin(x * 0.3) * Math.cos(z * 0.27); const c = y < 0.75 ? sandC.clone().lerp(sandW, 0.5 + n * 0.5) : grassC.clone().lerp(grassD, 0.5 + n * 0.5); cols.push(c.r, c.g, c.b);
+      const n = Math.sin(x * 0.3) * Math.cos(z * 0.27); const sis = I.id === 'sis', c = y < 0.75 ? sandC.clone().lerp(sandW, 0.5 + n * 0.5) : (sis ? sisC : grassC).clone().lerp(sis ? sisD : grassD, 0.5 + n * 0.5); cols.push(c.r, c.g, c.b);
     }
     tg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); tg.computeVertexNormals();
     const tm = new THREE.Mesh(tg, terrainM); tm.receiveShadow = true; grp.add(tm);
@@ -3611,7 +3626,7 @@ function buildIslands() {
     coll(kx, kz - 1.4, 3.2, 2.6, ky + 2.9);
     { const sm = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.7), new THREE.MeshBasicMaterial({ map: canvasTex(256, 52, g => { g.fillStyle = '#1d4f8a'; g.fillRect(0, 0, 256, 52); g.fillStyle = '#fff'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✈ VISTA BAY AIR', 128, 28); }) })); sm.position.set(I.x + kx, ky + 3.25, I.z + kz - 0.02); grp.add(sm); }
     const palm = (x, z) => PALMS.push([I.x + x, 0, I.z + z]);
-    for (let a = 0; a < Math.PI * 2; a += 0.21) { const r = I.R - 14 - (Math.sin(a * 7) + 1) * 5, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!inStrip(I, I.x + x, I.z + z) && Math.hypot(x - kx, z - kz) > 8) palm(x, z); }
+    if (I.id !== 'sis') for (let a = 0; a < Math.PI * 2; a += 0.21) { const r = I.R - 14 - (Math.sin(a * 7) + 1) * 5, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!inStrip(I, I.x + x, I.z + z) && Math.hypot(x - kx, z - kz) > 8) palm(x, z); }
     if (I.id === 'palm') {
       const hy = gy(10, -58);
       add(hotelM, new THREE.BoxGeometry(46, 13, 18).translate(I.x + 10, hy + 6.5, I.z - 58));
@@ -3631,6 +3646,8 @@ function buildIslands() {
       const ob = coll(8, -25, 10, 8, hy + 4.5);
       registerDoor(ISLES.blk, I.x + 8, I.z - 25, 10, 8, hy, 'house', 0, 0, 4.2); Object.assign(DOORS[DOORS.length - 1], { name: 'Fener Bekçisi Evi', bld: ob, noRoof: true });
       for (let k = 0; k < 12; k++) bx(-20 + k * 2.2, -1, I.R - 4 + 8, 1.4, 1.6, 1.6, wood);  // little pier for sea planes / boats
+    } else if (I.id === 'sis') {
+      buildSisIsland(I, gy, bx, cy, add, coll);
     } else {
       for (let k = 0; k < 6; k++) {
         const a = 0.9 + k * 0.3, r = I.R - 28, x = Math.cos(a) * r, z = Math.sin(a) * r, y = gy(x, z);
@@ -4424,7 +4441,7 @@ function onCargo(d) {
   if (d.on) {
     CARGO.cur = { x: d.x, z: d.z, y: groundY(d.x, d.z), t: d.left || 360 };
     g.visible = true; g.userData.box.position.set(d.x, CARGO.cur.y, d.z); g.userData.box.rotation.set(0.1, d.x % 3, 0.15);
-    showBig('📦 BATIK KARGO', '#ff9a30', 3.5, 'Açık denizde bir konteyner battı · şamandıraya git, dal ve ilk sen aç!'); AudioSys.tone(520, 0.25, 0.2, 'triangle');
+    showBig('📦 BATIK KARGO', '#ff9a30', 3.5, 'Açık denizde bir konteyner battı · şamandıraya git, dal ve ilk sen aç!'); breakingNews('Açık denizde bir kargo gemisi konteyner kaybetti. Dalgıçlar şimdiden yola çıktı.'); AudioSys.tone(520, 0.25, 0.2, 'triangle');
   } else {
     const won = d.by && d.by === (myNetId() || 'h');
     if (won) { earn(5000, '📦 Batık kargo'); state.ownedW[4] = true; state.ammo[4] += 4; state.ownedW[1] = true; state.ammo[1] += 150; showBig('📦 KARGO SENİN!', '#7dff9a', 3, '+$5.000 · roketatar + mermi'); AudioSys.success(); AudioSys.cash(); }
@@ -5136,6 +5153,393 @@ function updateTrades(dt) {
   if (!MP.on && TRADE.out) refundTrade();
 }
 
+// ============================================================ LIVING CITY 2: RADIO STATIONS, BREAKING NEWS, VISTAGRAM, 03:00 ANOMALY
+// ---------------- radio stations (all synthesized live)
+const STATIONS = [
+  { id: 'fm', name: 'VISTA FM 101.4', genre: 'Synthwave', bpm: 104 },
+  { id: 'beats', name: 'BAY BEATS 94.7', genre: 'Hip-hop', bpm: 88 },
+  { id: 'latin', name: 'LATİNO 98.2', genre: 'Reggaeton', bpm: 96 },
+  { id: 'lofi', name: 'GECE LO-FI 89.1', genre: 'Lo-fi', bpm: 74 },
+  { id: 'news', name: 'VISTA HABER 105.5', genre: 'Haber & sohbet', bpm: 60 },
+];
+const curStation = () => STATIONS[state.station || 0] || STATIONS[0];
+function radioKick(t, f0 = 140, dur = 0.3, vol = 0.9) { const ctx = AudioSys.ctx, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(40, t + dur * 0.6); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); g.connect(Radio.lp); o.start(t); o.stop(t + dur + 0.05); }
+const RADIO_SONGS = {
+  beats: [[57, 60, 64, 45], [53, 57, 60, 41], [55, 59, 62, 43], [52, 55, 59, 40]],
+  latin: [[62, 66, 69, 50], [59, 62, 66, 47], [55, 59, 62, 43], [57, 61, 64, 45]],
+  lofi: [[64, 67, 71, 48], [62, 65, 69, 50], [60, 64, 67, 45], [59, 62, 67, 43]],
+  news: [[60, 64, 67, 48], [60, 64, 67, 48], [57, 60, 64, 45], [57, 60, 64, 45]],
+};
+function playStation(st, t) {
+  const S2 = curStation(), R = Radio;
+  if (S2.id === 'fm') return R.playFm(st, t);
+  const ch = RADIO_SONGS[S2.id][Math.floor(st / 16)], m = R.mtof;
+  if (S2.id === 'beats') {
+    if (st % 16 === 0 || st % 16 === 10 || st % 16 === 7) radioKick(t, 120, 0.35, 0.95);
+    if (st % 8 === 4) { R.noise(t, 0.25, 0.55, 1500, 'bandpass'); R.noise(t, 0.08, 0.3, 4000, 'highpass'); }
+    if (st % 2 === 0) R.noise(t + (st % 4 === 2 ? 0.03 : 0), 0.04, 0.16, 8000, 'highpass');
+    if (st % 4 === 0) R.note(m(ch[3] - 12), t, 0.35, 0.36, 'sine');
+    if (st % 16 === 0 || st % 16 === 6) for (const n of ch.slice(0, 3)) R.note(m(n), t, 0.9, 0.05, 'triangle', 2200);
+  } else if (S2.id === 'latin') {
+    if (st % 4 === 0) radioKick(t, 130, 0.25, 0.85);
+    if ([3, 6, 11, 14].includes(st % 16)) R.noise(t, 0.12, 0.45, 2200, 'bandpass');
+    if (st % 2 === 1) R.noise(t, 0.03, 0.14, 9000, 'highpass');
+    if (st % 4 === 0 || st % 8 === 3) R.note(m(ch[3]), t, 0.22, 0.3, 'square', 500);
+    if (st % 2 === 0) R.note(m(ch[(st >> 1) % 3] + 12), t, 0.12, 0.08, 'triangle', 4000);
+  } else if (S2.id === 'lofi') {
+    if (st % 16 === 0 || st % 16 === 9) radioKick(t, 100, 0.3, 0.6);
+    if (st % 16 === 8) R.noise(t, 0.3, 0.3, 1200, 'bandpass');
+    if (st % 2 === 0) R.noise(t, 0.03, 0.06, 6000, 'highpass');
+    if (st % 3 === 0) R.noise(t, 0.02, 0.05, 3000, 'highpass');   // vinyl crackle
+    if (st % 16 === 0) for (const n of ch.slice(0, 3)) R.note(m(n), t, 2.4, 0.06, 'triangle', 1100);
+    if (st % 4 === 2) R.note(m(ch[st % 3] + 12), t, 0.5, 0.04, 'sine');
+    if (st % 8 === 0) R.note(m(ch[3] - 12), t, 0.6, 0.28, 'sine');
+  } else if (S2.id === 'news') {
+    if (st % 32 === 0) for (const n of ch.slice(0, 3)) R.note(m(n), t, 3.5, 0.025, 'sine', 900);   // quiet bed under the anchor
+  }
+}
+// ---------------- "Son Dakika" anchor
+const NEWS = { queue: [], cur: null, t: 0, talkT: 18, last: [], speaking: false };
+const ANCHOR = '🎙 Spiker Selin Aydın';
+function breakingNews(text, share) {
+  if (share && MP.on) mpSend({ t: 'news', m: text });
+  NEWS.queue.push(text); NEWS.last.unshift({ t: clockStr(), m: text }); if (NEWS.last.length > 8) NEWS.last.pop();
+}
+function speak(text) {
+  if (state.soundMode === 2 || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+  try {
+    const u = new SpeechSynthesisUtterance(text); u.lang = 'tr-TR'; u.rate = 1.05; u.pitch = 1.05; u.volume = 0.9;
+    const v = speechSynthesis.getVoices().find(v => /^tr/i.test(v.lang)); if (v) u.voice = v;
+    NEWS.speaking = true; u.onend = u.onerror = () => { NEWS.speaking = false; };
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (e) { NEWS.speaking = false; }
+}
+const radioListening = () => (!!state.inCar || state.interior === 'club') && state.soundMode === 0 && !state.dead;
+function newsFiller() {
+  const w = { clear: 'açık', rain: 'yağmurlu', storm: 'fırtınalı', fog: 'sisli', cloudy: 'bulutlu' }[state.weather] || 'değişken';
+  const opts = [
+    `Saat ${clockStr()}. Vista Bay'de hava ${w}. Sürücülerin dikkatli olması rica ediliyor.`,
+    `Trafik durumu: Merkez ve Midtown'da yoğunluk var, sahil yolu açık.`,
+    `Liman başkanlığı, açık denizdeki batıklara dalış yapan maceraperestleri oksijen konusunda uyarıyor.`,
+    `Vista Bay Havalimanı'ndan adalara seferler normal şekilde sürüyor.`,
+    `Belediye, gece saatlerinde Sis Adası'na gidilmemesi konusunda tekrar uyardı. Yetkililer tuhaf ışıklar görüldüğünü söylüyor.`,
+    `Emniyet, aranan şüphelilere teslim olmaları çağrısında bulundu.`,
+    `VistaGram'da bugün en çok beğeni alan fotoğraflar sahil gün batımından geldi.`,
+  ];
+  if (NEWS.last.length) opts.push(`Günün özeti: ${NEWS.last[0].m}`);
+  return pick(opts);
+}
+function updateNews(dt) {
+  // 5★ shoot-outs become headline news (announced by the wanted player's game, shared with the room)
+  if (state.wanted >= 5 && !(NEWS.five > 0)) { NEWS.five = 1; breakingNews(`${MP.on ? MP.name : 'Kimliği belirsiz bir şüpheli'} şehirde polisle sıcak çatışmaya girdi. Beş yıldızlı alarm verildi, helikopterler havalandı.`, true); }
+  if (state.wanted < 3) NEWS.five = 0;
+  const el = $('news');
+  if (NEWS.cur) {
+    NEWS.t -= dt;
+    if (NEWS.t <= 0) { NEWS.cur = null; el.classList.remove('on'); }
+  } else if (NEWS.queue.length) {
+    NEWS.cur = NEWS.queue.shift(); NEWS.t = Math.max(7, NEWS.cur.length * 0.075);
+    el.innerHTML = `<b>SON DAKİKA</b><span><i>${ANCHOR}:</i> ${esc(NEWS.cur)}</span>`; el.classList.add('on');
+    AudioSys.tone(880, 0.12, 0.12, 'sine'); AudioSys.tone(660, 0.18, 0.12, 'sine', 1, 0.14);
+    if (radioListening()) speak('Son dakika. ' + NEWS.cur);
+  }
+  // talk station: anchor reads headlines & fillers
+  if (radioListening() && curStation().id === 'news' && !NEWS.speaking && !NEWS.cur) { NEWS.talkT -= dt; if (NEWS.talkT <= 0) { NEWS.talkT = 14; const txt = newsFiller(); speak(txt); floatText('🎙 ' + txt.slice(0, 70) + (txt.length > 70 ? '…' : '')); } }
+  const dock = $('radioChip'), lbl = radioListening() ? `📻 ${curStation().name} · ${curStation().genre}` : '';
+  if (dock.textContent !== lbl) { dock.textContent = lbl; dock.style.display = lbl ? 'block' : 'none'; }
+}
+// ---------------- VistaGram: share photos, like, earn followers
+const VG = { posts: [], key: 'vistabay_vg_v1' };
+function vgLoad() { try { VG.posts = JSON.parse(localStorage.getItem(VG.key) || '[]').slice(0, 14); } catch (e) { VG.posts = []; } }
+function vgSave() { try { localStorage.setItem(VG.key, JSON.stringify(VG.posts.slice(0, 14))); } catch (e) { VG.posts.length = Math.min(VG.posts.length, 6); } }
+function vgCaption() {
+  const I = islandAt(player.pos.x, player.pos.z, 10), area = state.interior ? 'İç mekan' : I ? I.name : ((b => b && AREA_NAMES[b.dist])(blockAt(player.pos.x, player.pos.z))) || 'Vista Bay';
+  const tags = [state.inCar && state.inCar.spec.plane ? '✈ #pilot' : '', state.wanted ? `🚨 ${'★'.repeat(state.wanted)} #kaçış` : '', nightF > 0.5 ? '🌙 #gece' : '☀️ #güneş', state.inCar ? `🚗 ${carName(state.inCar)}` : '', ANOM.cur ? (ANOM.cur.k === 'ufo' ? '👽 #ufo' : '🧟 #zombi') : ''].filter(Boolean);
+  return `📍 ${area} ${tags.join(' ')} #VistaBay`;
+}
+function vgShot() {
+  try {
+    const src = renderer.domElement, c = document.createElement('canvas'); c.width = 320; c.height = Math.round(320 * src.height / src.width) || 180;
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    const img = c.toDataURL('image/jpeg', 0.62), id = myNetId() + '-' + Date.now().toString(36);
+    const fame = (state.wanted ? 20 : 0) + (state.inCar && (state.inCar.spec.plane || state.inCar.spec.heli) ? 18 : 0) + (ANOM.cur ? 40 : 0) + (nightF > 0.5 ? 8 : 0) + (state.inCar && state.inCar.kind === 'super' ? 10 : 0);
+    const post = { id, by: myNetId(), name: MP.on ? MP.name : 'Sen', img, cap: vgCaption(), t: Date.now(), likes: [], npc: 0, goal: Math.round(6 + Math.random() * 30 + fame) };
+    VG.posts.unshift(post); vgSave();
+    if (MP.on) { const p2 = { ...post }; delete p2.goal; mpSend({ t: 'vg_post', p: p2 }); }
+    floatText('📸 VistaGram\'da paylaşıldı · beğeniler geliyor'); AudioSys.success();
+  } catch (e) { floatText('Fotoğraf paylaşılamadı'); }
+}
+function vgLike(id) {
+  const P = VG.posts.find(p => p.id === id), me = myNetId(); if (!P || P.likes.includes(me) || P.by === me) return;
+  P.likes.push(me); vgSave(); if (MP.on) mpSend({ t: 'vg_like', pid: id }); AudioSys.tone(1300, 0.08, 0.1, 'sine');
+}
+function updateVG(dt) {
+  VG.acc = (VG.acc || 0) + dt; if (VG.acc < 2) return; VG.acc = 0;
+  for (const P of VG.posts) if (P.goal && P.npc < P.goal && Date.now() - P.t < 300000) {   // followers like your posts over the next minutes
+    const n = Math.min(P.goal - P.npc, 1 + Math.floor(Math.random() * 3)); P.npc += n; earn(n * 15, '📸 VistaGram beğenisi');
+    if (P.npc >= P.goal) { floatText(`📸 Gönderin ${P.npc + P.likes.length} beğeni aldı!`); vgSave(); }
+  }
+}
+function handleVG(d) {
+  const r = MP.remotes.get(d.id);
+  if (d.t === 'vg_post' && d.p && typeof d.p.img === 'string' && d.p.img.length < 90000 && d.p.img.startsWith('data:image/jpeg')) {
+    if (VG.posts.some(p => p.id === d.p.id)) return true;
+    VG.posts.unshift({ id: String(d.p.id).slice(0, 40), by: d.id, name: r ? r.info.name : String(d.p.name || '').slice(0, 14), img: d.p.img, cap: String(d.p.cap || '').slice(0, 120), t: +d.p.t || Date.now(), likes: Array.isArray(d.p.likes) ? d.p.likes.slice(0, 20) : [], npc: +d.p.npc || 0 });
+    VG.posts.length = Math.min(VG.posts.length, 14); vgSave();
+    mpFeed(`📸 <b>${esc(r ? r.info.name : 'Bir oyuncu')}</b> VistaGram'da yeni fotoğraf paylaştı`); if (state.phoneOpen && state.phoneApp === 'vg') renderPhone('vg');
+    return true;
+  }
+  if (d.t === 'vg_like') {
+    const P = VG.posts.find(p => p.id === d.pid); if (!P || P.likes.includes(d.id)) return true;
+    P.likes.push(d.id); vgSave();
+    if (P.by === myNetId()) { earn(100, '📸 VistaGram beğenisi'); floatText(`❤ ${r ? r.info.name : 'Bir oyuncu'} fotoğrafını beğendi · +$100`); }
+    if (state.phoneOpen && state.phoneApp === 'vg') renderPhone('vg');
+    return true;
+  }
+  return false;
+}
+function vgHtml(head) {
+  const me = myNetId();
+  let h = head('📸 VistaGram', 'linear-gradient(90deg,#f09433,#dc2743,#bc1888)') + `<div class="phBody"><button class="phBig" data-app="photo">📷 Fotoğraf çek & paylaş</button>`;
+  if (!VG.posts.length) h += '<div class="phEmpty">Akış boş. Foto modunda 📤 VistaGram ile ilk gönderini paylaş!</div>';
+  for (const P of VG.posts) {
+    const n = P.likes.length + (P.npc || 0), liked = P.likes.includes(me) || P.by === me;
+    h += `<div class="vgPost"><div class="vgHead"><i>${esc((P.name || '?')[0])}</i><b>${esc(P.name)}</b><small>${new Date(P.t).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</small></div><img src="${P.img}" alt=""><div class="vgBar"><button class="vgLike ${liked ? 'on' : ''}" data-vglike="${esc(P.id)}" ${liked ? 'disabled' : ''}>❤</button><b>${n} beğeni</b></div><p>${esc(P.cap)}</p></div>`;
+  }
+  return h + '</div>';
+}
+// ---------------- abandoned island (built with the others) + hoverboard + laser gun
+function buildSisIsland(I, gy, bx, cy, add, coll) {
+  const ruin = new THREE.MeshStandardMaterial({ color: 0x6a665e, roughness: 1 }), deadW = new THREE.MeshStandardMaterial({ color: 0x3a3028, roughness: 1 }), stone = new THREE.MeshStandardMaterial({ color: 0x8a8a86, roughness: 0.95 });
+  for (const [hx, hz, w, d] of [[-30, -30, 10, 8], [20, -40, 8, 8], [35, 20, 12, 9], [-25, 35, 9, 7], [0, 5, 14, 10]]) {
+    const y = gy(hx, hz);
+    for (const [ox, oz, ww, dd, hh] of [[0, -d / 2, w, 0.4, 3.2], [0, d / 2, w * 0.6, 0.4, 2.1], [-w / 2, 0, 0.4, d, 2.8], [w / 2, 0, 0.4, d * 0.5, 1.6]]) { add(ruin, new THREE.BoxGeometry(ww, hh, dd).translate(I.x + hx + ox, y + hh / 2, I.z + hz + oz)); coll(hx + ox, hz + oz, ww, dd, y + hh); }
+  }
+  for (let k = 0; k < 22; k++) { const a = k * 2.4, r = 20 + (k * 37) % 70, x = Math.cos(a) * r, z = Math.sin(a) * r, y = gy(x, z); add(deadW, new THREE.CylinderGeometry(0.12, 0.25, 4.5, 6).translate(I.x + x, y + 2.25, I.z + z)); add(deadW, new THREE.CylinderGeometry(0.05, 0.1, 2, 5).rotateZ(0.9).translate(I.x + x + 0.7, y + 3.4, I.z + z)); add(deadW, new THREE.CylinderGeometry(0.05, 0.1, 1.6, 5).rotateZ(-1).translate(I.x + x - 0.6, y + 3, I.z + z)); }
+  for (let k = 0; k < 14; k++) { const x = -10 + (k % 7) * 3.2, z = -60 + Math.floor(k / 7) * 4, y = gy(x, z); add(stone, new THREE.BoxGeometry(0.9, 1.2, 0.25).translate(I.x + x, y + 0.6, I.z + z)); }
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1), new THREE.MeshBasicMaterial({ map: canvasTex(256, 72, g => { g.fillStyle = '#2a1a10'; g.fillRect(0, 0, 256, 72); g.fillStyle = '#d02020'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.fillText('GİRMEK YASAK', 128, 46); }) }));
+  sign.position.set(I.x - 70, gy(-70, -20) + 2, I.z - 20); sign.rotation.y = -Math.PI / 2; I.group.add(sign);
+}
+const HOVER = { board: null, boards: new Map() };
+function hoverMesh() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 1.45), new THREE.MeshStandardMaterial({ color: 0x18181c, metalness: 0.7, roughness: 0.3 })));
+  const glow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.02, 1.3).translate(0, -0.05, 0), new THREE.MeshBasicMaterial({ color: 0x40ffd0 })); g.add(glow);
+  for (const z of [-0.5, 0.5]) g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.06, 14).translate(0, -0.07, z), new THREE.MeshBasicMaterial({ color: 0x40ffd0, transparent: true, opacity: 0.7 })));
+  scene.add(g); return g;
+}
+function toggleHover() {
+  if (!state.hoverOwned) { floatText('🛹 Hoverboard yok · 03:00 Zombi salgınını atlat'); return; }
+  if (state.inCar || state.swim && state.swim.under || state.sky || state.cabin || state.interior) return;
+  state.hover = !state.hover; if (state.swim) endSwim();
+  floatText(state.hover ? '🛹 Hoverboard · suyun üstünde de gider (H ile in)' : '🛹 Hoverboard kapatıldı'); AudioSys.tone(state.hover ? 500 : 900, 0.25, 0.12, 'sine', state.hover ? 2 : 0.5); sendInfo();
+}
+function updateHoverBoards() {
+  if (state.hover && (state.inCar || state.dead || state.interior || state.sky || state.cabin)) { state.hover = false; sendInfo(); }
+  if (state.hover) { if (!HOVER.board) HOVER.board = hoverMesh(); HOVER.board.visible = true; HOVER.board.position.set(player.pos.x, player.pos.y + 0.08 + Math.sin(state.now * 4) * 0.03, player.pos.z); HOVER.board.rotation.set(0, player.yaw, 0); }
+  else if (HOVER.board) HOVER.board.visible = false;
+  for (const r of MP.remotes.values()) {
+    let b = HOVER.boards.get(r.id); const on = r.info.hover && r.human && r.human.g.visible && !r.veh;
+    if (on && !b) { b = hoverMesh(); HOVER.boards.set(r.id, b); }
+    if (b) { b.visible = !!on; if (on) { b.position.set(r.x, r.y + 0.08, r.z); b.rotation.set(0, r.r, 0); } }
+  }
+  for (const [id, b] of HOVER.boards) if (!MP.remotes.has(id)) { scene.remove(b); HOVER.boards.delete(id); }
+}
+// ---------------- 03:00 ANOMALY: a UFO over the city, or a zombie outbreak on Sis Adası (host-run, same for everyone)
+const ANOM = { cur: null, armed: true, n: 0, ufo: null, zs: [], sendT: 0, hitT: 0, contrib: new Set() };
+const ANOM_LEN = 360, UFO_HP = 1600;
+const SIS = () => ISLES.find(I => I.id === 'sis');
+function ufoPos(A, t) { const a = t * 0.12; return [A.cx + Math.cos(a) * 110 + Math.sin(t * 0.31) * 25, 48 + Math.sin(t * 0.7) * 4, A.cz + Math.sin(a) * 110]; }
+function anomEmit(m) { if (MP.on) mpSend(m); onAnom(m); }
+function hostStartAnom(kind) {
+  if (ANOM.cur) return;
+  const k = kind || (ANOM.n++ % 2 ? 'zombie' : 'ufo');
+  const c = popCenter(), I = SIS();
+  anomEmit(k === 'ufo' ? { t: 'anom', k, start: 1, cx: r1(clamp(c.x, -500, 500)), cz: r1(clamp(c.z, -500, 500)), left: ANOM_LEN, hp: UFO_HP } : { t: 'anom', k, start: 1, cx: I.x, cz: I.z, left: ANOM_LEN, wave: 0 });
+}
+function buildUfo() {
+  const g = new THREE.Group(), metal = new THREE.MeshStandardMaterial({ color: 0xb8c0c8, metalness: 0.9, roughness: 0.25 });
+  g.add(new THREE.Mesh(new THREE.LatheGeometry([[0.1, -1.4], [5, -0.6], [9, 0], [5, 0.9], [0.1, 1.2]].map(([a, b]) => new THREE.Vector2(a, b)), 32), metal));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(3.2, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.9, 0), new THREE.MeshStandardMaterial({ color: 0x60ffb0, transparent: true, opacity: 0.55, emissive: 0x20a060, emissiveIntensity: 0.8 })));
+  const lights = [];
+  for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, m = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: k % 2 ? 0xff40a0 : 0x40ffd0 })); m.position.set(Math.cos(a) * 7.6, 0.05, Math.sin(a) * 7.6); g.add(m); lights.push(m); }
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 9, 48, 24, 1, true).translate(0, -24.5, 0), new THREE.MeshBasicMaterial({ color: 0x60ffb0, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  g.add(beam); const light = new THREE.PointLight(0x60ffb0, 2500, 90, 1.6); light.position.y = -6; g.add(light);
+  scene.add(g); return { g, lights, beam, fall: 0 };
+}
+const ZLOOK = () => ({ skin: pick(['#7a9a6a', '#8aa07a', '#6a8a5a']), shirt: pick(['#4a4a3a', '#5a3a2a', '#3a4a5a', '#6a6a60']), pants: pick(['#3a3020', '#2a2a30']), hair: '#2a2a20', shoes: '#222', glasses: false });
+function onAnom(d) {
+  if (d.start) {
+    if (ANOM.cur) endAnomLocal();
+    ANOM.cur = { k: d.k, cx: d.cx, cz: d.cz, left: d.left, hp: d.hp || 0, wave: d.wave || 0, t0: state.now - (ANOM_LEN - d.left) };
+    ANOM.contrib = new Set();
+    if (d.k === 'ufo') { ANOM.ufo = buildUfo(); showBig('👽 03:00 ANOMALİSİ', '#60ffb0', 4, 'Şehrin üstünde bir UFO var! Hep birlikte vurun — düşürenlere 🟢 lazer silahı'); breakingNews('Gece saat üçte şehrin üzerinde tanımlanamayan bir uçan cisim görüldü. Vatandaşların evlerinde kalması rica ediliyor!'); }
+    else { showBig('🧟 03:00 ANOMALİSİ', '#9aff60', 4, 'Sis Adası\'nda zombi salgını! 3 dalgayı temizleyenlere 🛹 hoverboard'); breakingNews('Terk edilmiş Sis Adası\'ndan çığlık sesleri geliyor. Görgü tanıkları yürüyen ölülerden bahsediyor. Adaya yaklaşmayın!'); }
+    AudioSys.tone(220, 1.2, 0.2, 'sawtooth', 0.5); AudioSys.tone(330, 1.2, 0.15, 'sine', 1.5, 0.4); haptic([60, 60, 120]);
+    return;
+  }
+  const A = ANOM.cur; if (!A) return;
+  if (d.hp != null) A.hp = d.hp;
+  if (d.left != null) A.t0 = state.now - (ANOM_LEN - d.left);
+  if (d.wave != null && d.wave !== A.wave) { A.wave = d.wave; if (d.wave > 1) { showBig(`🧟 ${d.wave}. DALGA`, '#9aff60', 2.5, 'Daha fazla zombi geliyor!'); AudioSys.tone(160, 0.8, 0.2, 'sawtooth', 0.6); } }
+  if (d.end) {
+    const win = d.end === 'win', mine = (d.win || []).includes(myNetId()) || (!MP.on && win);
+    if (A.k === 'ufo' && win && ANOM.ufo) { ANOM.ufo.fall = 0.01; ANOM.ufo.crash = [d.x, d.z]; }
+    if (win) breakingNews(A.k === 'ufo' ? 'Son dakika: UFO şehir semalarında düşürüldü! Enkaz bölgesi kordon altına alındı.' : 'Sis Adası\'ndaki salgın kontrol altına alındı. Kahraman vatandaşlar ödüllendirildi.');
+    if (mine) {
+      if (A.k === 'ufo') { state.ownedW[5] = true; state.ammo[5] = Math.max(state.ammo[5] || 0, 60); earn(5000, '👽 UFO düşürüldü'); showBig('🟢 LAZER SİLAHI!', '#60ffb0', 4, 'UFO enkazından · +$5.000 · 6 ile seç, mermisi kendini doldurur'); }
+      else { state.hoverOwned = true; earn(5000, '🧟 Zombi salgını'); showBig('🛹 HOVERBOARD!', '#40ffd0', 4, '+$5.000 · H (mobilde 🛹) ile bin · suyun üstünde de gider'); }
+      AudioSys.success(); saveGame();
+    } else if (!win) floatText(A.k === 'ufo' ? '👽 Şafak söktü · UFO kayboldu' : '🧟 Şafak söktü · zombiler sise karıştı');
+    if (A.k === 'zombie' || !win) endAnomLocal(); else ANOM.cur = null;
+  }
+}
+function endAnomLocal() {
+  ANOM.cur = null;
+  if (ANOM.ufo && !ANOM.ufo.fall) { scene.remove(ANOM.ufo.g); ANOM.ufo = null; }
+  for (const z of ANOM.zs) { z.dead = true; z.h.g.visible = false; z.zgone = true; }
+  ANOM.zs = [];
+}
+function anomManifest() { const A = ANOM.cur; return A ? { t: 'anom', k: A.k, start: 1, cx: A.cx, cz: A.cz, left: Math.round(ANOM_LEN - (state.now - A.t0)), hp: A.hp, wave: A.wave } : null; }
+// zombies -------------------------------------------------------
+function spawnZombieWave(w) {
+  const I = SIS(), n = [0, 6, 9, 13][w] + (MP.on ? MP.remotes.size * 2 : 0);
+  for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + w, r = I.R - 30, p = mkZombie(k, I.x + Math.cos(a) * r, I.z + Math.sin(a) * r); p.zhp = 3 + w; p.zw = w; }
+}
+function mkZombie(i, x, z) {
+  let p = ANOM.zs[i];
+  if (!p) { p = npcPed(ZLOOK(), x, z); p.npc = 'zombie'; p.zi = i; ANOM.zs[i] = p; }
+  p.dead = false; p.zgone = false; p._zk = false; p.x = x; p.z = z; p.tx = x; p.tz = z; p.h.g.visible = true; p.h.g.rotation.x = 0; p.speed = MR(2.2, 3.6); p.biteT = 0;
+  p.h.g.position.set(x, groundY(x, z), z); return p;
+}
+function zombieTargets() { const out = [{ id: myNetId(), x: player.pos.x, z: player.pos.z, me: true, ok: !state.dead && !state.inCar }]; for (const r of MP.remotes.values()) out.push({ id: r.id, x: r.x, z: r.z, ok: !r.dead && !r.veh }); return out.filter(t => t.ok && islandAt(t.x, t.z, 15) === SIS()); }
+function zombieHit(p, kill) {
+  if (p._zk || p.dead) return;
+  for (let k = 0; k < 5; k++) FX.norm.spawn(p.x, 1.2, p.z, MR(-1.5, 1.5), MR(1, 3), MR(-1.5, 1.5), 0.4, 0.3, 0.25, 0.4, 0.15, 0.05, 0.9, 12);
+  if (MP.on && !MP.host) { mpSend({ t: 'zhit', to: 'h', i: p.zi, k: kill ? 1 : 0 }); return; }
+  ANOM.contrib.add(myNetId()); zombieDamage(p, kill ? 99 : 1);
+}
+function zombieDamage(p, n) { p.zhp -= n; if (p.zhp <= 0) { p._zk = true; killPed(p, false); if (MP.on) mpSend({ t: 'zk', i: p.zi }); } }
+function updateZombies(dt, A) {
+  const host = !MP.on || MP.host;
+  if (host) {
+    const T = zombieTargets();
+    for (const p of ANOM.zs) {
+      if (!p || p.dead) continue;
+      let best = null, bd = 1e9; for (const t of T) { const d = Math.hypot(t.x - p.x, t.z - p.z); if (d < bd) { bd = d; best = t; } }
+      if (best && bd > 1.2) { const s = (bd < 25 ? p.speed * 1.35 : p.speed) * dt; p.x += (best.x - p.x) / bd * s; p.z += (best.z - p.z) / bd * s; p.yaw = Math.atan2(best.x - p.x, best.z - p.z); p.mv = 1; }
+      else p.mv = 0;
+      p.biteT -= dt;
+      if (best && bd < 1.5 && p.biteT <= 0) { p.biteT = 1.1; if (best.me) { applyDamage(9); floatText('🧟 Isırıldın!'); haptic(60); } else mpSend({ t: 'zbite', to: best.id, dmg: 9 }); }
+    }
+    if (ANOM.zs.length && ANOM.zs.every(p => !p || p.dead)) {
+      if (!A.nextT) A.nextT = state.now + 5;
+      else if (state.now > A.nextT) { A.nextT = 0; if (A.wave >= 3) { anomEmit({ t: 'anom', end: 'win', win: [...ANOM.contrib, ...zombieTargets().map(t => t.id)].filter((v, i, a) => a.indexOf(v) === i) }); return; } anomEmit({ t: 'anom', wave: A.wave + 1 }); spawnZombieWave(A.wave); }
+    }
+    if (A.wave === 0 && zombieTargets().length) { anomEmit({ t: 'anom', wave: 1 }); spawnZombieWave(1); }
+    ANOM.sendT -= dt;
+    if (MP.on && ANOM.sendT <= 0) { ANOM.sendT = 0.2; mpSend({ t: 'zp', w: A.wave, a: ANOM.zs.map(p => p && !p.dead ? [r1(p.x), r1(p.z), r2(p.yaw || 0), p.mv ? 1 : 0] : 0) }); }
+  } else {
+    for (const p of ANOM.zs) if (p && !p.dead) { const k = 1 - Math.exp(-8 * dt); p.x += (p.tx - p.x) * k; p.z += (p.tz - p.z) * k; }
+  }
+  for (const p of ANOM.zs) {
+    if (!p || p.dead) continue;
+    const h = p.h; h.g.position.set(p.x, groundY(p.x, p.z), p.z); h.g.rotation.y = p.yaw || 0;
+    h.g.visible = Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < 160;
+    animHuman(h, p.mv ? p.speed : 0, dt, true); h.armL.rotation.x = -Math.PI / 2 + Math.sin(state.now * 3 + p.zi) * 0.15; h.armR.rotation.x = -Math.PI / 2 + Math.cos(state.now * 3 + p.zi) * 0.15;
+    if (Math.random() < dt * 0.15 && Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < 30) AudioSys.tone(MR(90, 140), 0.6, 0.08, 'sawtooth', 0.7);
+  }
+}
+// UFO ------------------------------------------------------------
+function ufoRayHit(tStart, tMax) {
+  const U = ANOM.ufo; if (!U || U.fall || !ANOM.cur || ANOM.cur.k !== 'ufo') return -1;
+  const p = U.g.position; let best = -1;
+  for (const [ox, oz] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5]]) { const t = raySphere(p.x + ox, p.y, p.z + oz, 4, tStart, tMax); if (t > 0 && (best < 0 || t < best)) best = t; }
+  return best;
+}
+function ufoDamage(dmg) {
+  if (!ANOM.cur || ANOM.cur.k !== 'ufo') return;
+  floatText(`👽 ${Math.round(Math.max(0, ANOM.cur.hp - dmg))} / ${UFO_HP}`);
+  if (MP.on && !MP.host) { mpSend({ t: 'ufohit', to: 'h', dmg: Math.round(dmg) }); return; }
+  ANOM.contrib.add(myNetId()); hostUfoDmg(dmg);
+}
+function hostUfoDmg(dmg) {
+  const A = ANOM.cur; if (!A || A.k !== 'ufo' || A.hp <= 0) return;
+  A.hp = Math.max(0, A.hp - dmg);
+  if (A.hp <= 0) { const p = ANOM.ufo.g.position; anomEmit({ t: 'anom', end: 'win', x: r1(p.x), z: r1(p.z), win: [...ANOM.contrib] }); }
+  else if (MP.on && state.now - ANOM.hitT > 0.3) { ANOM.hitT = state.now; mpSend({ t: 'anom', hp: Math.round(A.hp) }); }
+}
+function updateUfo(dt, A) {
+  const U = ANOM.ufo; if (!U) return;
+  if (U.fall) {
+    U.fall += dt; const p = U.g.position, [cx, cz] = U.crash;
+    p.x += (cx - p.x) * dt; p.z += (cz - p.z) * dt; p.y -= dt * (8 + U.fall * 14); U.g.rotation.z = Math.min(0.8, U.fall * 0.5); U.g.rotation.y += dt * 4; U.beam.visible = false;
+    if (Math.random() < dt * 20) FX.norm.spawn(p.x, p.y, p.z, MR(-1, 1), 2, MR(-1, 1), 2, 2, 4, 0.2, 0.2, 0.2, 0.8, -0.5);
+    if (p.y <= groundY(p.x, p.z) + 1) { explosion(p.x, p.y + 1, p.z, false); explosion(p.x + 4, p.y + 1, p.z - 3, false); U.g.rotation.set(0.25, U.g.rotation.y, 0.1); p.y = groundY(p.x, p.z) + 0.6; const g = U.g; ANOM.ufo = null; setTimeout(() => scene.remove(g), 60000); }
+    return;
+  }
+  const t = state.now - A.t0, [x, y, z] = ufoPos(A, t);
+  U.g.position.set(x, y, z); U.g.rotation.y += dt * 1.6;
+  U.lights.forEach((m, i) => m.visible = Math.sin(state.now * 8 + i) > -0.2);
+  // laser attack against me (each client simulates the UFO shooting at itself → same behaviour everywhere)
+  const d = Math.hypot(player.pos.x - x, player.pos.z - z);
+  ANOM.zapT = (ANOM.zapT || 2) - dt;
+  if (d < 85 && !state.dead && !state.interior && ANOM.zapT <= 0) {
+    ANOM.zapT = MR(1.6, 2.8); const hit = Math.random() < 0.45;
+    FX.tracer(x, y - 1.4, z, player.pos.x + (hit ? 0 : MR(-3, 3)), player.pos.y + 1.2, player.pos.z + (hit ? 0 : MR(-3, 3)), 'g');
+    AudioSys.tone(1600, 0.25, 0.12, 'sawtooth', 0.3);
+    if (hit) { if (state.inCar) damageCar(state.inCar, 10); else applyDamage(11); }
+  }
+  // tractor beam lifts nearby civilians' cars a little and makes everyone panic
+  for (const c of cars) if (c.mode === 'ai' && c.ai && Math.hypot(c.group.position.x - x, c.group.position.z - z) < 40) c.ai.panic = 4;
+  for (const p of peds) if (!p.dead && !p.npc && Math.hypot(p.x - x, p.z - z) < 45 && p.panic <= 0) { p.panic = 6; p.fleeX = p.x - x; p.fleeZ = p.z - z; }
+  if (Math.random() < dt * 0.6) AudioSys.tone(MR(300, 500), 0.8, 0.04, 'sine', 1.3);
+}
+function updateAnomaly(dt) {
+  const host = !MP.on || MP.host, h = state.time;
+  if (host) {
+    if (h < 2.5 || h > 5) ANOM.armed = true;
+    if (ANOM.armed && h >= 3 && h < 4 && !ANOM.cur && !state.interior) { ANOM.armed = false; hostStartAnom(); }
+  }
+  const A = ANOM.cur;
+  if (!A) { if (ANOM.ufo && ANOM.ufo.fall) updateUfo(dt, null); return; }
+  const left = ANOM_LEN - (state.now - A.t0);
+  if (host && left <= 0) { anomEmit({ t: 'anom', end: 'fail' }); return; }
+  if (A.k === 'ufo') updateUfo(dt, A); else updateZombies(dt, A);
+  const el = $('anomHud'), txt = A.k === 'ufo' ? `👽 UFO · ${'▮'.repeat(Math.ceil(A.hp / UFO_HP * 10))}${'▯'.repeat(10 - Math.ceil(A.hp / UFO_HP * 10))} ${Math.round(A.hp)} · ${Math.ceil(left / 60)} dk` : `🧟 Sis Adası · ${A.wave ? A.wave + '/3. dalga · ' + ANOM.zs.filter(p => p && !p.dead).length + ' zombi' : 'adaya git (✈ bilet / tekne)'} · ${Math.ceil(left / 60)} dk`;
+  if (el.textContent !== txt) el.textContent = txt;
+}
+function handleAnom(d) {
+  switch (d.t) {
+    case 'anom': onAnom(d); return true;
+    case 'ufohit': if (MP.host) { ANOM.contrib.add(d.id); hostUfoDmg(Math.min(300, +d.dmg || 0)); } return true;
+    case 'zhit': if (MP.host) { const p = ANOM.zs[d.i]; if (p && !p.dead) { ANOM.contrib.add(d.id); zombieDamage(p, d.k ? 99 : 1); } } return true;
+    case 'zk': { const p = ANOM.zs[d.i]; if (p && !p.dead) { p._zk = true; killPed(p, false); } return true; }
+    case 'zbite': if (!state.dead) { applyDamage(Math.min(20, +d.dmg || 9)); floatText('🧟 Isırıldın!'); haptic(60); } return true;
+    case 'zp': {
+      const A = ANOM.cur; if (!A || A.k !== 'zombie' || !Array.isArray(d.a)) return true;
+      d.a.forEach((s, i) => { let p = ANOM.zs[i]; if (!s) { if (p && !p.dead) { p._zk = true; killPed(p, false); } return; } if (!p || p.dead) { if (p && p.dead && p.zw === d.w) return; p = mkZombie(i, s[0], s[1]); p.zw = d.w; } p.tx = s[0]; p.tz = s[1]; p.yaw = s[2]; p.mv = s[3]; });
+      return true;
+    }
+    case 'news': breakingNews(String(d.m || '').slice(0, 220), false); return true;
+  }
+  return false;
+}
+function drawAnomMap(dot) {
+  const A = ANOM.cur; if (!A) return;
+  if (A.k === 'ufo' && ANOM.ufo) dot(ANOM.ufo.g.position.x, ANOM.ufo.g.position.z, Math.sin(state.now * 8) > 0 ? '#60ffb0' : '#ff40a0', 12, true);
+  if (A.k === 'zombie') dot(A.cx, A.cz, Math.sin(state.now * 6) > 0 ? '#9aff60' : '#203010', 12, true);
+}
+// ---------------- living city: drawing a gun scares people
+function updateGunFear(dt) {
+  if (state.inCar || state.dead || state.interior || state.weapon === undefined) return;
+  const heavy = state.weapon >= 2, aimed = player.aimT > 0;
+  if (!heavy && !aimed) return;
+  const R = aimed ? 26 : 14;
+  for (const p of peds) if (!p.dead && !p.npc && !p.net && p.panic <= 0 && dist2(p) < R * R) { p.panic = 6; p.fleeX = p.x - player.pos.x; p.fleeZ = p.z - player.pos.z; if (Math.random() < 0.3) AudioSys.tone(MR(700, 1000), 0.25, 0.05, 'triangle', 1.4); }
+  for (const c of cars) if (c.mode === 'ai' && c.ai && c.ai.panic <= 0 && Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z) < R + 10) { c.ai.panic = 4; if (Math.random() < 0.15) honkSound(0.4); }
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -5185,6 +5589,7 @@ function updatePhoto(dt) {
   camera.position.set(t.x + Math.sin(ph.yaw) * cp * ph.dist, Math.max(groundY(t.x, t.z) + 0.3, ty + Math.sin(ph.pitch) * ph.dist), t.z + Math.cos(ph.yaw) * cp * ph.dist);
   camera.lookAt(t.x, ty, t.z);
   if (composer) composer.render(); else renderer.render(scene, camera);
+  if (ph.vg) { ph.vg = false; vgShot(); const f = $('fade'); f.style.transition = 'none'; f.style.background = '#fff'; f.style.opacity = 0.7; requestAnimationFrame(() => { f.style.transition = 'opacity .5s'; f.style.opacity = 0; setTimeout(() => f.style.background = '#000', 600); }); }
   if (ph.shot) {
     ph.shot = false;
     try {
@@ -5201,6 +5606,7 @@ function initExtrasUI() {
   $('dialog').addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); advanceDialog(); }, { passive: false });
   const tapBtn = (id, fn) => { const el = $(id); el.addEventListener('click', e => { e.stopPropagation(); fn(); }); el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false }); };
   tapBtn('phShot', () => { if (state.photo) state.photo.shot = true; });
+  tapBtn('phVG', () => { if (state.photo) state.photo.vg = true; });
   tapBtn('phExit', endPhoto);
 }
 
@@ -5393,7 +5799,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank() }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -5562,6 +5968,8 @@ function applyPacket(d) {
   if (handleBigHeist(d)) return;
   if (handleCops(d)) return;
   if (handleTrade(d)) return;
+  if (handleAnom(d)) return;
+  if (handleVG(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -5573,7 +5981,7 @@ function applyPacket(d) {
   if (d.t === 'st') { d.rt = mpNow(); r.snaps.push(d); if (r.snaps.length > 30) r.snaps.shift(); return; }
   const dist = Math.hypot(r.x - player.pos.x, r.z - player.pos.z), vol = clamp(1 - dist / 120, 0, 1);
   if (d.t === 'shot') {
-    if (dist < 200) { for (let k = 0; k < (d.n || 1); k++) FX.tracer(d.a[0], d.a[1], d.a[2], d.b[0] + (k ? MR(-1.5, 1.5) : 0), d.b[1], d.b[2] + (k ? MR(-1.5, 1.5) : 0)); FX.add.spawn(d.a[0], d.a[1], d.a[2], 0, 0, 0, 0.06, 1.2, 0, 3, 2.2, 0.8, 1, 0); }
+    if (dist < 200) { for (let k = 0; k < (d.n || 1); k++) FX.tracer(d.a[0], d.a[1], d.a[2], d.b[0] + (k ? MR(-1.5, 1.5) : 0), d.b[1], d.b[2] + (k ? MR(-1.5, 1.5) : 0), WEAPONS[d.w] && WEAPONS[d.w].laser ? 'g' : false); FX.add.spawn(d.a[0], d.a[1], d.a[2], 0, 0, 0, 0.06, 1.2, 0, 3, 2.2, 0.8, 1, 0); }
     if (vol > 0) AudioSys.shot(vol * (WEAPONS[d.w] ? WEAPONS[d.w].vol : 1));
     r.aimT = 0.6;
   } else if (d.t === 'fx' && d.k === 'boom') fxBoom(d.p[0], d.p[1], d.p[2], vol);
@@ -6018,7 +6426,7 @@ function cullChunks(dt) {
 // ============================================================ CROSSHAIR AIMING (shots go exactly where the crosshair points)
 const CROSS_NDC_Y = 1 - 2 * 0.44;          // #cross sits at 44% of the screen height
 const _rc = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _aimO = new THREE.Vector3(), _aimD = new THREE.Vector3(), _tv = new THREE.Vector3();
-const PVP_DMG = [18, 9, 14, 10, 0];       // per bullet / pellet, by weapon index (rocket = explosion)
+const PVP_DMG = [18, 9, 14, 10, 0, 30];       // per bullet / pellet, by weapon index (rocket = explosion)
 function aimRay(spread = 0) {
   _ndc.set(spread ? MR(-spread, spread) : 0, CROSS_NDC_Y + (spread ? MR(-spread, spread) * camera.aspect : 0));
   _rc.setFromCamera(_ndc, camera); _aimO.copy(_rc.ray.origin); _aimD.copy(_rc.ray.direction);
@@ -6059,6 +6467,7 @@ function castShot(range, ignoreCar) {
     const th = inVeh ? -1 : raySphere(r.x, r.y + 1.76, r.z, 0.17, tStart, best.t);
     if (th > 0) best = { t: th, kind: 'remote', obj: r, head: true }; else if (t > 0 && t < best.t) best = { t, kind: 'remote', obj: r, head: false };
   }
+  { const tu = ufoRayHit(tStart, best.t); if (tu > 0) best = { t: tu, kind: 'ufo', obj: null, head: false }; }
   const tw = worldHitT(tStart, best.t);
   if (tw > 0) best = { t: tw, kind: 'world', obj: null, head: false };
   // mobile aim assist: nothing hit directly -> nearest target within a small cone (with line of sight)
@@ -6076,6 +6485,7 @@ function applyHit(res, w, pellet) {
   if (res.kind === 'ped') { hitPed(res.obj); if (res.head && res.obj.npc) hitPed(res.obj); }
   else if (res.kind === 'car') { damageCar(res.obj, w.carDmg / (pellet ? 2 : 1)); if (res.obj.ai) res.obj.ai.panic = 6; }
   else if (res.kind === 'remote') pvpHit(res.obj, (PVP_DMG[state.weapon] || 12) * (res.head ? 2.2 : 1), res.head);
+  else if (res.kind === 'ufo') { ufoDamage((PVP_DMG[state.weapon] || 12) * 1.5); hitSound(); }
   if (res.kind !== 'none') FX.add.spawn(res.x, res.y, res.z, MR(-1, 1), MR(0.5, 2), MR(-1, 1), 0.2, res.kind === 'world' ? 0.3 : 0.5, 1, 3, 1.6, 0.5, 1, 6);
   if (res.kind === 'ped' || res.kind === 'remote') for (let k = 0; k < 5; k++) FX.norm.spawn(res.x, res.y, res.z, MR(-1.5, 1.5), MR(0.5, 2.5), MR(-1.5, 1.5), 0.4, 0.28, 0.2, 0.55, 0.02, 0.02, 0.9, 10);
 }
@@ -6100,7 +6510,7 @@ function fire() {
     launchRocket(mx, my, mz, (tx - mx) / L, (ty - my) / L, (tz - mz) / L);
     AudioSys.rocket();
   } else {
-    applyHit(main, w, false); FX.tracer(mx, my, mz, tx, ty, tz);
+    applyHit(main, w, false); FX.tracer(mx, my, mz, tx, ty, tz, w.laser ? 'g' : false); if (w.laser) AudioSys.tone(1800, 0.16, 0.12, 'sawtooth', 0.25);
     for (let k = 1; k < (w.pellets || 1); k++) { aimRay(w.spread || 0.05); const r2 = castShot(range, inCar); applyHit(r2, w, true); FX.tracer(mx, my, mz, r2.x, r2.y, r2.z); }
     if (w.spread && w.pellets === 1) { /* automatic weapons: tiny bloom */ }
     AudioSys.shot(w.vol);
@@ -6305,7 +6715,7 @@ function hostStreamTruck(dt) {
 function sharedManifest() {
   return {
     sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
-    ...modesManifest(), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+    ...modesManifest(), anom: anomManifest(), vg: VG.posts.slice(0, 5).map(p => ({ id: p.id, by: p.by, name: p.name, img: p.img, cap: p.cap, t: p.t, likes: p.likes, npc: p.npc })), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
   };
 }
 function applySharedManifest(d) {
@@ -6314,8 +6724,10 @@ function applySharedManifest(d) {
   if (d.gcd) for (const [k, t] of d.gcd) GEN_CD.set(k, state.now + t);
   if (d.sev) onStreetMsg({ ...d.sev });
   applyModesManifest(d);
-  if (d.bh) onBigHeist({ ...d.bh, start: 1 });
+  if (d.bh) onBigHeist({ ...d.bh, start: 1, mf: 1 });
   if (d.cargo) onCargo(d.cargo);
+  if (d.anom) onAnom(d.anom);
+  if (Array.isArray(d.vg)) for (const p of d.vg.slice().reverse()) handleVG({ t: 'vg_post', id: p.by, p });
   if (d.cz) for (const id in d.cz) if (CZ.st[id]) Object.assign(CZ.st[id], d.cz[id]);
 }
 function handleShared(d) {
@@ -7082,6 +7494,7 @@ function onBigHeist(d) {
     if (d.end === 'ok' && mine) { earn(d.share, '🏦 Soygun payı'); S().heists = (S().heists || 0) + 1; showBig('💰 SOYGUN BAŞARILI!', '#ffd23a', 4, `Payın +$${d.share.toLocaleString('tr-TR')} · ${C.parts.length} kişi`); AudioSys.success(); AudioSys.cash(); }
     else if (d.end === 'ok') floatText(`🚨 ${H.name} soygunu başarıyla kaçtı`);
     else if (mine) { showBig('SOYGUN BAŞARISIZ', '#ff5050', 3, d.why || ''); AudioSys.fail(); }
+    breakingNews(d.end === 'ok' ? `${H.name} soygununun failleri milyonlarla kaçmayı başardı. Emniyet şoka girdi.` : `${H.name} soygunu son anda engellendi. Şüpheliler eli boş kaçtı.`);
     endBigHeistLocal(); return;
   }
   const first = !BH.cur || d.start;
@@ -7092,6 +7505,7 @@ function onBigHeist(d) {
     const who = C.crew ? `${crewTag(C.crew)}${C.crew.name}` : 'Bir çete';
     if (mine) { const myRoles = Object.entries(C.roles).filter(([, v]) => v === me).map(([r]) => ROLE_NAMES[r]).join(' + '); showBig(`${H.icon} ${H.name.toUpperCase()} SOYGUNU`, '#ff4060', 4, `Rolün: ${myRoles || 'destek'} · ${Math.round(H.time / 60)} dk`); }
     else showBig(`🚨 ${H.name.toUpperCase()} SOYULUYOR!`, '#ff4040', 4, `${who} iş başında · bölgeden uzak dur ya da araya gir`);
+    if (!d.mf) breakingNews(`${H.name} şu anda soyuluyor! ${who} olay yerinde, polis ekipleri bölgeye sevk edildi.`);
     AudioSys.tone(880, 0.3, 0.2, 'square'); AudioSys.tone(660, 0.3, 0.2, 'square', 1, 0.3);
   } else if (mine) {
     AudioSys.pickup(); showBig(`AŞAMA: ${STAGE_TEXT[C.st].toUpperCase()}`, '#ffd23a', 2.5, `${ROLE_NAMES[STAGE_ROLE[C.st]]}: ${nameOf(C.roles[STAGE_ROLE[C.st]])}`);
@@ -7860,7 +8274,7 @@ const Radio = {
     this.timer = setInterval(() => this.tick(), 30);
   },
   tick() {
-    const ctx = AudioSys.ctx, spb = 60 / 104 / 4;
+    const ctx = AudioSys.ctx, spb = 60 / curStation().bpm / 4;
     if (!this.on) { this.next = ctx.currentTime + 0.05; return; }
     while (this.next < ctx.currentTime + 0.15) { this.play(this.step, this.next); this.step = (this.step + 1) % 64; this.next += spb; }
   },
@@ -7875,7 +8289,8 @@ const Radio = {
     f.type = type; f.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f); f.connect(g); g.connect(this.lp); s.start(t, Math.random()); s.stop(t + dur);
   },
-  play(st, t) {
+  play(st, t) { playStation(st, t); },
+  playFm(st, t) {
     const ch = this.CH[Math.floor(st / 16)], ctx = AudioSys.ctx;
     if (st % 4 === 0) { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.18); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); g.connect(this.lp); o.start(t); o.stop(t + 0.32); }
     if (st % 8 === 4) this.noise(t, 0.22, 0.5, 1800, 'bandpass');
@@ -7889,14 +8304,17 @@ const Radio = {
     if (active && !this.timer) this.start();
     if (!this.gain) return;
     this.on = active || this.gain.gain.value > 0.01;
-    this.gain.gain.setTargetAtTime(active ? 0.2 : 0, AudioSys.ctx.currentTime, 0.3);
+    this.gain.gain.setTargetAtTime(active ? (NEWS.speaking ? 0.05 : 0.2) : 0, AudioSys.ctx.currentTime, 0.3);
   }
 };
 function toggleRadio() {
+  if (state.soundMode === 0 && (state.station || 0) < STATIONS.length - 1) { state.station = (state.station || 0) + 1; Radio.step = 0; floatText(`📻 ${curStation().name} · ${curStation().genre}`); NEWS.talkT = 3; saveGame(); return; }
+  if (state.soundMode === 2) state.station = 0;
   state.soundMode = (state.soundMode + 1) % 3; state.radioOn = state.soundMode === 0;
+  if (state.soundMode !== 0 && window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) { }
   if (AudioSys.master) AudioSys.master.gain.setTargetAtTime(state.soundMode === 2 ? 0 : 0.55, AudioSys.ctx.currentTime, 0.05);
   $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
-  floatText(['📻 Radyo açık · VISTA FM', '🔈 Radyo kapalı · Efektler açık', '🔇 Tüm sesler kapalı'][state.soundMode]); saveGame();
+  floatText([`📻 ${curStation().name} · ${curStation().genre}`, '🔈 Radyo kapalı · Efektler açık', '🔇 Tüm sesler kapalı'][state.soundMode]); saveGame();
 }
 
 // ============================================================ MAIN LOOP
@@ -7958,6 +8376,13 @@ function loop(now) {
   updateCargo(dt);
   updateBlackMarket();
   updateTrades(dt);
+  updateNews(dt);
+  updateVG(dt);
+  updateAnomaly(dt);
+  updateHoverBoards();
+  updateGunFear(dt);
+  if (state.ownedW[5] && state.ammo[5] < 60) { state.laserT = (state.laserT || 0) + dt; if (state.laserT > 0.5) { state.laserT = 0; state.ammo[5]++; } }
+  document.body.classList.toggle('hasHover', !!state.hoverOwned && !state.inCar);
   updateAirport(dt);
   updateIslands(dt);
   updateFlightJob(dt);
