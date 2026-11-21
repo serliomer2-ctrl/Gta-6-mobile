@@ -27,6 +27,8 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🚤 Sürat teknesi**: sahildeki iskelede, dalgalarla sallanır, köpük izi bırakır
 - **Çete**: sanayi bölgesindeki Kızıl Kobralar, ateş edersen veya yanlarında oyalanırsan karşılık verir
 - **⚔ Bölge savaşları**: harita 4 çete bölgesine ayrılır (mini haritada renkli alanlar); bayrağa gidip 3 dalga düşmanı temizle → bölge senin olur, yeşile döner ve saatlik pasif gelir verir
+- **🛣 Sokak etkinlikleri** (birkaç dakikada bir, haritada işaretli): 🏁 **Sokak yarışı** — 45 sn içinde arabayla başlangıç bayrağına gel, 3-2-1 sonrası 3 yapay zekâ yarışçıyla 8 checkpoint'lik parkur (1. $3.000 · 2. $1.500 · 3. $800); 🚨 **Polis kovalamacası** — kaçağı durdurursan polis ödülü $1.500, polis araçlarını patlatırsan kaçak sana $2.000 öder ama aranırsın; polis yakalarsa ya da kaçak kaybolursa etkinlik biter
+- **🎯 Rico kontratları** (telefon → Kontrat): her iş Rico'yla diyalogla başlar. 💀 Suikast (kaçan hedef + korumalar), 📦 Paket teslimatı (silahlı korumalı zulayı al, uzak noktaya götür), 🚗 Özel araç çalma (korumalı aracı çal, alarm = polis, Rico'nun garajına ne kadar sağlam getirirsen o kadar para)
 - **💰 Zırhlı para kamyonu**: rastgele beliren kamyonu patlat, saçılan para balyalarını topla
 - **🎒 20 gizli paket**: arka sokaklara, iskeleye, harita köşelerine ve bir gökdelen çatısına saklı; her biri +$500 ve görev ödüllerine kalıcı +%3, 5/10/15/20'de ekstra bonus
 - **🏁 Stunt atlayışları**: 7 rampa (sahil + parklar); hızla atlayınca ağır çekim sinematik kamera, başarılı inişte STUNT BONUS (ilk atlayış x2)
@@ -68,6 +70,7 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **Özelleştirme senkronu**: garajdan neon alt ışık ve jant rengi, kıyafet mağazasından sırt çantası — hepsi diğer oyunculara görünür
 - **💼 Ortak soygun**: her 5 dakikada zırhlı konvoy tüm oyuncuların haritasında belirir; korumaları temizle, kasayı aç, saçılan para çantalarını kap
 - **Ortak dünya 2**: helikopter, tekne ve uçaklar herkes için tek — biri alınca diğerlerinde kaybolur, bıraktığı yerde herkese görünür; yerdeki paralar ve silah sandıkları herkeste aynı (biri alınca herkesten silinir); zırhlı para kamyonu herkeste aynı yerde, patlatan oyuncu aranır, saçılan parayı ilk kapan alır; soyulan kasa/kasalar herkes için boşalır
+- **Ortak sokak etkinlikleri**: yarış ve kovalamaca araçları herkeste aynı yerde; herkes aynı yarışa katılır (sıralama oyuncular + yapay zekâ), kaçağı/polisi kim patlatırsa ödül onun
 
 Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlantısı kurulamayabilir; o zaman Wi-Fi deneyin.
 
