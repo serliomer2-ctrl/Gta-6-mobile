@@ -93,6 +93,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🌹 Çiçek bırak & cenaze**: mezarın önünde E → $20'a çiçek bırak (her mezara günde bir kez); çiçekler mezarın üstünde görünür. Odada biri ölünce herkese "⚰ cenaze töreni" bildirimi gider, mezarlık haritada 3 dk yanıp söner; törende çiçek bırakana +5 itibar
 - **Kalıcılık**: hesapla giriş yapan oyuncuların mezarları hesap sunucusunda saklanır — herkes, her odada, her cihazda aynı mezarlığı görür (en yeni 120 mezar; oyuncu başına son 3 mezar). Misafir oyuncuların mezarları o cihazda ve odadaki herkeste görünür. Admin, Shift basılıyken mezarın önünde uygunsuz mezarları kaldırabilir
 
+- **🚓 Gerçekçi polis yapay zekası**: polis araçları artık sadece asfalt yol ağını kullanır (kavşaklar arası BFS rota + hedefin en yakın yol noktasına izdüşüm) — binaların, kaldırımların ve parkların üstünden geçmez, önündeki trafiğe çarpmak yerine fren yapar. Kaçan aracın peşinde fren mesafesine göre hız ayarlar ve **12-20 m güvenli takip mesafesi** korur (arkadan/kafa kafaya çarpmaz); 3★ ve üstünde ya da polise ateş ettiysen araçtan ateş eder
+- **👮 Yaya memurlar**: şüpheli kaldırımda/parkta yayaysa ya da arabasını durdurduysa polis aracı yol kenarına park eder, 1-2 memur iner ve yaya olarak kovalar. 1-2★'da (ve polise ateş etmediysen) vurmaz, yanına gelip **2 sn'de kelepçeler**; 3★+ ya da polise ateş ettiysen siper alıp ateşle karşılık verir. Memurlar vurulabilir (polisi vuran aranır); şüpheli arabaya binip kaçarsa memurlar araca döner ve takip sürer. Online'da memurlar oda sahibinde çalışır ve herkeste aynı görünür
+- **🙌 Teslim ol**: aranırken polis 30 m yakınındaysa E → teslim ol (cezanın %70'i)
+- **⛓ Vista Bay Hapishanesi** (Sanayi bölgesi; dikenli tel, gözetleme kulesi, projektör): yakalanınca kelepçelenip hücreye konursun — 30 sn + yıldız başına 6 sn (1★ 36 sn … 5★ 60 sn) bekle ya da yıldız başına $750 **kefalet** öde (E). Hapisteyken silah yok, aranma sıfırlanır; çıkınca hapishane kapısında serbest kalırsın. Hapis süresi kayda yazılır (oyundan çıkıp girmek kaçış değildir); online'da diğer oyuncular isminde ⛓ görür ve aynı koğuşu paylaşır. Polis oyuncularının tutuklamaları da hapse gönderir
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)

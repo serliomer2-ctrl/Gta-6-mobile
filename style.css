@@ -361,3 +361,5 @@ body.decor #touch .btn,body.decor #bDecor{display:none!important}
 
 #babyHud{display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(220px + env(safe-area-inset-top,0px));z-index:12;background:#5a1a40e0;border:1px solid #ffb0d8;color:#ffe0f0;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap}
 body.isBaby #babyHud{display:block}
+
+#jailHud{display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(104px + env(safe-area-inset-top,0px));z-index:13;background:#2a2410ee;border:1px solid #e8c040;color:#fff3c8;font:700 14px Rajdhani,sans-serif;padding:5px 12px;border-radius:9px;pointer-events:none;white-space:nowrap}
