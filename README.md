@@ -97,7 +97,24 @@ Not: bazı mobil operatör ağlarında (simetrik NAT) doğrudan WebRTC bağlant�
   - Hava durumu, saat (03:00 dahil) ve etkinlikler: sokak yarışı, kovalamaca, zırhlı kamyon, Deathmatch, Altın Çanta, 🌙 gece etkinliği
 - **Güvenlik**: şifreler sunucuda scrypt ile tuzlanıp saklanır; admin rolü yalnızca sunucuda tutulur. Online'da her oyuncu sunucudan o odaya özel, 15 dk geçerli imzalı bir bilet alır; oda sahibi bu bileti sunucuya doğrulatmadan hesabı tanımaz ve hiçbir admin komutunu uygulamaz. Oyuncular admin etkilerini sadece oda sahibinden kabul eder. Misafirler "admin" adını kullanamaz
 
-### Hesap sunucusunu çalıştırma
+### Hesap sunucusu: Cloudflare ile kurulum (önerilen · ücretsiz · DNS değişikliği gerekmez)
+
+Oyun GitHub Pages'te kalır, hesaplar Cloudflare Workers + D1 veritabanında çalışır (`cloudflare/worker.js`).
+
+1. **dash.cloudflare.com** → ücretsiz hesap aç (alan adını Cloudflare'e taşımana gerek yok)
+2. **Storage & Databases → D1 SQL Database → Create** → adı: `vista-bay-db` (tabloları kod kendisi oluşturur)
+3. **Workers & Pages → Create → Create Worker** (Hello World) → adı: `vista-bay-api` → **Deploy** → **Edit code** → içindeki her şeyi sil, `cloudflare/worker.js` dosyasının tamamını yapıştır → **Deploy**
+4. Worker → **Settings → Bindings → Add → D1 database** → Variable name: `DB` → veritabanı: `vista-bay-db`
+5. Worker → **Settings → Variables and Secrets → Add**:
+   - `ADMIN_PASSWORD` (Secret) → admin hesabının şifresi
+   - `TICKET_SECRET` (Secret) → uzun rastgele bir metin (örn. 40+ karışık karakter)
+   - `ALLOWED_ORIGINS` (Text) → `https://vista.serli.net`
+6. Tarayıcıda `https://vista-bay-api.<hesap-adın>.workers.dev/api/health` aç → `{"ok":true,...}` görmelisin
+7. Bu repoda `api-config.js` içine adresi yaz: `window.VB_API = 'https://vista-bay-api.<hesap-adın>.workers.dev';` → commit → GitHub Pages güncellenince oyunda **👤 Giriş / Kayıt** butonu çıkar
+
+Notlar: ücretsiz planda günde 100.000 veritabanı yazması ve 100.000 istek var (oyun bulut kaydını en fazla dakikada bir gönderir). İstersen `api.serli.net` gibi kendi alt alan adını da bağlayabilirsin ama bunun için alan adının Cloudflare'de olması gerekir — zorunlu değil.
+
+### Alternatif: kendi Node.js sunucunda çalıştırma
 
 GitHub Pages sadece statik dosya yayınlar; hesaplar için `server/server.js` bir Node.js (18+) sunucusunda çalışmalı. Ek paket gerekmez:
 

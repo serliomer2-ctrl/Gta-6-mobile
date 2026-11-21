@@ -6564,7 +6564,7 @@ function handleAccount(d) {
 }
 // ---------------- admin powers: god mode, unlimited money, fly / noclip
 function updateAdmin(dt) {
-  ACC.saveT += dt; if (ACC.saveT > 20) { ACC.saveT = 0; flushSave(); }
+  ACC.saveT += dt; if (ACC.saveT > 60) { ACC.saveT = 0; flushSave(); }
   if (!isAdmin()) return;
   if (state.god) { state.health = 100; state.armor = 100; if (state.dead) { state.dead = false; player.human.g.rotation.x = 0; $('fade').style.opacity = 0; } }
   if (state.richMode && state.money < 99999999) { state.money = 99999999; }
