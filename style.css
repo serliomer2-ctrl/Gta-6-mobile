@@ -261,3 +261,9 @@ body.inplane .btn.plane{display:flex}
 .mmBtns button.grey{background:#ffffff22}.mmBtns button:disabled{opacity:.4}
 #modeHud{display:none;position:absolute;left:50%;top:calc(104px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;background:#000b;color:#fff;font:700 14px Rajdhani,sans-serif;padding:5px 14px;border-radius:10px;text-align:center;pointer-events:none;letter-spacing:.5px}
 #mpList{max-height:72vh;overflow-y:auto}
+
+/* ---------- WALLET / CABIN / SKYDIVE ---------- */
+.wCard{display:flex;align-items:center;gap:10px;border-radius:12px;padding:10px 12px;margin:6px 0;color:#fff}
+.wCard i{font-style:normal;font-size:26px}.wCard div{flex:1}.wCard b{display:block;font-size:15px}.wCard small{opacity:.8;font-size:12px}.wCard span{font-size:18px;font-weight:700}
+body.incabin #bFire,body.incabin #bWeapon,body.incabin #bEnter,body.skydiving #bFire,body.skydiving #bWeapon,body.skydiving #bEnter{display:none}
+body.skydiving #bJump{display:flex;background:#2a7aff66;border-color:#9cc4ff}

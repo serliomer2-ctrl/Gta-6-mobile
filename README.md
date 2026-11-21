@@ -40,6 +40,11 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🏙 Çatılar**: düz çatılı binalarda merdiven kulübesi — içeriden "Çatıya çık", çatıdan "Merdivenden in". Helikopterle çatıya inip araçtan çıkınca artık yere ışınlanmazsın, çatıda yürürsün; çatı kenarı seni durdurur (atlamak için ZIPLA), yüksekten düşmek can yakar
 - **✈ Vista Bay Havalimanı** (şehrin güneyi): bağlantı yolu + otopark, cam cepheli Yolcu Terminali (içeride check-in bankoları ve kalkış tablosu), 3 köprü, 3 kemerli hangar, girilebilir 4 katlı Kontrol Kulesi (tepede radar: tüm şehrin paketleri haritada), 730 m pist (şeritler, eşik çizgileri, gece pist/taksi ışıkları), taksi yolu, apron, tel çit, rüzgâr tulumu; mini haritada ✈
 - **🛩 Uçaklar**: 2 pervaneli "Vista Hawk" ve 1 "Skyline Jet" (havalimanında) + adalarda birer uçak. Gerçekçi uçuş: gaz kolu, hız kazanınca kalkış, yatışla dönüş, stall (hız düşünce burun düşer), iniş takımı (G / ⚙); teker kapalı ya da sert/yan inişte hasar, denize çakılırsan patlar. Ekranda irtifa / gaz / teker göstergesi
+- **🛩 Daha fazla uçak**: Akrobat 300 (çevik, hızlı yatış), Kargo Titan (çift pervaneli dev kargo uçağı), Deniz Kuşu (şamandıralı — denize iner ve denizden kalkar; sahil iskelesi ve Fener Adası'nda)
+- **🪪 Belgeler** (telefon → Cüzdan): şehir merkezindeki 🏛 **Nüfus Müdürlüğü**'nden Kimlik ($100) ve Pasaport ($750); **Ehliyet sınavı** ($300, 6 halkalık sürüş parkuru, araç %60'tan fazla hasar almamalı) — ehliyetsiz hızlı sürüş radara takılıp 1 yıldız getirir. Biletle uçmak için kimlik + pasaport şart
+- **🎓 Uçuş Okulu** (havalimanı otoparkı): 3 ders — Kalkış (120 m'ye çık), Halka uçuşu (5 halka), İniş (piste in ve dur). Üçü bitince **Pilot Lisansı**; lisans olmadan uçakların motoru çalışmaz. Okuldan paraşüt de alınır
+- **✈ Gerçek yolcu uçuşu**: bilet alınca dev yolcu uçağına binersin; uçak pistte hızlanıp kalkar, gerçek zamanlı tırmanır ve adaya uçar. Kabinde koridorda yürüyebilir, pencerelerden şehri izleyebilir, **arka kırmızı kapıdan paraşütle atlayabilirsin**. Online'da diğerleri seni bu uçağın içinde görür
+- **🪂 Paraşüt**: kendi uçağından/helikopterinden havadayken (12 m+) inersen atlarsın; serbest düşüşte yön verebilir, ZIPLA ile paraşütü açarsın (45 m'de otomatik açılır), denize inersen kıyıya yüzersin
 - **🏝 3 ada**: Palmiye Adası (otel, havuz, plaj şemsiyeleri, pist), Fener Adası (dönen ışıklı deniz feneri, bekçi evi), Mercan Koyu (bungalovlar, plaj barı, pist) — uçak, helikopter, tekne ya da biletle git; tekneden inince adaya yüzersin
 - **🎫 Bilet gişesi** (terminal içi): adalara hızlı seyahat (uçuş sineması), adalardaki gişeden dönüş uçuşu. **Uçuş görevleri**: 📦 Ada Kargosu ($4.000), ⭕ Halka Parkuru (10 hava halkası, $3.000 + süre bonusu), 📸 Şehir Turu ($2.500)
 - **🎯 Nişangâh**: mermi tam nişangâhın gösterdiği yere gider (mobilde hafif nişan yardımı)
@@ -51,6 +56,7 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **Performans**: Düşük kalitede %45 daha az çizim çağrısı (uzak bina blokları, yaya ve araçlar gizlenir, bulut/ortam yansıması kapalı), FPS düşünce çözünürlük otomatik ayarlanır, Orta/Düşük'te gölgeler yarı hızda güncellenir, sekme arka plandayken oyun durur
 - **Canlı şehir**: silah sesinde trafik paniğe kapılır; araç ve yayalar oyuncunun etrafında (~150-230 m) sürekli yeniden konumlanır
 - **Araba radyosu**: VISTA FM 101.4 — anlık üretilen synthwave müzik (R / 📻)
+- **His**: el freni/drift'te asfaltta kalıcı lastik izi, isabette 'tık' sesi + nişangâh işareti, mobilde bağlama göre butonlar (en yakın araca göre 🚗/🏍/🚤/🚁/✈, serbest düşüşte 🪂 AÇ, kabinde ateş/araç butonları gizli), haritada 🏛 Nüfus ve 🎓 Uçuş Okulu ikonları
 - **Mini harita, para, can/zırh, hız göstergesi**, sentezlenmiş ses (motor, siren, silah, patlama)
 
 ## 🌐 Online (Multiplayer)
