@@ -355,6 +355,7 @@ function init() {
   buildHeistSites();
   buildPoliceStation();
   buildCrewZones();
+  buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
   buildGang();
@@ -433,8 +434,8 @@ function buildGround() {
   const grass = new THREE.Mesh(gg, M.grass); grass.receiveShadow = true; scene.add(grass);
 
   // sand with slope into sea
-  const sx0 = BEACH_X0, sx1 = SHORE_X + 120, sz0 = -big, sz1 = big;
-  const sgeo = new THREE.PlaneGeometry(sx1 - sx0, sz1 - sz0, 80, 1); sgeo.rotateX(-Math.PI / 2); sgeo.translate((sx0 + sx1) / 2, 0, 0);
+  const sx0 = BEACH_X0, sx1 = SHORE_X + 700, sz0 = -big, sz1 = big;
+  const sgeo = new THREE.PlaneGeometry(sx1 - sx0, sz1 - sz0, 200, 1); sgeo.rotateX(-Math.PI / 2); sgeo.translate((sx0 + sx1) / 2, 0, 0);
   const sp = sgeo.attributes.position, suv = sgeo.attributes.uv;
   for (let i = 0; i < sp.count; i++) {
     const x = sp.getX(i); sp.setY(i, sandHeight(x)); suv.setXY(i, x / 6, sp.getZ(i) / 6);
@@ -442,7 +443,7 @@ function buildGround() {
   sgeo.computeVertexNormals();
   const sand = new THREE.Mesh(sgeo, M.sand); sand.receiveShadow = true; scene.add(sand);
 }
-function sandHeight(x) { return 0.03 - Math.max(0, x - SHORE_X) * 0.05; }
+function sandHeight(x) { return Math.max(-28, 0.03 - Math.max(0, x - SHORE_X) * 0.05); }
 
 // ============================================================ CITY
 const PARKS = new Set(['1,2', '5,1', '2,6', '6,5', '3,3', '0,5']);
@@ -757,7 +758,7 @@ function buildProps() {
   }
 }
 function rampHeight(x, z) {
-  let best = -1;
+  let best = -1e9;
   for (const r of ramps) {
     const dx = x - r.x, dz = z - r.z, a = dx * r.fx + dz * r.fz, l = Math.abs(dx * -r.fz + dz * r.fx);
     if (a >= 0 && a <= r.len && l <= r.w / 2) best = Math.max(best, (r.y0 || 0) + a / r.len * r.h);
@@ -800,12 +801,13 @@ function collide(x, z, r, y = 0, bounds = true) {
   if (nearAir(z, x)) for (const b of EXTRA_BLD) { if (y > b.h || (b.y0 && y + 1.7 < b.y0)) continue; pushOut(b, r); }
   x = _cx; z = _cz;
   // world bounds
-  const isl = bounds && x > WATERLINE + 150 ? islandAt(x, z, 40) : null;
+  const isl = bounds === true && x > WATERLINE + 150 ? islandAt(x, z, 40) : null;
   if (isl) { const dx = x - isl.x, dz = z - isl.z, d = Math.hypot(dx, dz), m = isl.R - 2 - r; if (d > m) { x = isl.x + dx / d * m; z = isl.z + dz / d * m; hitRes.hit = true; hitRes.nx -= dx / d; hitRes.nz -= dz / d; } }
-  else if (bounds && onYacht(x, z, 2)) { x = clamp(x, YACHT.x - YACHT.hx + r, YACHT.x + YACHT.hx - r); z = clamp(z, YACHT.z - YACHT.hz + r, YACHT.z + YACHT.hz - 1 - r); }
+  else if (bounds === true && onYacht(x, z, 2)) { x = clamp(x, YACHT.x - YACHT.hx + r, YACHT.x + YACHT.hx - r); z = clamp(z, YACHT.z - YACHT.hz + r, YACHT.z + YACHT.hz - 1 - r); }
   else if (bounds) {
-    if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
-    if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; }
+    if (x < BOUNDS.x0) { x = BOUNDS.x0; hitRes.hit = true; hitRes.nx += 1; } if (bounds === 'sea') { if (x > SHORE_X + 1450) { x = SHORE_X + 1450; hitRes.hit = true; } } else if (x > BOUNDS.x1) { if (x < DOCK.x1 && Math.abs(z - DOCK.z) < DOCK.w / 2 + r) z = clamp(z, DOCK.z - DOCK.w / 2 + r, DOCK.z + DOCK.w / 2 - r); else { x = x < DOCK.x1 + 1 && Math.abs(z - DOCK.z) < DOCK.w / 2 ? DOCK.x1 : BOUNDS.x1; hitRes.hit = true; hitRes.nx -= 1; } }
+    if (bounds === 'sea') z = clamp(z, -2800, 2800);
+    else { if (z < BOUNDS.z0) { z = BOUNDS.z0; hitRes.hit = true; hitRes.nz += 1; } if (z > BOUNDS.z1) { z = BOUNDS.z1; hitRes.hit = true; hitRes.nz -= 1; } }
   }
   const nl = Math.hypot(hitRes.nx, hitRes.nz) || 1; hitRes.nx /= nl; hitRes.nz /= nl;
   hitRes.x = x; hitRes.z = z; return hitRes;
@@ -1340,9 +1342,9 @@ function enterCar() {
     addHeat(best.police ? 1.5 : 0.35);
   }
   if (best.ai) best.ai = null;
-  best.mode = 'player'; best.driver = true; state.inCar = best;
+  best.mode = 'player'; best.driver = true; state.inCar = best; if (state.swim) endSwim();
   if (netCar) netCarClaim(best);
-  if (best.spec.bike) { best.group.add(player.human.g); player.human.g.position.set(0, 0.45, -0.28); player.human.g.rotation.set(0.32, 0, 0); }
+  if (best.spec.bike || best.spec.jet) { best.group.add(player.human.g); player.human.g.position.set(0, 0.45, -0.28); player.human.g.rotation.set(0.32, 0, 0); }
   else player.human.g.visible = false;
   if (state.soundMode === 0) floatText('📻 VISTA FM 101.4');
   document.body.classList.add('incar'); document.body.classList.toggle('inheli', !!(best.spec.heli || best.spec.plane)); document.body.classList.toggle('inplane', !!best.spec.plane); setFlightButtons(best);
@@ -1365,7 +1367,7 @@ function exitCar(forced) {
     const bx = c.group.position.x, bz = c.group.position.z;
     if (bx < DOCK.x1 + 8 && Math.abs(bz - DOCK.z) < 12) player.pos.set(clamp(bx, DOCK.x0 + 1, DOCK.x1 - 1), DOCK.y, DOCK.z);
     else if (onYacht(bx, bz, 14)) { const px = YACHT.x + Math.sign(bx - YACHT.x || 1) * (YACHT.hx - 0.8), pz = clamp(bz, YACHT.z - YACHT.hz + 2, YACHT.z + YACHT.hz - 4); player.pos.set(px, YACHT.deck - 0.25, pz); floatText('🛥 Yata çıktın'); }
-    else { const I = islandAt(bx, bz, 60); if (I) { const dx = bx - I.x, dz = bz - I.z, dd = Math.hypot(dx, dz) || 1, px = I.x + dx / dd * (I.R - 5), pz = I.z + dz / dd * (I.R - 5); player.pos.set(px, groundY(px, pz), pz); floatText('🏊 Adaya yüzdün'); } else { player.pos.set(WATERLINE - 3, 0.05, clamp(bz, BOUNDS.z0, BOUNDS.z1)); floatText('🏊 Kıyıya yüzdün'); } }
+    else { player.pos.set(bx + Math.cos(c.h) * 2.4, WATER_Y - 1.3, bz - Math.sin(c.h) * 2.4); startSwim(); }
   }
   if (c.spec.heli) c.vy = 0;
   if (player.human.g.parent !== scene) scene.add(player.human.g);
@@ -1376,6 +1378,8 @@ function exitCar(forced) {
   AudioSys.door();
 }
 function updatePlayerFoot(dt) {
+  if (state.swim || shouldSwim()) { if (!state.swim) startSwim(); updateSwim(dt); return; }
+  if (baseJumpCheck()) return;
   const ix = input.mx, iy = input.my, mag = Math.min(1, Math.hypot(ix, iy));
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
   let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
@@ -1390,7 +1394,7 @@ function updatePlayerFoot(dt) {
     x = player.pos.x; z = player.pos.z; player.speed *= 0.5;
     if (!(state.now - (updatePlayerFoot.edgeT || -9) < 3)) { updatePlayerFoot.edgeT = state.now; floatText('⚠ Çatı kenarı · atlamak için ZIPLA'); }
   }
-  const r = state.interior ? interiorCollide(x, z, 0.38, player.pos.y) : collide(x, z, 0.38, player.pos.y + 0.2); x = r.x; z = r.z;
+  const r = state.interior ? interiorCollide(x, z, 0.38, player.pos.y) : collide(x, z, 0.38, player.pos.y + 0.2, x > WATERLINE - 10 ? 'sea' : true); x = r.x; z = r.z;
   // jump & gravity on the highest surface below the feet (ground, roof, stairs, storey)
   const g = surfaceY(x, z, player.pos.y);
   if (input.jump && player.onGround) { player.vy = 5.8; player.onGround = false; }
@@ -1437,7 +1441,7 @@ function updatePlayerCar(dt) {
   updateStunt(c, state.realDt);
   player.pos.copy(c.group.position);
   { const v = carSpeed(c); state.stats.dist += v * dt; state.stats.topSpeed = Math.max(state.stats.topSpeed, Math.abs(carFwd(c)) * 3.6); }
-  if (c.spec.bike) { const h = player.human; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.armL.rotation.x = h.armR.rotation.x = -1.15; h.legL.rotation.z = 0.25; h.legR.rotation.z = -0.25; h.kneeL.rotation.x = h.kneeR.rotation.x = 1.5; h.elbowL.rotation.x = h.elbowR.rotation.x = -0.3; }
+  if (c.spec.bike || c.spec.jet) { const h = player.human; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.armL.rotation.x = h.armR.rotation.x = -1.15; h.legL.rotation.z = 0.25; h.legR.rotation.z = -0.25; h.kneeL.rotation.x = h.kneeR.rotation.x = 1.5; h.elbowL.rotation.x = h.elbowR.rotation.x = -0.3; }
   // tire smoke
   if ((c.drift > 4 || (input.hand && carSpeed(c) > 8 && !c.spec.boat)) && !c.air) {
     addSkidMarks(c, dt);
@@ -2334,7 +2338,7 @@ function updateCamera(dt) {
   let dist = state.interior ? 3 : state.passenger ? 8.5 : 4.6;
   if (c) {
     const sp = carSpeed(c);
-    dist = (c.spec.plane ? (c.spec.len > 10 ? 24 : 17) : c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? 10 : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
+    dist = (c.spec.plane ? (c.spec.len > 10 ? 24 : 17) : c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? (c.spec.big ? 22 : c.spec.jet ? 6 : 10) : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
     if (state.now - state.lastLookInput > 1.3 && sp > 2) {
       const behind = (carFwd(c) < -1 ? c.h : c.h + Math.PI);
       camYaw += wrapA(behind - camYaw) * (1 - Math.exp(-3.5 * dt));
@@ -2431,7 +2435,7 @@ function initInput() {
     const up = e => { e.preventDefault(); keys[key] = false; el.classList.remove('down'); };
     el.addEventListener('touchend', up, opts); el.addEventListener('touchcancel', up, opts);
   };
-  btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown'); btn('bGear', 'TGear');
+  btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown'); btn('bGear', 'TGear'); btn('bDive', 'TDive');
   btn('bEnter', 'TEnter', enterCar);
   btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact);
   $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
@@ -2514,6 +2518,7 @@ function drawMinimap() {
   drawStreetEventsMap(dot);
   drawModesMap(g, toMap, r, MAP.k * zoom);
   drawCrewZonesMap(g, toMap, r);
+  drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   for (const rp of MP.remotes.values()) { { const hunt = state.cop && rp.wn > 0; dot(rp.x, rp.z, hunt ? (Math.sin(state.now * 10) > 0 ? '#ff2040' : '#ffffff') : rp.info.cop ? '#3a7aff' : rp.bounty ? '#ff2a3a' : sameCrew(rp) ? MP.crew.color : rp.info.color, hunt || rp.bounty || sameCrew(rp) ? 11 : 8, true); if (hunt) { const [px, py] = toMap(rp.x, rp.z); if (Math.hypot(px - r, py - r) < r - 12) { g.font = 'bold 11px sans-serif'; g.fillStyle = '#ffd23a'; g.fillText('★'.repeat(rp.wn), px, py - 14); } } } if (rp.bounty) { let [px, py] = toMap(rp.x, rp.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 10) { px = r + dx / l * (r - 10); py = r + dy / l * (r - 10); } g.font = '15px sans-serif'; g.fillText('☠', px, py + 1); } }
   if (state.mpRace) dot(state.mpRace.x, state.mpRace.z, '#2a7aff', 11, true);
@@ -2570,6 +2575,7 @@ function playerDown(title, sub) {
 }
 function busted() { if (state.dead || state.god) return; const loss = Math.min(state.money, 250); state.money -= loss; playerDown('YAKALANDIN', `Rüşvet: -$${loss}`); }
 function respawn() {
+  if (state.swim) endSwim();
   if (state.cabin) { disposeAirliner(state.cabin.g); leaveCabin(); }
   state.sky = null; if (chuteMesh) chuteMesh.visible = false;
   state.dead = false; state.health = 100; state.heat = 0; state.wanted = 0;
@@ -2853,6 +2859,7 @@ function shopItems(type) {
       { sec: 'Sağlık' },
       { name: 'CAN + ZIRH YENİLEME', desc: 'Can ve zırhı anında %100 yapar', price: 300, dis: state.health >= 100 && state.armor >= 100 ? 'DOLU' : null, buy: () => { state.health = 100; state.armor = 100; } },
       { name: 'İLK YARDIM', desc: 'Can %100', price: 100, dis: state.health >= 100 ? 'DOLU' : null, buy: () => { state.health = 100; } },
+      { name: '🪂 PARAŞÜT', desc: `Uçaktan, helikopterden ya da gökdelenden atlarken ZIPLA ile aç · elinde ${state.chute}`, price: 300, dis: state.chute >= 3 ? 'DOLU' : null, buy: () => { state.chute++; } },
       { name: 'ÇELİK YELEK', desc: 'Zırh %100', price: 200, dis: state.armor >= 100 ? 'DOLU' : null, buy: () => { state.armor = 100; } },
       { sec: 'Silahlar' }];
     for (const w of WEAPON_SHOP) it.push({ name: WEAPONS[w.w].icon + ' ' + w.name, desc: w.desc, price: w.price, dis: own(w.w) ? 'SAHİPSİN' : null, buy: () => { state.ownedW[w.w] = true; state.ammo[w.w] += w.ammo; state.weapon = w.w; } });
@@ -3900,6 +3907,7 @@ function buildPlanes() {
   createPlane('seaplane', '#f2c230', WATERLINE + 45, DOCK.z + 45, Math.PI / 2);
   createPlane('seaplane', '#2a6ad8', ISLES[1].x - 30, ISLES[1].z + ISLES[1].R + 18, Math.PI / 2);
   for (const I of ISLES) if (I.plane) createPlane('plane', I.plane[3], I.x + I.plane[0], I.z + I.plane[1], I.plane[2]);
+  buildMarina();
 }
 
 
@@ -4120,12 +4128,7 @@ function updateSkydive(dt) {
     player.vy = 0; player.onGround = true;
     if (hard) { state.health -= (-S.vy - 13) * 7; state.shake = 1; AudioSys.crash(1); }
     else floatText('🪂 Yere indin');
-    if (groundY(x, z) < -0.2) {   // splash down: swim to the nearest shore
-      const I = islandAt(x, z, 600);
-      if (I) { const dx = x - I.x, dz = z - I.z, dd = Math.hypot(dx, dz) || 1, px = I.x + dx / dd * (I.R - 5), pz = I.z + dz / dd * (I.R - 5); p.set(px, groundY(px, pz), pz); }
-      else { const px = Math.min(x, WATERLINE - 3), pz = clamp(z, BOUNDS.z0, BOUNDS.z1); p.set(px, groundY(px, pz), pz); }
-      floatText('🏊 Denize indin · kıyıya yüzdün');
-    }
+    if (groundY(x, z) < -0.2) { p.y = WATER_Y - 1.3; startSwim(); floatText('🪂 Denize indin · yüz ya da dal'); }
   }
 }
 
@@ -4284,6 +4287,170 @@ function updateContextButtons() {
   $('bEnter').textContent = state.inCar ? '🚪' : nearestVehicleIcon();
   $('bJump').innerHTML = state.sky ? (state.sky.open ? '🪂' : '🪂<br>AÇ') : 'ZIPLA';
   document.body.classList.toggle('skydiving', !!state.sky);
+}
+
+
+// ============================================================ SEA: marina watercraft, swimming & diving, wrecks with treasure, sunken cargo
+CAR_SPECS.jetski = { W: 1.0, wr: 0.3, max: 31, acc: 22, boat: true, jet: true, cr: 0.9, co: 0.8 };
+CAR_SPECS.lyacht = { W: 4.6, wr: 0.3, max: 15, acc: 3.4, boat: true, big: true, cr: 4.5, co: 4 };
+function createWatercraft(kind, color, x, z, h, home = true) {
+  const s = CAR_SPECS[kind], group = new THREE.Group(); group.rotation.order = 'YXZ';
+  const inner = new THREE.Group(); group.add(inner);
+  const paintM = paintMat(color), k = kind === 'jetski' ? 0.42 : 2.1;
+  const sh = new THREE.Shape(); [[-1.1, -3], [1.1, -3], [1.15, 0.8], [0.55, 2.7], [0, 3.4], [-0.55, 2.7], [-1.15, 0.8]].forEach((p, i) => i ? sh.lineTo(p[0] * k, p[1] * k) : sh.moveTo(p[0] * k, p[1] * k)); sh.closePath();
+  const hull = new THREE.ExtrudeGeometry(sh, { depth: kind === 'jetski' ? 0.5 : 1.8, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 2 }).rotateX(Math.PI / 2).translate(0, kind === 'jetski' ? 0.45 : 1.3, 0);
+  const paint = new THREE.Mesh(hull, paintM); paint.castShadow = true;
+  let parts;
+  if (kind === 'jetski') parts = [colorize(new THREE.BoxGeometry(0.5, 0.28, 1.1).translate(0, 0.6, -0.25), '#1a1a1e'), colorize(new THREE.BoxGeometry(0.08, 0.5, 0.08).rotateX(-0.5).translate(0, 0.8, 0.45), '#222'), colorize(new THREE.BoxGeometry(0.7, 0.06, 0.06).translate(0, 1.02, 0.55), '#222')];
+  else parts = [colorize(new THREE.BoxGeometry(3.6, 0.1, 10).translate(0, 1.36, -0.6), '#b8875a'), colorize(new THREE.BoxGeometry(3.2, 1.9, 5.5).translate(0, 2.35, -0.8), '#f4f4f0'), colorize(new THREE.BoxGeometry(3.25, 0.6, 5.2).translate(0, 2.6, -0.8), '#1a2a3a'),
+    colorize(new THREE.BoxGeometry(2.6, 1.1, 3).translate(0, 3.8, -1.2), '#f4f4f0'), colorize(new THREE.BoxGeometry(2.65, 0.4, 2.6).translate(0, 4.0, -1.2), '#1a2a3a'), colorize(new THREE.CylinderGeometry(0.06, 0.06, 2, 6).translate(0, 5.3, -1.6), '#ddd'),
+    colorize(new THREE.BoxGeometry(4.5, 0.25, 13.6).translate(0, 0.25, -0.4), '#1d3a6a')];
+  const trim = new THREE.Mesh(merge(parts), M.trim);
+  inner.add(paint, trim);
+  group.position.set(x, -0.2, z); group.rotation.y = h; scene.add(group);
+  const c = baseVehicle(group, inner, paint, paintM, kind, s, h, { home: home ? [x, z, h] : null });
+  c.health = kind === 'lyacht' ? 300 : 90; cars.push(initCar(c)); return c;
+}
+function buildMarina() {
+  createWatercraft('jetski', '#ff3a7a', DOCK.x1 - 22, DOCK.z + DOCK.w / 2 + 1.4, Math.PI / 2);
+  createWatercraft('jetski', '#20c8ff', DOCK.x1 - 26, DOCK.z - DOCK.w / 2 - 1.4, Math.PI / 2);
+  createWatercraft('lyacht', '#f8f8f4', DOCK.x1 + 16, DOCK.z + 14, Math.PI / 2);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4, 1.1), new THREE.MeshBasicMaterial({ map: canvasTex(256, 70, g => { g.fillStyle = '#0e3a5a'; g.fillRect(0, 0, 256, 70); g.fillStyle = '#fff'; g.font = 'bold 32px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('⚓ VISTA MARİNA', 128, 37); }), side: THREE.DoubleSide }));
+  sign.position.set(DOCK.x0 + 2, DOCK.y + 3, DOCK.z); sign.rotation.y = Math.PI / 2; scene.add(sign);
+  for (const s of [-1, 1]) { const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 6).translate(0, 1.5, 0), M.trim); pole.position.set(DOCK.x0 + 2, DOCK.y, DOCK.z + s * 1.9); scene.add(pole); }
+}
+// ---------------- swimming & diving
+const WATER_Y = -0.25, O2_MAX = 30;
+const waterY = (x, z) => WATER_Y + (x > WATERLINE ? waveH(x, z) * 0.6 : 0);
+function shouldSwim() {
+  const p = player.pos; if (state.interior || p.x < WATERLINE - 4) return false;
+  return waterY(p.x, p.z) - groundY(p.x, p.z) > 1.15 && p.y < waterY(p.x, p.z) + 0.2;
+}
+function startSwim() {
+  state.swim = { under: false, o2: O2_MAX }; document.body.classList.add('swimming');
+  for (let k = 0; k < 14; k++) FX.norm.spawn(player.pos.x + MR(-0.6, 0.6), WATER_Y + 0.1, player.pos.z + MR(-0.6, 0.6), MR(-1.5, 1.5), MR(2, 4.5), MR(-1.5, 1.5), 0.8, 0.5, 1.2, 0.9, 0.95, 1, 0.7, 10);
+  AudioSys.burst && AudioSys.burst(0.4, 900, 0.5, 'lowpass', 0.5);
+  if (!startSwim.hint) { startSwim.hint = 1; floatText(isTouch ? '🏊 Yüzüyorsun · 🤿 ile dal' : '🏊 Yüzüyorsun · C: dal · Space: yüksel'); }
+}
+function endSwim() { state.swim = null; document.body.classList.remove('swimming'); player.human.g.rotation.x = 0; $('o2Bar').style.display = 'none'; }
+function updateSwim(dt) {
+  const S = state.swim, p = player.pos, h = player.human;
+  const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
+  const ix = input.mx, iy = input.my, mag = Math.min(1, Math.hypot(ix, iy));
+  let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix; if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-8 * dt))); }
+  const spd = mag > 0.08 ? (S.under ? 3.4 : 2.6) * (input.sprint ? 1.6 : 1) * mag : 0;
+  let x = p.x + mx * spd * dt, z = p.z + mz * spd * dt;
+  const r = collide(x, z, 0.4, p.y + 0.2, 'sea'); x = r.x; z = r.z;
+  const wy = waterY(x, z), floor = groundY(x, z);
+  if (wy - floor < 1.05 && !S.under) { endSwim(); p.set(x, Math.max(floor, surfaceY(x, z, p.y + 1.5)), z); player.onGround = true; player.vy = 0; return; }
+  const down = !!(keys.KeyC || keys.ControlLeft || keys.TDive), up = !!(input.jump || keys.TUp);
+  if (!S.under && down && wy - floor > 2) { S.under = true; floatText('🤿 Dalış · Space/ZIPLA ile yüksel'); }
+  if (S.under) {
+    p.y += ((up ? 2.8 : 0) - (down ? 2.8 : 0) + 0.25) * dt;
+    p.y = Math.max(floor + 0.35, p.y);
+    if (p.y >= wy - 1.3 && !down) { S.under = false; if (S.o2 < O2_MAX * 0.4) floatText('😮‍💨 Nefes aldın'); }
+    S.o2 -= dt; if (S.o2 <= 0) { S.o2 = 0; state.health -= 9 * dt; if (Math.random() < dt * 2) floatText('🫧 Boğuluyorsun · yüzeye çık!'); }
+  } else { p.y = damp(p.y, wy - 1.3, 8, dt); S.o2 = Math.min(O2_MAX, S.o2 + 10 * dt); }
+  p.x = x; p.z = z; player.onGround = false; player.vy = 0;
+  const t = state.now * (spd > 0.1 ? 5 : 2);
+  h.g.position.copy(p); h.g.rotation.set(spd > 0.1 || S.under ? -1.3 : -0.25, player.yaw, 0);
+  h.armL.rotation.x = -1.6 + Math.sin(t) * 1.4; h.armR.rotation.x = -1.6 - Math.sin(t) * 1.4; h.armL.rotation.z = 0.3; h.armR.rotation.z = -0.3;
+  h.legL.rotation.x = Math.sin(t * 1.6) * 0.4; h.legR.rotation.x = -Math.sin(t * 1.6) * 0.4; h.kneeL.rotation.x = h.kneeR.rotation.x = 0.2;
+  if (spd > 0.5 && !S.under && Math.random() < dt * 6) FX.norm.spawn(p.x - mx * 0.8, wy + 0.05, p.z - mz * 0.8, MR(-0.4, 0.4), MR(0.3, 0.8), MR(-0.4, 0.4), 0.6, 0.35, 0.9, 0.92, 0.96, 1, 0.5, 2);
+  const bar = $('o2Bar'); if (S.under || S.o2 < O2_MAX) { bar.style.display = 'block'; bar.firstChild.style.width = (S.o2 / O2_MAX * 100) + '%'; } else bar.style.display = 'none';
+}
+function underwaterFx() {
+  const cam = camera.position, under = cam.x > WATERLINE - 4 && cam.y < waterY(cam.x, cam.z) - 0.05 && !state.interior;
+  if (under) { scene.fog.color.setRGB(0.03, 0.17, 0.24); scene.fog.near = 0; scene.fog.far = state.swim && state.swim.under ? 38 : 22; }
+  if (under !== underwaterFx.on) { underwaterFx.on = under; document.body.classList.toggle('underwater', under); }
+}
+// ---------------- wrecks + treasure chests
+const WRECKS = [{ x: SHORE_X + 110, z: -430, name: 'Martı' }, { x: SHORE_X + 150, z: 60, name: 'Yıldız' }, { x: SHORE_X + 205, z: 540, name: 'Korsan Gülü' }, { x: SHORE_X + 255, z: -820, name: 'Eski Kraliçe' }];
+const CHESTS = [];
+function buildWrecks() {
+  const wood = new THREE.MeshStandardMaterial({ color: 0x4a3424, roughness: 1 }), rust = new THREE.MeshStandardMaterial({ color: 0x6a3a22, roughness: 0.9, metalness: 0.3 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffc830, metalness: 0.9, roughness: 0.25, emissive: 0x6a4a00, emissiveIntensity: 0.8 });
+  const chestWood = new THREE.MeshStandardMaterial({ color: 0x6a4024, roughness: 0.8 });
+  for (const W of WRECKS) {
+    const y = groundY(W.x, W.z), g = new THREE.Group(); g.position.set(W.x, y, W.z); g.rotation.set(0.05, Math.random() * 6, 0.32);
+    g.add(new THREE.Mesh(merge([new THREE.BoxGeometry(5, 2.2, 16).translate(0, 1, 0), new THREE.CylinderGeometry(0.01, 2.5, 5, 4).rotateX(Math.PI / 2).rotateZ(Math.PI / 4).translate(0, 1.2, 10), new THREE.BoxGeometry(4.6, 0.2, 6).rotateX(0.5).translate(0, 3, -5)]), wood));
+    g.add(new THREE.Mesh(merge([new THREE.CylinderGeometry(0.2, 0.25, 9, 8).rotateZ(0.6).translate(2, 5, 2), new THREE.BoxGeometry(2, 1.6, 2.4).translate(-1, 2.6, -2)]), rust));
+    scene.add(g); W.g = g; W.y = y;
+    for (let k = 0; k < 3; k++) {
+      const a = k * 2.1 + 0.4, cx = W.x + Math.cos(a) * 6.5, cz = W.z + Math.sin(a) * 6.5, cy = groundY(cx, cz);
+      const cg = new THREE.Group(); cg.position.set(cx, cy, cz); cg.rotation.y = a;
+      cg.add(new THREE.Mesh(new THREE.BoxGeometry(1, 0.6, 0.65).translate(0, 0.3, 0), chestWood));
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.25, 0.67).translate(0, 0.12, 0.33), chestWood); lid.position.set(0, 0.6, -0.33); cg.add(lid);
+      cg.add(new THREE.Mesh(merge([new THREE.BoxGeometry(1.04, 0.08, 0.69).translate(0, 0.45, 0), new THREE.BoxGeometry(0.12, 0.62, 0.7).translate(0, 0.31, 0)]), gold));
+      const coins = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.12, 0.5).translate(0, 0.55, 0), gold); coins.visible = false; cg.add(coins);
+      scene.add(cg); CHESTS.push({ x: cx, y: cy, z: cz, g: cg, lid, coins, wreck: W.name, openUntil: 0 });
+    }
+  }
+}
+function openChest(c) {
+  c.openUntil = state.now + 600; c.lid.rotation.x = -1.2; c.coins.visible = true;
+  const amt = Math.round(MR(600, 2200) / 10) * 10, bar = Math.random() < 0.2;
+  earn(amt + (bar ? 3000 : 0), '💰 Batık hazinesi'); AudioSys.cash(); AudioSys.pickup(); haptic([30, 30, 60]);
+  showBig(bar ? '🏅 ALTIN KÜLÇE!' : '💰 HAZİNE SANDIĞI', '#ffc830', 2.5, `${c.wreck} batığı · +$${amt + (bar ? 3000 : 0)}`);
+}
+function updateWrecks(dt) {
+  for (const c of CHESTS) if (c.openUntil && state.now > c.openUntil) { c.openUntil = 0; c.lid.rotation.x = 0; c.coins.visible = false; }
+  const S = state.swim; if (!S || !S.under) return;
+  for (const c of CHESTS) if (!c.openUntil && Math.hypot(player.pos.x - c.x, player.pos.z - c.z) < 2.3 && player.pos.y - c.y < 3) { state.interact = { label: '💰 SANDIĞI AÇ', fn: () => openChest(c) }; break; }
+  if (CARGO.cur && !state.interact) { const C = CARGO.cur; if (Math.hypot(player.pos.x - C.x, player.pos.z - C.z) < 4.5 && player.pos.y - C.y < 4.5) state.interact = { label: '📦 BATIK KARGOYU AÇ', fn: () => takeCargo() }; }
+}
+// ---------------- sunken cargo event (host-run, first diver to open it wins)
+const CARGO = { cur: null, next: 200, grp: null };
+function cargoVisual() {
+  if (CARGO.grp) return CARGO.grp;
+  const g = new THREE.Group(), orange = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.6 });
+  const buoy = new THREE.Mesh(merge([new THREE.CylinderGeometry(0.7, 0.9, 1.6, 12).translate(0, 0.3, 0), new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6).translate(0, 1.8, 0)]), orange);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6).translate(0, 2.7, 0), new THREE.MeshBasicMaterial({ color: 0xff3020 }));
+  const box = new THREE.Mesh(merge([new THREE.BoxGeometry(6, 2.6, 2.5).translate(0, 1.3, 0)]), new THREE.MeshStandardMaterial({ color: 0x2a6ab0, roughness: 0.7, metalness: 0.4 }));
+  g.add(buoy, light, box); g.userData = { buoy, light, box }; g.visible = false; scene.add(g); CARGO.grp = g; return g;
+}
+function onCargo(d) {
+  const g = cargoVisual();
+  if (d.on) {
+    CARGO.cur = { x: d.x, z: d.z, y: groundY(d.x, d.z), t: d.left || 360 };
+    g.visible = true; g.userData.box.position.set(d.x, CARGO.cur.y, d.z); g.userData.box.rotation.set(0.1, d.x % 3, 0.15);
+    showBig('📦 BATIK KARGO', '#ff9a30', 3.5, 'Açık denizde bir konteyner battı · şamandıraya git, dal ve ilk sen aç!'); AudioSys.tone(520, 0.25, 0.2, 'triangle');
+  } else {
+    const won = d.by && d.by === (myNetId() || 'h');
+    if (won) { earn(5000, '📦 Batık kargo'); state.ownedW[4] = true; state.ammo[4] += 4; state.ownedW[1] = true; state.ammo[1] += 150; showBig('📦 KARGO SENİN!', '#7dff9a', 3, '+$5.000 · roketatar + mermi'); AudioSys.success(); AudioSys.cash(); }
+    else if (d.by && CARGO.cur) floatText(`📦 Batık kargoyu ${nameOf(d.by)} aldı`);
+    CARGO.cur = null; g.visible = false;
+  }
+}
+function takeCargo() { if (MP.on && !MP.host) mpSend({ t: 'cargo_take', to: 'h' }); else hostCargoTake('h'); }
+function hostCargoTake(id) { if (!CARGO.cur) return; const m = { t: 'cargo', on: 0, by: id }; onCargo(m); if (MP.on) mpSend(m); }
+function updateCargo(dt) {
+  const C = CARGO.cur, g = CARGO.grp;
+  if (C && g) { const wy = waterY(C.x, C.z); g.userData.buoy.position.set(C.x, wy, C.z); g.userData.buoy.rotation.z = Math.sin(state.now * 1.3) * 0.12; g.userData.light.position.set(C.x, wy, C.z); g.userData.light.visible = Math.sin(state.now * 5) > 0; C.t -= dt; }
+  if (MP.on && !MP.host) return;
+  if (C && C.t <= 0) { const m = { t: 'cargo', on: 0 }; onCargo(m); if (MP.on) mpSend(m); return; }
+  if (!C) { CARGO.next -= dt; if (CARGO.next <= 0) { CARGO.next = MR(300, 480); let x, z; for (let k = 0; k < 30; k++) { x = WATERLINE + MR(120, 420); z = MR(-900, 900); if (!islandAt(x, z, 80) && !onYacht(x, z, 60)) break; } const m = { t: 'cargo', on: 1, x: r1(x), z: r1(z), left: 360 }; onCargo(m); if (MP.on) mpSend(m); } }
+}
+function handleSea(d) {
+  if (d.t === 'cargo') { if (d.id === 'h' || !MP.on) onCargo(d); return true; }
+  if (d.t === 'cargo_take') { if (MP.host) hostCargoTake(d.id); return true; }
+  return false;
+}
+function drawSeaMap(g, toMap, r) {
+  g.font = '13px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const W of WRECKS) { const [px, py] = toMap(W.x, W.z); if (Math.hypot(px - r, py - r) > r - 10) continue; g.fillStyle = '#0a2a44cc'; g.beginPath(); g.arc(px, py, 10, 0, 7); g.fill(); g.fillStyle = '#fff'; g.fillText('⚓', px, py + 1); }
+  if (CARGO.cur) { let [px, py] = toMap(CARGO.cur.x, CARGO.cur.z); const dx = px - r, dy = py - r, l = Math.hypot(dx, dy); if (l > r - 14) { px = r + dx / l * (r - 14); py = r + dy / l * (r - 14); } g.fillStyle = '#000c'; g.beginPath(); g.arc(px, py, 13, 0, 7); g.fill(); g.strokeStyle = '#ff9a30'; g.lineWidth = 3; g.stroke(); g.font = '16px sans-serif'; g.fillStyle = '#fff'; g.fillText('📦', px, py + 1); }
+}
+// ---------------- BASE jump: open the parachute while falling from a rooftop
+function baseJumpCheck() {
+  if (player.onGround || state.chute < 1 || state.interior || player.vy > -3) { if (player.onGround) baseJumpCheck.hint = 0; baseJumpCheck.jp = input.jump; return false; }
+  const alt = player.pos.y - surfaceY(player.pos.x, player.pos.z, player.pos.y);
+  let go = false;
+  if (alt > 16) {
+    if (!baseJumpCheck.hint) { baseJumpCheck.hint = 1; floatText('🪂 ZIPLA: paraşütü aç!'); }
+    if (input.jump && !baseJumpCheck.jp) { startSkydive(Math.sin(player.yaw) * player.speed, Math.cos(player.yaw) * player.speed); state.sky.vy = player.vy; openChute(); go = true; }
+  }
+  baseJumpCheck.jp = input.jump; return go;
 }
 
 // ============================================================ GANG (industrial district fights back)
@@ -5218,6 +5385,7 @@ function applyPacket(d) {
   if (handleAccount(d)) return;
   if (handleBigHeist(d)) return;
   if (handleCops(d)) return;
+  if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
   if (handleStreet(d)) return;
@@ -5266,7 +5434,7 @@ function removeRemote(id) {
 function vehVisual(kind, color) {
   if (kind === 'airliner') return airlinerVisual(color);
   if (!CAR_SPECS[kind]) kind = 'sedan';
-  const c = kind === 'bike' ? createBike(color, 0, -9999, 0, 'free') : kind === 'boat' ? createBoat(color, 0, -9999, 0) : kind === 'heli' ? createHeli(color, 0, 0, -9999, 0) : CAR_SPECS[kind].plane ? createPlane(kind, color, 0, -9999, 0, false) : createCar(kind, color, 0, -9999, 0, 'free');
+  const c = kind === 'bike' ? createBike(color, 0, -9999, 0, 'free') : CAR_SPECS[kind] && CAR_SPECS[kind].boat && kind !== 'boat' ? createWatercraft(kind, color, 0, -9999, 0, false) : kind === 'boat' ? createBoat(color, 0, -9999, 0) : kind === 'heli' ? createHeli(color, 0, 0, -9999, 0) : CAR_SPECS[kind].plane ? createPlane(kind, color, 0, -9999, 0, false) : createCar(kind, color, 0, -9999, 0, 'free');
   const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1);
   c.remote = true; return c;
 }
@@ -5320,7 +5488,7 @@ function updateRemotes(dt) {
       if (c.rotor) { c.rotorA += 30 * dt; c.rotor.rotation.y = c.rotorA; c.tailRotor.rotation.x = c.rotorA * 1.6; }
       if (c.props) { c.propA = (c.propA || 0) + 50 * dt; for (const pr of c.props) pr.rotation.z = c.propA; }
       if (c.gearG) c.gearG.visible = s.gr !== 0;
-      if (c.spec.bike) { if (h.g.parent !== gp) { gp.add(h.g); h.g.position.set(0, 0.45, -0.28); h.g.rotation.set(0.32, 0, 0); } h.g.visible = true; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.kneeL.rotation.x = h.kneeR.rotation.x = 1.5; h.armL.rotation.x = h.armR.rotation.x = -1.15; }
+      if (c.spec.bike || c.spec.jet) { if (h.g.parent !== gp) { gp.add(h.g); h.g.position.set(0, 0.45, -0.28); h.g.rotation.set(0.32, 0, 0); } h.g.visible = true; h.legL.rotation.x = h.legR.rotation.x = -1.3; h.kneeL.rotation.x = h.kneeR.rotation.x = 1.5; h.armL.rotation.x = h.armR.rotation.x = -1.15; }
       else h.g.visible = false;
     } else {
       if (h.g.parent !== scene) scene.add(h.g);
@@ -5735,7 +5903,7 @@ function applyHit(res, w, pellet) {
   if (res.kind === 'ped' || res.kind === 'remote') for (let k = 0; k < 5; k++) FX.norm.spawn(res.x, res.y, res.z, MR(-1.5, 1.5), MR(0.5, 2.5), MR(-1.5, 1.5), 0.4, 0.28, 0.2, 0.55, 0.02, 0.02, 0.9, 10);
 }
 function fire() {
-  if (state.fireCd > 0 || state.dead || state.cabin) return;
+  if (state.fireCd > 0 || state.dead || state.cabin || state.swim) return;
   if (!state.ownedW[state.weapon] || state.ammo[state.weapon] <= 0) { nextWeapon(); return; }
   haptic(20);
   const w = WEAPONS[state.weapon];
@@ -5960,7 +6128,7 @@ function hostStreamTruck(dt) {
 function sharedManifest() {
   return {
     sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
-    ...modesManifest(), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+    ...modesManifest(), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
   };
 }
 function applySharedManifest(d) {
@@ -5970,6 +6138,7 @@ function applySharedManifest(d) {
   if (d.sev) onStreetMsg({ ...d.sev });
   applyModesManifest(d);
   if (d.bh) onBigHeist({ ...d.bh, start: 1 });
+  if (d.cargo) onCargo(d.cargo);
   if (d.cz) for (const id in d.cz) if (CZ.st[id]) Object.assign(CZ.st[id], d.cz[id]);
 }
 function handleShared(d) {
@@ -7604,6 +7773,8 @@ function loop(now) {
   updateDoors();
   updateDocOffices();
   updateStation();
+  updateWrecks(dt);
+  updateCargo(dt);
   updateAirport(dt);
   updateIslands(dt);
   updateFlightJob(dt);
@@ -7646,6 +7817,7 @@ function loop(now) {
   FX.add.update(dt); FX.norm.update(dt); FX.updateTracers(dt);
   ocean.material.uniforms.uTime.value = state.now;
   updateCamera(dt);
+  underwaterFx();
   updateHUD(dt);
   updateContextButtons();
   updateCopHud();

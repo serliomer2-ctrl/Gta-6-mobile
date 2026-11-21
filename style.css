@@ -296,3 +296,11 @@ body.flying .btn.heli{display:flex}
 #zoneHud{display:none;position:absolute;left:50%;top:calc(136px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;background:#000a;color:#fff;font:700 13px Rajdhani,sans-serif;padding:4px 12px;border-radius:9px;text-align:center;pointer-events:none;white-space:nowrap}
 
 #copHud{display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(164px + env(safe-area-inset-top,0px));white-space:nowrap;z-index:12;background:#14285add;border:1px solid #6a9aff;color:#fff;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none}
+
+/* ---------- SWIMMING / UNDERWATER ---------- */
+#o2Bar{display:none;height:6px;margin-top:4px;background:#0008;border-radius:3px;overflow:hidden}#o2Bar i{display:block;height:100%;width:100%;background:#4ad8ff}
+.btn.swim{display:none}
+body.swimming:not(.incar) .btn.swim{display:flex}
+#bDive{right:calc(136px + var(--sr,0px));bottom:26px;background:#1a6a9a66;border-color:#7dd8ff;font-size:12px}
+#uwater{position:fixed;inset:0;pointer-events:none;z-index:1;opacity:0;transition:opacity .35s;background:radial-gradient(ellipse at 50% 20%,rgba(40,140,170,.25),rgba(4,40,60,.6))}
+body.underwater #uwater{opacity:1}
