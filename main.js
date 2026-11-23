@@ -360,6 +360,7 @@ function init() {
   initDecorUI();
   initFamilyUI();
   initCasinoUI();
+  initPetUI();
   buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
@@ -386,6 +387,7 @@ function init() {
   buildJobs();
   buildCasino();
   buildCarClub();
+  buildShelter();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -2530,6 +2532,7 @@ function drawMinimap() {
   drawAnomMap(dot);
   drawDisMap(dot);
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
+  if (!state.interior && PET.shelter) dot(PET.shelter.x, PET.shelter.z, '#40c060', 7, false);
   if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
@@ -2861,7 +2864,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2881,6 +2884,7 @@ function shopItems(type) {
   if (type === 'wed') return wedItems();
   if (type === 'jobs') return jobItems();
   if (type === 'drag') return dragItems();
+  if (type === 'pets') return petShopItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2952,7 +2956,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2967,7 +2971,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.dragBest = d.dragBest || 0;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.dragBest = d.dragBest || 0;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -3333,7 +3337,7 @@ function cleanupRico(m) {
 }
 
 // ============================================================ SMARTPHONE UI
-const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['jobs', '💼', 'Meslek', '#1a5a9a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['jobs', '💼', 'Meslek', '#1a5a9a'], ['pets', '🐾', 'Evcil', '#2a6a3a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
 function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
 function openPhone() {
   if (state.shopOpen || state.dead || state.dialog || state.photo) return;
@@ -3400,6 +3404,8 @@ function renderPhone(app) {
       <div class="phRow"><div><b>🏁 Stunt atlayışları ${Object.keys(state.stuntsDone).length}/${ramps.length}</b><small>Rampalardan hızla atla · ilk atlayış x2 bonus</small></div></div></div>`;
   } else if (app === 'wallet') {
     h = walletHtml(head);
+  } else if (app === 'pets') {
+    h = petsPhoneHtml(head);
   } else if (app === 'jobs') {
     h = head('💼 Meslek', '#1a5a9a') + `<div class="phBody"><p class="phNote">İş Kurumu'nda meslek seç, görev aracınla çalış. Her görev XP verir; terfi ettikçe kazancın %15 artar, mesaide 2 dakikada bir maaş yatar.</p>${jobsPhoneHtml()}</div>`;
   } else if (app === 'family') {
@@ -3434,6 +3440,7 @@ function initPhone() {
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
     else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
+    else if (d.sgps) { state.waypoint = { x: PET.shelter.x, z: PET.shelter.z, label: 'Hayvan Barınağı' }; floatText('📍 Hayvan Barınağı işaretlendi'); closePhone(); }
     else if (d.jgps) { state.waypoint = { x: JOB.center.x, z: JOB.center.z, label: 'İş Kurumu' }; floatText('📍 İş Kurumu işaretlendi'); closePhone(); }
     else if (d.will) { closePhone(); willModal(); }
     else if (d.cgps) { state.waypoint = { x: CEM.gate[0], z: CEM.gate[1], label: 'Şehir Mezarlığı' }; floatText('📍 Vista Bay Şehir Mezarlığı işaretlendi'); closePhone(); }
@@ -7571,6 +7578,216 @@ function remoteNitroFx() {
   }
 }
 
+// ============================================================ PETS: adopt a dog or a cat, feed it, it follows you, learns tricks, waits at home
+const BREEDS = {
+  golden: { kind: 'dog', n: 'Golden Retriever', c: '#d8a050', c2: '#c08a40', s: 1, ear: 'flop' },
+  kangal: { kind: 'dog', n: 'Kangal', c: '#c8b088', c2: '#2a1e14', s: 1.2, ear: 'flop' },
+  husky: { kind: 'dog', n: 'Husky', c: '#8a8a92', c2: '#f2f2f2', s: 1, ear: 'up' },
+  pug: { kind: 'dog', n: 'Pug', c: '#d8c0a0', c2: '#2a2018', s: 0.65, ear: 'flop' },
+  dalma: { kind: 'dog', n: 'Dalmaçyalı', c: '#f2f2f2', c2: '#141414', s: 1.05, ear: 'flop' },
+  tekir: { kind: 'cat', n: 'Tekir', c: '#8a7a5a', c2: '#4a3a2a', s: 0.6, ear: 'cat' },
+  van: { kind: 'cat', n: 'Van Kedisi', c: '#f4f4f0', c2: '#e8c8a0', s: 0.62, ear: 'cat' },
+  black: { kind: 'cat', n: 'Kara Kedi', c: '#1a1a1c', c2: '#2a2a2e', s: 0.6, ear: 'cat' },
+  sarman: { kind: 'cat', n: 'Sarman', c: '#e0902a', c2: '#f2e0c0', s: 0.62, ear: 'cat' },
+};
+const TRICKS = { sit: '🪑 Otur', roll: '🌀 Yuvarlan', paw: '🐾 Pati ver', fetch: '🎾 Top getir', speak: '🗣 Konuş' };
+const PET_NAMES = { dog: ['Karabaş', 'Paşa', 'Zeytin', 'Max', 'Boncuk', 'Kont', 'Fıstık', 'Duman'], cat: ['Tarçın', 'Pamuk', 'Minnoş', 'Gece', 'Limon', 'Mırmır', 'Şeker', 'Bulut'] };
+const PET = { me: null, remote: new Map(), shelter: null, ball: null, act: null, actT: 0, wanderT: 0 };
+function makePet(breed) {
+  const B = BREEDS[breed] || BREEDS.golden, cat = B.kind === 'cat', C = colorize, g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const len = cat ? 0.62 : 0.8, hgt = cat ? 0.42 : 0.55;
+  const parts = [C(new THREE.CapsuleGeometry(cat ? 0.15 : 0.2, len, 4, 10).rotateX(Math.PI / 2).translate(0, hgt, 0), B.c)];
+  if (breed === 'husky' || breed === 'van') parts.push(C(new THREE.CapsuleGeometry(cat ? 0.12 : 0.16, len * 0.7, 4, 8).rotateX(Math.PI / 2).translate(0, hgt - 0.08, 0.05), B.c2));
+  if (breed === 'dalma') for (let i = 0; i < 9; i++) parts.push(C(new THREE.SphereGeometry(0.045, 6, 4).translate(MR(-0.18, 0.18), hgt + MR(-0.1, 0.17), MR(-len / 2, len / 2)), '#141414'));
+  if (breed === 'tekir') for (let i = 0; i < 5; i++) parts.push(C(new THREE.TorusGeometry(0.152, 0.018, 4, 12, Math.PI).rotateZ(Math.PI / 2).translate(0, hgt, -0.25 + i * 0.12), B.c2));
+  body.add(new THREE.Mesh(merge(parts), M.human));
+  const head = new THREE.Group(); head.position.set(0, hgt + (cat ? 0.17 : 0.22), len / 2 + (cat ? 0.12 : 0.15)); body.add(head);
+  const hp = [C(new THREE.SphereGeometry(cat ? 0.15 : 0.18, 12, 10), B.c)];
+  hp.push(C(new THREE.CapsuleGeometry(cat ? 0.05 : 0.08, cat ? 0.02 : (breed === 'pug' ? 0.02 : 0.12), 4, 8).rotateX(Math.PI / 2).translate(0, -0.05, cat ? 0.13 : 0.18), breed === 'kangal' || breed === 'pug' ? B.c2 : B.c));
+  hp.push(C(new THREE.SphereGeometry(0.035, 6, 5).translate(0, -0.02, cat ? 0.18 : breed === 'pug' ? 0.21 : 0.3), '#141414'));
+  for (const s of [-1, 1]) {
+    hp.push(C(new THREE.SphereGeometry(0.025, 6, 5).translate(s * 0.07, 0.05, cat ? 0.13 : 0.15), cat ? '#8ac040' : '#1a1208'));
+    if (B.ear === 'flop') hp.push(C(new THREE.BoxGeometry(0.06, 0.16, 0.1).rotateZ(s * 0.3).translate(s * 0.15, -0.02, -0.02), breed === 'dalma' ? '#141414' : B.c2));
+    else hp.push(C(new THREE.ConeGeometry(cat ? 0.06 : 0.07, cat ? 0.12 : 0.16, 4).translate(s * (cat ? 0.08 : 0.1), cat ? 0.16 : 0.2, -0.02), breed === 'husky' ? B.c : B.c));
+  }
+  if (cat) for (const s of [-1, 1]) for (const k of [-1, 1]) hp.push(C(new THREE.BoxGeometry(0.16, 0.006, 0.006).rotateZ(k * 0.15).translate(s * 0.11, -0.04 + k * 0.012, 0.14), '#f2f2f2'));
+  head.add(new THREE.Mesh(merge(hp), M.human));
+  const legs = [];
+  for (const [x, z] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const piv = new THREE.Group(); piv.position.set(x * (cat ? 0.09 : 0.12), hgt - 0.05, z * len * 0.42); body.add(piv);
+    piv.add(new THREE.Mesh(merge([C(new THREE.CapsuleGeometry(cat ? 0.035 : 0.05, hgt - 0.12, 4, 6).translate(0, -(hgt - 0.05) / 2, 0), breed === 'husky' || breed === 'van' ? B.c2 : B.c)]), M.human)); legs.push(piv);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, hgt + 0.05, -len / 2 - 0.12); body.add(tail);
+  tail.add(new THREE.Mesh(merge([C(new THREE.CapsuleGeometry(cat ? 0.03 : 0.04, cat ? 0.42 : breed === 'pug' ? 0.08 : 0.32, 4, 6).translate(0, (cat ? 0.25 : 0.18), 0).rotateX(cat ? -0.3 : -0.9), breed === 'husky' ? B.c2 : B.c)]), M.human));
+  g.scale.setScalar(B.s); g.traverse(o => { if (o.isMesh) o.castShadow = QUALITY !== 'low'; }); scene.add(g);
+  return { g, body, head, legs, tail, phase: Math.random() * 6, kind: B.kind, breed, x: 0, z: 0, yaw: 0, sp: 0 };
+}
+function disposePet(P) { if (!P) return; scene.remove(P.g); P.g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+function animPet(P, dt, speed, act, t) {
+  P.phase += dt * (3 + speed * 2.2);
+  const s = Math.sin(P.phase), amp = Math.min(1, speed / 4) * 0.7;
+  P.legs[0].rotation.x = s * amp; P.legs[3].rotation.x = s * amp; P.legs[1].rotation.x = -s * amp; P.legs[2].rotation.x = -s * amp;
+  P.tail.rotation.z = Math.sin(state.now * (P.kind === 'dog' ? 14 : 3)) * (P.kind === 'dog' ? 0.6 : 0.25); P.tail.rotation.x = 0;
+  P.body.rotation.set(0, 0, 0); P.body.position.set(0, 0, 0); P.head.rotation.set(0, 0, 0);
+  if (act === 'sit' || act === 'paw' || act === 'speak') { P.body.rotation.x = -0.45; P.body.position.y = -0.08; P.body.position.z = -0.1; P.legs[2].rotation.x = P.legs[3].rotation.x = 1.2; P.legs[0].rotation.x = P.legs[1].rotation.x = 0.45; }
+  if (act === 'paw') P.legs[1].rotation.x = -1.2 + Math.sin(t * 6) * 0.2;
+  if (act === 'speak') P.head.rotation.x = -0.3 + Math.abs(Math.sin(t * 10)) * 0.25;
+  if (act === 'roll') { P.body.rotation.z = Math.min(1, t / 1.2) * Math.PI * 2; P.body.position.y = Math.sin(Math.min(1, t / 1.2) * Math.PI) * 0.12; }
+  if (act === 'lie') { P.body.position.y = -0.22; P.legs.forEach(l => l.rotation.x = -1.3); P.head.rotation.x = 0.2; }
+  if (act === 'pet') { P.head.rotation.x = -0.25; P.head.rotation.z = Math.sin(t * 4) * 0.2; }
+}
+// ---------------- shelter
+function buildShelter() {
+  const d = DOORS.filter(q => q.y0 < 1 && q.blk && (q.blk.dist === 'residential' || q.blk.dist === 'mixed') && !q.market && !q.home && !q.jail && !q.jobs && !q.hospital && !q.casino && lifeDoorFree(q)).sort((a, b) => a.id - b.id)[5];
+  if (!d) return; PET.shelter = d; d.shelter = true;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.3), new THREE.MeshBasicMaterial({ map: canvasTex(512, 120, g => { g.fillStyle = '#2a6a3a'; g.fillRect(0, 0, 512, 120); g.fillStyle = '#fff'; g.font = 'bold 40px Arial'; g.textAlign = 'center'; g.fillText('🐾 HAYVAN BARINAĞI', 256, 56); g.font = '22px Arial'; g.fillText('Vista Bay Belediyesi · bir dost sahiplen', 256, 98); }) }));
+  m.position.set(d.fx + d.nx * 0.15, d.y0 + 3.7, d.fz + d.nz * 0.15); m.rotation.y = Math.atan2(d.nx, d.nz); scene.add(m);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x40c060, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(d.x, groundY(d.x, d.z) + 0.05, d.z); scene.add(ring);
+  // a few residents waiting outside
+  PET.yard = ['golden', 'tekir', 'husky', 'pug'].map((b, i) => { const P = makePet(b), side = [d.nz, -d.nx]; P.x = d.x + d.nx * 2.5 + side[0] * (i - 1.5) * 1.6; P.z = d.z + d.nz * 2.5 + side[1] * (i - 1.5) * 1.6; P.g.position.set(P.x, groundY(P.x, P.z), P.z); P.g.rotation.y = Math.atan2(d.nx, d.nz); return P; });
+}
+function petShopItems() {
+  const P = state.pet, it = [];
+  if (!P) {
+    it.push({ sec: 'Sahiplen · aşıları yapıldı, kısırlaştırıldı · $250' });
+    for (const k in BREEDS) { const B = BREEDS[k]; it.push({ name: `${B.kind === 'dog' ? '🐕' : '🐈'} ${B.n}`, desc: B.kind === 'dog' ? 'Sadık, top getirmeyi sever · seni her yerde takip eder' : 'Bağımsız ama sevecen · mırlar', price: 250, close: true, buy: () => adoptPet(k) }); }
+  } else {
+    it.push({ sec: `${state.pet.kind === 'dog' ? '🐕' : '🐈'} ${esc(P.name)} · ${BREEDS[P.breed].n} · 🍖 ${Math.round(P.hunger)} · ❤ ${Math.round(P.happy)}` });
+    it.push({ name: '🥫 Mama ×5', desc: `Evcil hayvan maması · elinde ${state.petFood || 0}`, price: 40, buy: () => { state.petFood = (state.petFood || 0) + 5; } });
+    it.push({ name: '🎾 Oyuncak top', desc: state.petBall ? 'Topun var' : '"Top getir" numarası için gerekli', price: 30, dis: state.petBall ? 'VAR' : null, buy: () => { state.petBall = true; } });
+    it.push({ name: '🏥 Veteriner kontrolü', desc: 'Tokluk ve mutluluk tam dolar', price: 150, buy: () => { P.hunger = 100; P.happy = 100; floatText(`🏥 ${P.name} sapasağlam!`); } });
+    it.push({ sec: 'Vedalaşma' }, { name: '💔 Barınağa geri ver', desc: 'Başka bir dost sahiplenebilmek için · öğrendiği numaralar unutulur', price: 0, btn: 'VER', close: true, buy: () => { const n = P.name; disposePet(PET.me); PET.me = null; state.pet = null; sendInfo(); saveGame(); floatText(`💔 ${n} barınakta yeni bir yuva bekleyecek`); } });
+  }
+  return it;
+}
+function adoptPet(breed) {
+  const B = BREEDS[breed];
+  state.pet = { breed, kind: B.kind, name: pick(PET_NAMES[B.kind]), hunger: 80, happy: 70, skills: {}, home: false, born: Date.now() };
+  state.petFood = (state.petFood || 0) + 5;
+  spawnMyPet(); sendInfo(); saveGame();
+  showBig(`${B.kind === 'dog' ? '🐕' : '🐈'} YENİ DOSTUN: ${state.pet.name.toUpperCase()}`, '#7dff9a', 4, `${B.n} · seni takip edecek · yanına gidip E ile ilgilen (5 mama hediye)`);
+  petSound(B.kind, true);
+}
+function spawnMyPet() {
+  if (PET.me) disposePet(PET.me); PET.me = null;
+  if (!state.pet) return;
+  PET.me = makePet(state.pet.breed); PET.me.x = player.pos.x - 1.5; PET.me.z = player.pos.z - 1.5;
+}
+function petSound(kind, happy) { if (kind === 'dog') { AudioSys.tone(happy ? 520 : 380, 0.09, 0.14, 'square', 0.6); AudioSys.tone(happy ? 480 : 340, 0.1, 0.12, 'square', 0.6, 0.15); } else { AudioSys.tone(happy ? 700 : 500, 0.35, 0.08, 'sine', happy ? 1.4 : 0.7); } }
+function petMenu() {
+  const P = state.pet; if (!P) return;
+  const sk = k => Math.round((P.skills[k] || 0)), bar = v => '▮'.repeat(Math.round(v / 20)) + '▯'.repeat(5 - Math.round(v / 20));
+  mpModal(`<b>${P.kind === 'dog' ? '🐕' : '🐈'} ${esc(P.name)} · ${BREEDS[P.breed].n}</b><small>🍖 Tokluk ${bar(P.hunger)} · ❤ Mutluluk ${bar(P.happy)} · 🥫 mama ${state.petFood || 0}</small>
+    <div class="mmBtns" style="flex-wrap:wrap"><button data-pet="pet">🤗 Sev</button><button data-pet="feed" ${(state.petFood || 0) || Object.keys(state.bag || {}).some(k => ['meat', 'chicken', 'sausage', 'milk'].includes(k)) ? '' : 'disabled'}>🍖 Besle</button>
+    ${Object.entries(TRICKS).map(([k, n]) => `<button data-pet="${k}" ${k === 'fetch' && (!state.petBall || P.kind === 'cat') ? 'disabled' : ''}>${n} <small>${sk(k) >= 100 ? '✓' : sk(k) + '%'}</small></button>`).join('')}
+    <button data-pet="home">${P.home ? '🚶 Yanına al' : '🏠 Evde bırak'}</button><button data-pet="rename">✏ İsim</button><button data-act="close" class="grey">Kapat</button></div>`);
+}
+function petAct(k) {
+  const P = state.pet, me = PET.me; if (!P) return;
+  if (k === 'pet') { P.happy = Math.min(100, P.happy + 12); PET.act = 'pet'; PET.actT = 0; petSound(P.kind, true); floatText(`🤗 ${P.name} çok mutlu`); if (Math.random() < 0.3) addRep(1); }
+  else if (k === 'feed') {
+    if ((state.petFood || 0) > 0) state.petFood--; else { const f = ['meat', 'chicken', 'sausage', 'milk'].find(q => state.bag && state.bag[q]); if (!f) return; state.bag[f]--; if (!state.bag[f]) delete state.bag[f]; }
+    P.hunger = Math.min(100, P.hunger + 40); P.happy = Math.min(100, P.happy + 8); PET.act = 'lie'; PET.actT = 0; floatText(`🍖 ${P.name} karnını doyurdu`); AudioSys.tone(300, 0.15, 0.08, 'triangle');
+  }
+  else if (k === 'home') { P.home = !P.home; floatText(P.home ? `🏠 ${P.name} evde seni bekleyecek` : `🚶 ${P.name} artık yanında`); if (!P.home) spawnMyPet(); else { disposePet(PET.me); PET.me = null; } }
+  else if (k === 'rename') { const n = (prompt('Yeni isim', P.name) || '').replace(/[<>]/g, '').trim().slice(0, 14); if (n) P.name = n; }
+  else if (TRICKS[k] && me) {
+    const s = P.skills[k] || 0, ok = Math.random() * 100 < 25 + s * 0.75 && P.happy > 15 && P.hunger > 10;
+    P.skills[k] = Math.min(100, s + (ok ? 6 : 12)); P.happy = Math.max(0, P.happy - (ok ? -4 : 2));
+    if (P.skills[k] >= 100 && s < 100) { showBig(`🎓 ${P.name.toUpperCase()} "${TRICKS[k]}" ÖĞRENDİ`, '#ffd040', 3); addRep(5); }
+    if (!ok) { floatText(`🤔 ${P.name} anlamadı… tekrar dene (${Math.round(P.skills[k])}%)`); petSound(P.kind, false); }
+    else if (k === 'fetch') throwBall();
+    else { PET.act = k; PET.actT = 0; if (k === 'speak') petSound(P.kind, true); floatText(`${TRICKS[k]} · aferin ${P.name}!`); }
+    if (ok && MP.on) mpSend({ t: 'pet_act', k: k === 'fetch' ? 'sit' : k });
+  }
+  closeModal(); sendInfo(); saveGame();
+}
+function throwBall() {
+  if (!PET.ball) { PET.ball = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshStandardMaterial({ color: 0xc8e020, roughness: 0.6 })); scene.add(PET.ball); }
+  const a = player.yaw, d = 12, tx = player.pos.x + Math.sin(a) * d, tz = player.pos.z + Math.cos(a) * d, r = collide(tx, tz, 0.3, 0.5);
+  PET.fetch = { st: 'fly', t: 0, x0: player.pos.x, z0: player.pos.z, x: r.x, z: r.z }; PET.ball.visible = true; AudioSys.tone(900, 0.06, 0.06, 'square');
+}
+function updatePets(dt) {
+  const P = state.pet;
+  // stats
+  if (P) {
+    P.hunger = Math.max(0, P.hunger - dt * 100 / 2400); P.happy = Math.max(0, P.happy - dt * (P.hunger < 20 ? 0.12 : 0.03));
+    PET.warnT = (PET.warnT || 0) - dt; if (P.hunger < 20 && PET.warnT <= 0) { PET.warnT = 90; floatText(`🍖 ${P.name} acıktı · yanına gidip besle`); petSound(P.kind, false); }
+  }
+  // my pet follows me (or waits in the home)
+  const atHome = P && P.home, me = PET.me;
+  if (P && atHome && state.interior === 'home' && !me) { PET.me = makePet(P.breed); PET.me.x = player.pos.x + 1; PET.me.z = player.pos.z - 1; }
+  if (P && atHome && state.interior !== 'home' && me) { disposePet(me); PET.me = null; }
+  if (P && !atHome && !me && !state.interior) spawnMyPet();
+  const M2 = PET.me;
+  if (M2) {
+    const inCar = !!state.inCar, hidden = (inCar && !atHome) || (state.interior && state.interior !== 'home') || state.dead || state.sky || state.cabin || state.swim;
+    M2.g.visible = !hidden;
+    if (hidden) { M2.x = player.pos.x - 1.2; M2.z = player.pos.z - 1.2; }
+    else {
+      let tx = player.pos.x - Math.sin(player.yaw) * 1.8 + Math.cos(player.yaw) * 0.8, tz = player.pos.z - Math.cos(player.yaw) * 1.8 - Math.sin(player.yaw) * 0.8, run = 0;
+      const F = PET.fetch;
+      if (F) {
+        F.t += dt;
+        if (F.st === 'fly') { const k = Math.min(1, F.t / 0.9); PET.ball.position.set(F.x0 + (F.x - F.x0) * k, groundY(F.x, F.z) + 1.2 + Math.sin(k * Math.PI) * 2.5 - k * 1.1, F.z0 + (F.z - F.z0) * k); if (k >= 1) F.st = 'chase'; tx = F.x; tz = F.z; }
+        else if (F.st === 'chase') { tx = F.x; tz = F.z; if (Math.hypot(M2.x - F.x, M2.z - F.z) < 0.6) { F.st = 'back'; petSound('dog', true); } }
+        else { tx = player.pos.x + Math.sin(player.yaw) * 1; tz = player.pos.z + Math.cos(player.yaw) * 1; M2.head.updateMatrixWorld(true); const hp = new THREE.Vector3(0, -0.08, 0.3).applyMatrix4(M2.head.matrixWorld); PET.ball.position.copy(hp); if (Math.hypot(M2.x - tx, M2.z - tz) < 0.8) { PET.fetch = null; PET.ball.visible = false; state.pet.happy = Math.min(100, state.pet.happy + 10); floatText(`🎾 ${state.pet.name} topu getirdi!`); addRep(2); } }
+      } else if (state.interior === 'home') { PET.wanderT -= dt; if (PET.wanderT <= 0) { PET.wanderT = MR(3, 7); const I = INTERIORS.home; PET.wx = MR(I.x0 + 1, I.x1 - 1); PET.wz = MR(I.z0 + 1, I.z1 - 2); } if (Math.hypot(player.pos.x - M2.x, player.pos.z - M2.z) > 5) { tx = PET.wx; tz = PET.wz; } }
+      const dx = tx - M2.x, dz = tz - M2.z, d = Math.hypot(dx, dz);
+      if (d > 40) { M2.x = tx; M2.z = tz; }
+      else if (d > 0.4 && !(PET.act && PET.actT < 1.6 && !F)) {
+        const want = F ? 7.5 : d > 6 ? Math.max(6.5, player.speed + 1) : d > 1.5 ? 3 : 1.2, sp = want * (P && P.hunger < 15 ? 0.6 : 1);
+        let nx = M2.x + dx / d * Math.min(d, sp * dt), nz = M2.z + dz / d * Math.min(d, sp * dt);
+        const r = state.interior ? interiorCollide(nx, nz, 0.25, 0) : collide(nx, nz, 0.25, 0.3); M2.x = r.x; M2.z = r.z; run = sp;
+        M2.yaw = wrapA(M2.yaw + wrapA(Math.atan2(dx, dz) - M2.yaw) * Math.min(1, dt * 10));
+      } else if (!PET.act || PET.actT > 1.6) M2.yaw = wrapA(M2.yaw + wrapA(Math.atan2(player.pos.x - M2.x, player.pos.z - M2.z) - M2.yaw) * Math.min(1, dt * 3));
+      const y = state.interior ? interiorSurface(INTERIORS[state.interior], M2.x, M2.z, player.pos.y + 0.3) : surfaceY(M2.x, M2.z, player.pos.y + 0.3);
+      M2.g.position.set(M2.x, y, M2.z); M2.g.rotation.y = M2.yaw;
+      if (PET.act) { PET.actT += dt; if (PET.actT > (PET.act === 'lie' ? 3 : 2.4)) PET.act = null; }
+      animPet(M2, run, dt, PET.act || (run < 0.1 && player.speed < 0.3 && !F ? 'sit' : null), PET.actT);
+      { const pd = Math.hypot(player.pos.x - M2.x, player.pos.z - M2.z); if (!state.inCar && (pd < 1.4 || (!state.interact && pd < 2))) state.interact = { label: `🐾 ${state.pet.name} ile ilgilen`, fn: petMenu }; }
+    }
+  }
+  // remote players' pets
+  for (const r of MP.remotes.values()) {
+    const info = r.info.pet; let R = PET.remote.get(r.id);
+    if (!info || info.home || !BREEDS[info.breed]) { if (R) { disposePet(R); PET.remote.delete(r.id); } continue; }
+    if (!R || R.breed !== info.breed) { if (R) disposePet(R); R = makePet(info.breed); R.x = r.x; R.z = r.z; PET.remote.set(r.id, R); }
+    const hide = !!r.veh || r.dead || Math.hypot(r.x - player.pos.x, r.z - player.pos.z) > 150;
+    R.g.visible = !hide; if (hide) { R.x = r.x; R.z = r.z; continue; }
+    const tx = r.x - Math.sin(r.r) * 1.8 + Math.cos(r.r) * 0.8, tz = r.z - Math.cos(r.r) * 1.8 - Math.sin(r.r) * 0.8, dx = tx - R.x, dz = tz - R.z, d = Math.hypot(dx, dz);
+    let run = 0; if (d > 30) { R.x = tx; R.z = tz; } else if (d > 0.4) { const sp = d > 5 ? 7 : 3; R.x += dx / d * Math.min(d, sp * dt); R.z += dz / d * Math.min(d, sp * dt); run = sp; R.yaw = wrapA(R.yaw + wrapA(Math.atan2(dx, dz) - R.yaw) * Math.min(1, dt * 10)); }
+    R.g.position.set(R.x, surfaceY(R.x, R.z, r.y + 0.3), R.z); R.g.rotation.y = R.yaw;
+    if (R.act) { R.actT += dt; if (R.actT > 2.4) R.act = null; }
+    animPet(R, run, dt, R.act || (run < 0.1 ? 'sit' : null), R.actT || 0);
+  }
+  for (const [id, R] of PET.remote) if (!MP.remotes.has(id)) { disposePet(R); PET.remote.delete(id); }
+  // shelter yard
+  if (PET.yard) for (const Y of PET.yard) { if (Math.hypot(Y.x - camera.position.x, Y.z - camera.position.z) < 80) animPet(Y, 0, dt, Math.sin(state.now * 0.3 + Y.phase) > 0 ? 'sit' : 'lie', 0); }
+}
+function handlePets(d) {
+  if (d.t === 'pet_act') { const R = PET.remote.get(d.id); if (R && (TRICKS[d.k] || d.k === 'pet')) { { R.act = d.k; R.actT = 0; if (d.k === 'speak' && Math.hypot(R.x - player.pos.x, R.z - player.pos.z) < 40) petSound(R.kind, true); } } return true; }
+  return false;
+}
+function petsPhoneHtml(head) {
+  const P = state.pet;
+  let h = head('🐾 Evcil', '#2a6a3a') + '<div class="phBody">';
+  if (!P) h += `<div class="phEmpty">Henüz bir dostun yok.<br>🐾 Hayvan Barınağı'ndan bir köpek ya da kedi sahiplen.</div>${PET.shelter ? '<button class="phBig" data-sgps="1">📍 Barınağı işaretle</button>' : ''}`;
+  else {
+    const bar = v => `<i style="display:inline-block;width:${Math.round(v)}px;max-width:100px;height:8px;background:${v < 25 ? '#ff5050' : '#7dff9a'};border-radius:4px"></i>`;
+    h += `<div class="phBal"><small>${BREEDS[P.breed].n} · ${Math.max(1, Math.floor((Date.now() - P.born) / 86400000))} gündür seninle</small><b>${P.kind === 'dog' ? '🐕' : '🐈'} ${esc(P.name)}</b></div>
+      <div class="phRow"><div><b>🍖 Tokluk</b><small>${bar(P.hunger)} ${Math.round(P.hunger)}%</small></div></div><div class="phRow"><div><b>❤ Mutluluk</b><small>${bar(P.happy)} ${Math.round(P.happy)}%</small></div></div>
+      <div class="phSec">Numaralar</div>${Object.entries(TRICKS).map(([k, n]) => `<div class="phRow"><div><b>${n}</b><small>${(P.skills[k] || 0) >= 100 ? '✓ öğrendi' : Math.round(P.skills[k] || 0) + '% · denedikçe öğrenir'}</small></div></div>`).join('')}
+      <p class="phNote">🥫 Mama: ${state.petFood || 0} · ${state.petBall ? '🎾 top var' : 'top yok'} · ${P.home ? '🏠 evde bekliyor' : '🚶 yanında'}</p>`;
+  }
+  return h + '</div>';
+}
+
+function initPetUI() {
+  $('mpModal').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || !b.dataset.pet || b.disabled) return; petAct(b.dataset.pet); });
+}
+function shelterDoorInteract(d) { if (!d.shelter) return false; state.interact = { label: '🐾 HAYVAN BARINAĞI · sahiplen / mama / oyuncak', fn: () => openShop('pets') }; return true; }
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -7831,7 +8048,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover, spouse: spouseName() || null, family: !!(state.family && state.spouse), baby: state.baby ? Math.floor(state.baby.grow) : null, parents: state.baby ? state.baby.parents : null, jail: !!state.jail }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover, spouse: spouseName() || null, family: !!(state.family && state.spouse), baby: state.baby ? Math.floor(state.baby.grow) : null, parents: state.baby ? state.baby.parents : null, jail: !!state.jail, pet: state.pet ? { breed: state.pet.breed, name: state.pet.name, home: !!state.pet.home } : null }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -8066,6 +8283,7 @@ function applyPacket(d) {
   if (handleCasino(d)) return;
   if (handleDis(d)) return;
   if (handleTuning(d)) return;
+  if (handlePets(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -10317,7 +10535,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
-    if ((d.market || d.home || d.jobs || d.hospital || d.casino) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d))) return;
+    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d))) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -10492,6 +10710,7 @@ function loop(now) {
   updateCasino(dt);
   updateDisasters(dt);
   updateTuning(dt); updateDrift(dt); updateDrag(dt); updateCarShow(dt); remoteNitroFx();
+  updatePets(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

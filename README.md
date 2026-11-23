@@ -130,6 +130,13 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
 - **🏁 Vista Drag Strip** (havalimanı taksi yolu, sarı halka): 402 m düz pist, Noel ağacı ışıkları (3 sarı → yeşil); erken çıkarsan diskalifiye. Rakipler: Çaylak (~11,9 sn, $600), Sokak Kralı (~9,3 sn, $1.500), Efsane (~7,5 sn, $4.000). Sonuçta süre, tepki süresi, son hız ve rekor gösterilir
 - **🏆 Vista Araç Kulübü** (apronda dönen platform): aracını platforma çıkar ve dur → jüri model, motor, fren, turbo, nitro, kit, neon, jant ve hasara göre 100 üzerinden puanlar (puan × $15, her araçla günde bir kez). Online'da diğer oyuncular sergilenen aracını 👍 beğenebilir (+$150 ve itibar)
 
+## 🐾 Evcil hayvanlar
+- **🐾 Hayvan Barınağı** (Eski Şehir'de yeşil tabelalı bina; önünde bekleyen köpek ve kediler; haritada yeşil nokta, telefonda 🐾 Evcil → 📍): $250'a sahiplen (aşılı; 5 mama hediye). Irklar: 🐕 Golden Retriever, Kangal, Husky, Pug, Dalmaçyalı · 🐈 Tekir, Van Kedisi, Kara Kedi, Sarman — her biri kendi rengi, kulakları, boyu ve deseniyle
+- **Seni takip eder**: yürürken arkandan gelir, koşunca koşar, durunca oturur ve sana bakar; arabaya binince seninle gelir, inince yanında belirir; uzakta kalırsa yanına ışınlanır. Online'da diğer oyuncular dostunu görür
+- **İlgilen** (yanına git, E): 🤗 sev, 🍖 besle (mama ya da poşetteki et/tavuk/sucuk/süt), 🏠 evde bırak (evinde dolaşır) / yanına al, ✏ isim değiştir
+- **Numaralar**: 🪑 otur, 🌀 yuvarlan, 🐾 pati ver, 🗣 konuş (havlar/miyavlar), 🎾 top getir (köpekler · barınaktan $30 top). Denedikçe öğrenir (%0 → %100); aç ya da mutsuzken söz dinlemez. Numaralar online'da diğer oyunculara da görünür
+- **Bakım**: tokluk ~40 dakikada biter, aç kalınca mutluluğu düşer ve yavaşlar. Barınakta mama ($40/5), oyuncak top ve veteriner kontrolü ($150) var. Dostun ve öğrendiği numaralar kayda yazılır
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
