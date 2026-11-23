@@ -387,3 +387,6 @@ body.isBaby #babyHud{display:block}
 .card{display:inline-block;font-style:normal;background:#fff;color:#111;border-radius:6px;min-width:34px;padding:8px 4px;margin:3px;font-weight:800;font-size:18px;box-shadow:0 2px 4px #0006}.card.red{color:#c81e1e}
 .csRow{display:flex;justify-content:center;flex-wrap:wrap}
 #csCanvas{width:min(300px,80vw);height:auto;border-radius:12px;border:2px solid #d8a830;background:#111;touch-action:none}
+
+#disHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(278px + env(safe-area-inset-top,0px));z-index:12;background:#5a1010e6;border:1px solid #ff7050;color:#ffe8e0;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap;animation:blink 1.2s steps(1) infinite}
+#disHud:empty{display:none}

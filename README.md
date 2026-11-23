@@ -118,6 +118,12 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🍸 Bar**: $15 kokteyl (💧 +25)
 - **🛑 Sorumlu oyun**: günlük $25.000 kayıp limiti
 
+## 🌪 Doğa olayları (şehir çapında kurtarma)
+Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi başlatır, herkes aynısını görür). SON DAKİKA'da duyurulur, haritada kırmızı-sarı yanıp sönen 🆘 / 🔥 noktaları çıkar; noktanın yanında **E'yi basılı tut** (mobilde eylem düğmesi). Her kurtarma +$400 ve itibar; tüm noktalar 5 dakika içinde kurtarılırsa en az bir noktaya katkı veren herkes **+$1.500 Afet kahramanı** ödülü alır.
+- **🌊 Fırtına & Sel**: hava fırtınaya döner, sahil bölgesi sular altında kalır (su yükselir, sonra çekilir); suda yürümek ve araç sürmek yavaşlar, su sıçrar. Araçların üstünde mahsur kalıp el sallayan 6 vatandaşı kurtar
+- **🏚 Deprem**: ekran sarsılır, araç alarmları çalar, yayalar ve trafik panikler, ara ara artçı sarsıntılar olur. Sokaklardaki 6 enkaz yığınını kaz, altındakileri çıkar
+- **🔥 Orman yangını**: şehir parklarında yangın çıkar ve her 40 sn'de yayılır (en fazla 12 nokta); yangın söndürücüyle söndür
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)

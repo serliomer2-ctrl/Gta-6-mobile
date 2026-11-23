@@ -1403,7 +1403,7 @@ function updatePlayerFoot(dt) {
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
   let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
   const run = input.sprint || mag > 0.92;
-  const target = (state.baby && state.baby.grow < 30 ? 0.65 : 1) * (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1);
+  const target = (state.baby && state.baby.grow < 30 ? 0.65 : 1) * (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1) * floodSlow();
   player.speed = damp(player.speed, target, 10, dt);
   if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; if (player.aimT <= 0) player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-12 * dt))); }
   else { mx = Math.sin(player.yaw); mz = Math.cos(player.yaw); }
@@ -2527,6 +2527,7 @@ function drawMinimap() {
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   drawAnomMap(dot);
+  drawDisMap(dot);
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
@@ -7233,6 +7234,151 @@ function updateCasino(dt) {
   if (state.interior === 'casino') updateCasinoInside(dt);
 }
 
+// ============================================================ NATURAL DISASTERS: storm & flood, earthquake, wildfire — city-wide rescue missions (host-run, same for everyone)
+const DIS = { cur: null, nextT: 480, meshes: [], water: null, flood: null, mine: 0 };
+const DIS_INFO = {
+  flood: { icon: '🌊', name: 'FIRTINA & SEL', verb: 'kurtarıldı', act: '🛟 KURTAR · basılı tut', hold: 2, news: 'Şiddetli fırtına sahil bölgesini sular altında bıraktı! Mahsur kalan vatandaşlar yardım bekliyor.', end: 'Sel suları çekildi, mahsur kalan herkes kurtarıldı.' },
+  quake: { icon: '🏚', name: 'DEPREM', verb: 'enkazdan çıkarıldı', act: '⛏ ENKAZI KAZ · basılı tut', hold: 3.5, news: 'Vista Bay\'de 6,1 büyüklüğünde deprem! Enkaz altında kalanlar var, gönüllüler aranıyor.', end: 'Arama kurtarma çalışmaları tamamlandı, enkaz altındaki herkes kurtarıldı.' },
+  wildfire: { icon: '🔥', name: 'ORMAN YANGINI', verb: 'söndürüldü', act: '🧯 SÖNDÜR · basılı tut', hold: 3, news: 'Şehir parklarında orman yangını çıktı ve rüzgârla yayılıyor! Söndürme çalışmalarına katılın.', end: 'Parklardaki yangın tamamen söndürüldü.' },
+};
+const DIS_LEN = 300;
+function floodRect() {
+  if (DIS.flood) return DIS.flood;
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const row of blocks) for (const b of row) if (b.dist === 'beach') { x0 = Math.min(x0, b.cx - BLOCK / 2 - ROAD); x1 = Math.max(x1, b.cx + BLOCK / 2 + ROAD); z0 = Math.min(z0, b.cz - BLOCK / 2 - ROAD); z1 = Math.max(z1, b.cz + BLOCK / 2 + ROAD); }
+  if (x0 > x1) { x0 = HALF - 2 * CELL; x1 = HALF; z0 = -HALF; z1 = HALF; }
+  return DIS.flood = { x0, x1: Math.min(x1, SHORE_X), z0, z1 };
+}
+const inFlood = (x, z) => { const A = DIS.cur; if (!A || A.k !== 'flood' || !DIS.water) return false; const R = floodRect(); return x > R.x0 && x < R.x1 && z > R.z0 && z < R.z1; };
+const floodSlow = () => inFlood(player.pos.x, player.pos.z) && DIS.water.position.y > player.pos.y + 0.2 ? 0.6 : 1;
+function disSpots(k) {
+  const out = [], tries = 300;
+  for (let t = 0; t < tries && out.length < (k === 'wildfire' ? 5 : 6); t++) {
+    let x, z;
+    if (k === 'flood') { const R = floodRect(); x = MR(R.x0 + 8, R.x1 - 8); z = MR(R.z0 + 8, R.z1 - 8); }
+    else if (k === 'wildfire') { const P = pick([...PARKS].filter(s => s !== '0,5')).split(',').map(Number), b = blocks[P[0]][P[1]]; x = b.cx + MR(-BLOCK / 2 + 6, BLOCK / 2 - 6); z = b.cz + MR(-BLOCK / 2 + 6, BLOCK / 2 - 6); }
+    else { const s = randomSidewalk(); x = s[0]; z = s[1]; }
+    if (collide(x, z, 1.2, 0.5).hit || out.some(o => Math.hypot(o[0] - x, o[1] - z) < 45)) continue;
+    out.push([r1(x), r1(z)]);
+  }
+  return out;
+}
+function disEmit(m) { if (MP.on) mpSend(m); onDis(m); }
+function hostStartDis(k) {
+  if (DIS.cur || (ANOM && ANOM.cur)) return;
+  k = k || pick(['flood', 'quake', 'wildfire']);
+  disEmit({ t: 'dis', k, start: 1, spots: disSpots(k), left: DIS_LEN });
+}
+function disSprite(txt) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(128, 128, g => { g.fillStyle = 'rgba(200,20,20,0.85)'; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill(); g.font = '64px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 64, 70); }), depthTest: false }));
+  sp.scale.set(1.8, 1.8, 1); sp.renderOrder = 15; return sp;
+}
+function buildSpot(k, S) {
+  const g = new THREE.Group(), y = groundY(S.x, S.z); g.position.set(S.x, y, S.z);
+  if (k === 'flood') { const crate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 1.6), new THREE.MeshStandardMaterial({ color: pick([0xc83030, 0x3060c8, 0xe8e8e8, 0x2a2a2e]), roughness: 0.4 })); crate.position.y = 0.5; g.add(crate); const h = makeHuman(randLook()); scene.remove(h.g); h.g.position.y = 1; g.add(h.g); S.h = h; }
+  if (k === 'quake') { const parts = []; for (let i = 0; i < 9; i++) parts.push(colorize(new THREE.BoxGeometry(MR(0.6, 1.6), MR(0.3, 0.9), MR(0.6, 1.6)).rotateY(Math.random() * 3).rotateX(MR(-0.4, 0.4)).translate(MR(-1.2, 1.2), MR(0.2, 0.9), MR(-1.2, 1.2)), pick(['#8a8478', '#a09888', '#6a645a', '#b0a898']))); const m = new THREE.Mesh(merge(parts), M.human); g.add(m); S.rubble = m; }
+  if (k === 'wildfire') {
+    const fm = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }), fm2 = new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    S.flames = new THREE.Group(); for (let i = 0; i < 7; i++) { const h = MR(1.5, 3.5), m = new THREE.Mesh(new THREE.ConeGeometry(MR(0.5, 1), h, 7).translate(0, h / 2, 0), i % 3 ? fm : fm2); m.position.set(MR(-2, 2), 0, MR(-2, 2)); m.userData.ph = Math.random() * 6; S.flames.add(m); } g.add(S.flames);
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(3.5, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x1a1410, transparent: true, opacity: 0.7, depthWrite: false })); scorch.position.y = 0.06; g.add(scorch);
+  }
+  const sp = disSprite(k === 'flood' ? '🆘' : k === 'quake' ? '🆘' : '🔥'); sp.position.y = k === 'flood' ? 3.6 : 3; g.add(sp); S.sprite = sp;
+  scene.add(g); S.g = g; DIS.meshes.push(g);
+}
+function onDis(d) {
+  const A = DIS.cur;
+  if (d.start) {
+    if (A) endDisLocal();
+    const I = DIS_INFO[d.k]; if (!I) return;
+    DIS.cur = { k: d.k, t0: state.now - (DIS_LEN - (d.left || DIS_LEN)), spots: d.spots.map(([x, z], i) => ({ i, x, z, done: false, hold: 0 })), done: 0, part: new Set() };
+    DIS.mine = 0;
+    for (const S of DIS.cur.spots) buildSpot(d.k, S);
+    if (d.k === 'flood') {
+      const R = floodRect(), w = new THREE.Mesh(new THREE.PlaneGeometry(R.x1 - R.x0, R.z1 - R.z0).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x4a6a5a, transparent: true, opacity: 0.78, roughness: 0.15, metalness: 0.2 }));
+      w.position.set((R.x0 + R.x1) / 2, -0.4, (R.z0 + R.z1) / 2); scene.add(w); DIS.water = w;
+      if (!MP.on || MP.host) { setWeather('storm', false); state.weatherT = DIS_LEN + 30; }
+    }
+    if (d.k === 'quake') { DIS.shakeT = 12; for (let k = 0; k < 6; k++) setTimeout(() => AudioSys.thunder(), k * 700); }
+    showBig(`${I.icon} ${I.name}!`, '#ff5030', 4.5, `${DIS.cur.spots.length} kurtarma noktası · haritadaki 🆘 / 🔥 işaretlerine git · E basılı tut`);
+    if (typeof breakingNews === 'function') breakingNews(I.news);
+    haptic([100, 50, 100, 50, 200]);
+    return;
+  }
+  if (!A) return;
+  if (d.upd != null) { const S = A.spots[d.upd]; if (S && !S.done) finishSpot(S, d.by); }
+  if (d.add) for (const [x, z] of d.add) { const S = { i: A.spots.length, x, z, done: false, hold: 0 }; A.spots.push(S); buildSpot(A.k, S); if (Math.hypot(x - player.pos.x, z - player.pos.z) < 300) floatText('🔥 Yangın yayılıyor!'); }
+  if (d.end) {
+    const I = DIS_INFO[A.k], mine = (d.win || []).includes(myNetId()) || (!MP.on && d.end === 'win' && DIS.mine > 0);
+    if (d.end === 'win') { showBig(`✅ ŞEHİR KURTARILDI`, '#7dff9a', 4, mine ? 'Kurtarma ekibine katıldığın için +$1.500 ödül' : I.end); if (mine) { earn(1500, `${I.icon} Afet kahramanı`); addRep(40); } if (typeof breakingNews === 'function') breakingNews(I.end + ' Gönüllülere teşekkürler!'); }
+    else { showBig(`${I.icon} AFET SONA ERDİ`, '#ffd23a', 3, `${A.spots.filter(s => s.done).length}/${A.spots.length} nokta kurtarıldı`); }
+    endDisLocal();
+  }
+}
+function finishSpot(S, by) {
+  const A = DIS.cur, I = DIS_INFO[A.k]; S.done = true; A.done++;
+  if (S.sprite) S.sprite.visible = false;
+  if (S.flames) S.flames.visible = false;
+  if (S.rubble) S.rubble.scale.set(1, 0.3, 1);
+  if (S.h) { S.g.remove(S.h.g); }
+  if (by === myNetId()) { DIS.mine++; earn(400, `${I.icon} Afet kurtarma`); addRep(10); showBig(`${I.icon} +$400`, '#7dff9a', 2, `Vatandaş ${I.verb} · ${A.done}/${A.spots.length}`); AudioSys.success(); }
+  else { const r = MP.remotes.get(by); if (r) mpFeed(`${I.icon} <b>${esc(r.info.name)}</b> bir noktayı kurtardı (${A.done}/${A.spots.length})`); }
+}
+function endDisLocal() {
+  for (const g of DIS.meshes) scene.remove(g); DIS.meshes = [];
+  if (DIS.water) { const w = DIS.water; DIS.water = null; scene.remove(w); }
+  DIS.cur = null; $('disHud').textContent = '';
+}
+function disManifest() { const A = DIS.cur; return A ? { t: 'dis', k: A.k, start: 1, spots: A.spots.map(s => [s.x, s.z]), done: A.spots.filter(s => s.done).map(s => s.i), left: Math.round(DIS_LEN - (state.now - A.t0)) } : null; }
+function updateDisasters(dt) {
+  const host = !MP.on || MP.host, A = DIS.cur;
+  if (host) {
+    DIS.nextT -= dt;
+    if (DIS.nextT <= 0 && !A) { DIS.nextT = MR(600, 900); if (!state.interior && !(ANOM && ANOM.cur)) hostStartDis(); }
+  }
+  if (!A) return;
+  const I = DIS_INFO[A.k], left = DIS_LEN - (state.now - A.t0);
+  if (host) {
+    if (A.spots.every(s => s.done)) { disEmit({ t: 'dis', end: 'win', win: [...A.part, ...(DIS.mine ? [myNetId()] : [])] }); return; }
+    if (left <= 0) { disEmit({ t: 'dis', end: 'fail' }); return; }
+    if (A.k === 'wildfire') { A.spreadT = (A.spreadT || 0) + dt; if (A.spreadT > 40 && A.spots.length < 12) { A.spreadT = 0; const src = pick(A.spots.filter(s => !s.done) || []); if (src) { const a = Math.random() * 6.28, x = r1(src.x + Math.cos(a) * 14), z = r1(src.z + Math.sin(a) * 14); if (!collide(x, z, 1, 0.5).hit) disEmit({ t: 'dis', add: [[x, z]] }); } } }
+  }
+  // effects
+  if (A.k === 'flood' && DIS.water) { const target = left > 25 ? 0.75 : -0.5; DIS.water.position.y = damp(DIS.water.position.y, target, 0.45, dt); DIS.water.material.opacity = 0.7 + Math.sin(state.now * 1.3) * 0.06;
+    const c = state.inCar; if (c && !c.spec.boat && inFlood(c.group.position.x, c.group.position.z) && DIS.water.position.y > 0.4) { const k = Math.exp(-1.4 * dt); c.vx *= k; c.vz *= k; if (Math.random() < dt * 6) FX.norm.spawn(c.group.position.x, 0.8, c.group.position.z, MR(-2, 2), MR(1, 3), MR(-2, 2), 0.3, 0.4, 0.6, 0.6, 0.7, 0.8, 0.8, 9); }
+    if (!state.inCar && inFlood(player.pos.x, player.pos.z) && player.speed > 1 && Math.random() < dt * 8) FX.norm.spawn(player.pos.x, 0.7, player.pos.z, MR(-1, 1), MR(1, 2), MR(-1, 1), 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.8, 9); }
+  if (A.k === 'quake' && DIS.shakeT > 0) { DIS.shakeT -= dt; state.shake = Math.max(state.shake, 0.55 * Math.min(1, DIS.shakeT / 3)); if (Math.random() < dt * 2) honkSound(0.3); for (const c of cars) if (c.mode === 'ai' && c.ai) c.ai.panic = 3; for (const p of peds) if (!p.dead && !p.npc && p.panic <= 0 && Math.random() < dt) { p.panic = 5; p.fleeX = MR(-1, 1); p.fleeZ = MR(-1, 1); } }
+  if (A.k === 'quake' && Math.random() < dt / 45) { DIS.shakeT = 3; floatText('🏚 Artçı sarsıntı!'); }
+  for (const S of A.spots) {
+    if (S.done) continue;
+    if (S.flames) for (const m of S.flames.children) { m.userData.ph += dt * 9; const k = 0.8 + Math.sin(m.userData.ph) * 0.25; m.scale.set(k, k * (1 + Math.sin(m.userData.ph * 1.7) * 0.2), k); }
+    if (S.flames && Math.random() < dt * 4 && Math.hypot(S.x - camera.position.x, S.z - camera.position.z) < 250) FX.norm.spawn(S.x + MR(-2, 2), 3, S.z + MR(-2, 2), MR(-0.5, 0.5), MR(2, 4), MR(-0.5, 0.5), MR(2, 4), 3, 6, 0.15, 0.14, 0.13, 0.7, -0.4);
+    if (S.h) { S.h.phase += dt * 3; S.h.armR.rotation.x = -2.6 + Math.sin(S.h.phase) * 0.5; S.h.armL.rotation.x = -2.4 + Math.cos(S.h.phase) * 0.5; if (DIS.water) S.g.position.y = Math.max(groundY(S.x, S.z), DIS.water.position.y - 0.6); }
+    if (S.sprite) S.sprite.position.y = (A.k === 'flood' ? 3.6 : 3) + Math.sin(state.now * 3 + S.i) * 0.2;
+  }
+  // hold E (mobile: the action button) next to a spot
+  if (!state.dead && !state.interior) {
+    let near = null; for (const S of A.spots) if (!S.done && Math.hypot(player.pos.x - S.x, player.pos.z - S.z) < (A.k === 'flood' ? 3 : 3.6)) { near = S; break; }
+    if (near) {
+      if (state.inCar && !state.interact) state.interact = { label: `${I.icon} Araçtan in ve yardım et`, fn: null };
+      else if (!state.inCar) {
+        const holding = !!(keys.KeyE || keys.TA);
+        near.hold = holding ? near.hold + dt : Math.max(0, near.hold - dt * 2);
+        state.interact = { label: `${I.act} · ${Math.round(Math.min(1, near.hold / I.hold) * 100)}%`, fn: () => { } };
+        if (holding && Math.random() < dt * 10) { if (A.k === 'wildfire') for (let k = 0; k < 3; k++) FX.add.spawn(player.pos.x, 1.2, player.pos.z, (near.x - player.pos.x) * 1.4 + MR(-1, 1), MR(0.5, 2), (near.z - player.pos.z) * 1.4 + MR(-1, 1), 0.25, 0.7, 1.5, 0.9, 0.9, 1, 0.6, 2); else FX.norm.spawn(near.x, 0.6, near.z, MR(-1.5, 1.5), MR(1, 3), MR(-1.5, 1.5), 0.3, 0.4, 0.6, 0.5, 0.45, 0.4, 0.9, 10); }
+        if (near.hold >= I.hold) { near.hold = 0; if (MP.on && !MP.host) { mpSend({ t: 'dis_done', to: 'h', i: near.i }); finishSpot(near, myNetId()); } else { A.part.add(myNetId()); disEmit({ t: 'dis', upd: near.i, by: myNetId() }); } }
+      }
+    }
+  }
+  const txt = `${I.icon} ${I.name} · ${A.spots.filter(s => s.done).length}/${A.spots.length} ${I.verb} · ${Math.max(0, Math.ceil(left / 60))} dk`;
+  const el = $('disHud'); if (el.textContent !== txt) el.textContent = txt;
+}
+function handleDis(d) {
+  if (d.t === 'dis') { onDis(d); if (d.start && Array.isArray(d.done)) for (const i of d.done) { const S = DIS.cur && DIS.cur.spots[i]; if (S && !S.done) { S.done = true; DIS.cur.done++; if (S.g) scene.remove(S.g); } } return true; }
+  if (d.t === 'dis_done') { if (MP.host && DIS.cur) { const S = DIS.cur.spots[d.i]; if (S && !S.done) { DIS.cur.part.add(d.id); mpSend({ t: 'dis', upd: d.i, by: d.id }); finishSpot(S, d.id); } } return true; }
+  return false;
+}
+function drawDisMap(dot) { const A = DIS.cur; if (!A) return; for (const S of A.spots) if (!S.done) dot(S.x, S.z, Math.sin(state.now * 6 + S.i) > 0 ? '#ff3030' : '#ffd040', 9, true); }
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -7726,6 +7872,7 @@ function applyPacket(d) {
   if (handleCemetery(d)) return;
   if (handlePrison(d)) return;
   if (handleCasino(d)) return;
+  if (handleDis(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -8475,7 +8622,7 @@ function hostStreamTruck(dt) {
 function sharedManifest() {
   return {
     sv: SV.map(c => { const p = c.group.position; return [r1(p.x), r1(c.y), r1(p.z), r2(c.h), state.inCar === c ? 'h' : (c.svTaken || 0), c.dead ? 1 : 0]; }),
-    ...modesManifest(), cem: cemeteryManifest(), anom: anomManifest(), vg: VG.posts.slice(0, 5).map(p => ({ id: p.id, by: p.by, name: p.name, img: p.img, cap: p.cap, t: p.t, likes: p.likes, npc: p.npc })), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
+    ...modesManifest(), dis: disManifest(), cem: cemeteryManifest(), anom: anomManifest(), vg: VG.posts.slice(0, 5).map(p => ({ id: p.id, by: p.by, name: p.name, img: p.img, cap: p.cap, t: p.t, likes: p.likes, npc: p.npc })), bh: BH.cur ? { t: 'bh', k: BH.cur.k, st: BH.cur.st, roles: BH.cur.roles, parts: BH.cur.parts, left: Math.round(BH.cur.left), crew: BH.cur.crew } : null, cz: CZ.st, cargo: CARGO.cur ? { t: 'cargo', on: 1, x: CARGO.cur.x, z: CARGO.cur.z, left: Math.round(CARGO.cur.t) } : null, sev: SEV.info, pu: pickups.map(puRow), gcd: [...GEN_CD].filter(([, t]) => t > state.now).map(([k, t]) => [k, Math.round(t - state.now)])
   };
 }
 function applySharedManifest(d) {
@@ -8487,6 +8634,7 @@ function applySharedManifest(d) {
   if (d.bh) onBigHeist({ ...d.bh, start: 1, mf: 1 });
   if (d.cargo) onCargo(d.cargo);
   if (d.anom) onAnom(d.anom);
+  if (d.dis) handleDis(d.dis);
   if (Array.isArray(d.cem)) mergeGraves(d.cem.slice(0, 20));
   if (Array.isArray(d.vg)) for (const p of d.vg.slice().reverse()) handleVG({ t: 'vg_post', id: p.by, p });
   if (d.cz) for (const id in d.cz) if (CZ.st[id]) Object.assign(CZ.st[id], d.cz[id]);
@@ -10149,6 +10297,7 @@ function loop(now) {
   updateJail(dt);
   updateJobs(dt);
   updateCasino(dt);
+  updateDisasters(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');
