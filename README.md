@@ -98,6 +98,15 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🙌 Teslim ol**: aranırken polis 30 m yakınındaysa E → teslim ol (cezanın %70'i)
 - **⛓ Vista Bay Hapishanesi** (Sanayi bölgesi; dikenli tel, gözetleme kulesi, projektör): yakalanınca kelepçelenip hücreye konursun — 30 sn + yıldız başına 6 sn (1★ 36 sn … 5★ 60 sn) bekle ya da yıldız başına $750 **kefalet** öde (E). Hapisteyken silah yok, aranma sıfırlanır; çıkınca hapishane kapısında serbest kalırsın. Hapis süresi kayda yazılır (oyundan çıkıp girmek kaçış değildir); online'da diğer oyuncular isminde ⛓ görür ve aynı koğuşu paylaşır. Polis oyuncularının tutuklamaları da hapse gönderir
 
+## 💼 Meslekler
+Şehir merkezindeki **💼 İŞ KURUMU**'na git (haritada mavi nokta, telefonda 💼 Meslek → 📍), bir meslek seç: görev aracın kapının önündeki yola gelir, sarı hedef noktası ve yön oku seni yönlendirir. Mesaideyken 2 dakikada bir maaş yatar; her görev XP verir, 5 rütbe vardır ve her terfi kazancı %15 artırır. Mesaiyi yine İş Kurumu'ndan bitirirsin.
+- **🚕 Taksici** (Stajyer → Taksi Kralı): el sallayan müşterinin yanında dur, adresine götür; süre dolmadan varırsan ve arabayı hasarsız teslim edersen bahşiş
+- **📦 Kurye** (Çırak → Lojistik Şefi): depodan 3 paket al, haritadaki kapılara yürüyerek teslim et; 4 dakikanın altında bitirene hız primi
+- **🗑 Çöpçü** (Yardımcı → Temizlik Müdürü): rotadaki 6 yeşil konteyneri boşalt (kamyonla yanaşıp E), depoya dönüp boşalt
+- **🚒 İtfaiyeci** (Er → İtfaiye Amiri): yangın ihbarı gelir (SON DAKİKA'da da duyurulur); itfaiye aracıyla 30 m'ye yaklaş, ATEŞ tuşuyla hortumdan su sık. Alevler söndükçe küçülür; 150 sn'de söndüremezsen bina kül olur. Yangına yaya yaklaşmak can yakar
+- **🚑 Ambulans** (Stajyer → Acil Servis Şefi): yaralının yanında 🩺 İLK YARDIM yap, sirenli ambulansla **🏥 Vista Bay Hastanesi**'ne yetiştir; yaralının durumu zamanla kötüleşir, ne kadar hızlıysan o kadar çok kazanırsın
+- **🏥 Hastane**: kapısında $150'a anında tedavi (can %100)
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)

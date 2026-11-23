@@ -382,6 +382,7 @@ function init() {
   buildWedding();
   buildCemetery();
   buildPrison();
+  buildJobs();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -2524,6 +2525,8 @@ function drawMinimap() {
   drawSeaMap(g, toMap, r);
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   drawAnomMap(dot);
+  if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
+  if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
   if (!state.interior && JAIL.door) dot(JAIL.door.x, JAIL.door.z, '#e8c040', 7, false);
   if (!state.interior && CEM.cx !== undefined) dot(CEM.gate[0], CEM.gate[1], CEM.funeral && state.now < CEM.funeral.until ? (Math.sin(state.now * 6) > 0 ? '#ffffff' : '#606060') : '#9a9a96', 7, !!(CEM.funeral && state.now < CEM.funeral.until));
   if (!state.interior) { dot(WED.x, WED.z, '#ff7ab0', 7, false); for (const r of MP.remotes.values()) if (state.spouse && r.info.name === state.spouse.name) dot(r.x, r.z, '#ff7ab0', 11, true); }
@@ -2565,7 +2568,7 @@ function updateHUD(dt) {
   else if (ia && isTouch && !ia.fn) { pr.style.display = 'block'; pr.textContent = ia.label; }
   else if (near && !isTouch) { pr.style.display = 'block'; pr.textContent = 'F — Araca bin'; } else pr.style.display = 'none';
   const nav = $('navArrow');
-  const navT = state.mission ? missionPos() : state.mpRace ? [state.mpRace.x, state.mpRace.z] : state.heist && !state.heist.opened ? [state.heist.x, state.heist.z] : state.waypoint ? [state.waypoint.x, state.waypoint.z] : null;
+  const navT = state.mission ? missionPos() : state.mpRace ? [state.mpRace.x, state.mpRace.z] : state.heist && !state.heist.opened ? [state.heist.x, state.heist.z] : JOB.wp ? [JOB.wp.x, JOB.wp.z] : state.waypoint ? [state.waypoint.x, state.waypoint.z] : null;
   nav.style.color = state.mission ? '#ffc020' : '#c060ff';
   if (navT) {
     const [mx, mz] = navT, dx = mx - player.pos.x, dz = mz - player.pos.z, s = Math.sin(camYaw), c = Math.cos(camYaw);
@@ -2852,7 +2855,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2870,6 +2873,7 @@ function shopItems(type) {
   if (type === 'bag') return bagItems();
   if (type === 'homebuy') return homeShopItems();
   if (type === 'wed') return wedItems();
+  if (type === 'jobs') return jobItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2940,7 +2944,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2955,7 +2959,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {};
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -3321,7 +3325,7 @@ function cleanupRico(m) {
 }
 
 // ============================================================ SMARTPHONE UI
-const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['jobs', '💼', 'Meslek', '#1a5a9a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
 function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
 function openPhone() {
   if (state.shopOpen || state.dead || state.dialog || state.photo) return;
@@ -3388,6 +3392,8 @@ function renderPhone(app) {
       <div class="phRow"><div><b>🏁 Stunt atlayışları ${Object.keys(state.stuntsDone).length}/${ramps.length}</b><small>Rampalardan hızla atla · ilk atlayış x2 bonus</small></div></div></div>`;
   } else if (app === 'wallet') {
     h = walletHtml(head);
+  } else if (app === 'jobs') {
+    h = head('💼 Meslek', '#1a5a9a') + `<div class="phBody"><p class="phNote">İş Kurumu'nda meslek seç, görev aracınla çalış. Her görev XP verir; terfi ettikçe kazancın %15 artar, mesaide 2 dakikada bir maaş yatar.</p>${jobsPhoneHtml()}</div>`;
   } else if (app === 'family') {
     h = familyPhoneHtml(head);
   } else if (app === 'vg') {
@@ -3420,6 +3426,7 @@ function initPhone() {
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
     else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
+    else if (d.jgps) { state.waypoint = { x: JOB.center.x, z: JOB.center.z, label: 'İş Kurumu' }; floatText('📍 İş Kurumu işaretlendi'); closePhone(); }
     else if (d.will) { closePhone(); willModal(); }
     else if (d.cgps) { state.waypoint = { x: CEM.gate[0], z: CEM.gate[1], label: 'Şehir Mezarlığı' }; floatText('📍 Vista Bay Şehir Mezarlığı işaretlendi'); closePhone(); }
     else if (d.joint) { jointMove(+d.joint); renderPhone('family'); }
@@ -6740,6 +6747,192 @@ function handlePrison(d) {
   return false;
 }
 
+// ============================================================ JOBS: taxi driver, courier, garbage collector, firefighter, paramedic — wages, XP & promotions
+const JOB_LVL = [0, 60, 180, 380, 700];
+const JOBS = {
+  taxi: { name: 'Taksici', icon: '🚕', car: ['taxi', '#f2c200'], ranks: ['Stajyer', 'Şoför', 'Usta Şoför', 'Kıdemli Şoför', 'Taksi Kralı'], desc: 'Müşteriyi al, hedefe götür · hızlı ve hasarsız sürüşe bahşiş' },
+  courier: { name: 'Kurye', icon: '📦', car: ['van', '#8a5a2a'], ranks: ['Çırak', 'Kurye', 'Hızlı Kurye', 'Bölge Sorumlusu', 'Lojistik Şefi'], desc: 'Depodan 3 paket al, kapı kapı teslim et' },
+  garbage: { name: 'Çöpçü', icon: '🗑', car: ['van', '#2a7a3a'], ranks: ['Yardımcı', 'Temizlik Görevlisi', 'Ekip Başı', 'Bölge Şefi', 'Temizlik Müdürü'], desc: 'Rotadaki çöp konteynerlerini topla, depoya boşalt' },
+  fire: { name: 'İtfaiyeci', icon: '🚒', car: ['bus', '#c81e1e'], ranks: ['Er', 'İtfaiye Eri', 'Çavuş', 'Komutan Yrd.', 'İtfaiye Amiri'], desc: 'Yangın ihbarına git, hortumla söndür (ATEŞ tuşu)' },
+  ambulance: { name: 'Ambulans', icon: '🚑', car: ['van', '#f4f4f4'], ranks: ['Stajyer', 'Sağlık Teknikeri', 'Paramedik', 'Kıdemli Paramedik', 'Acil Servis Şefi'], desc: 'Yaralıya ilk yardım yap, hastaneye yetiştir' },
+};
+const JOB = { center: null, hospital: null, cur: null, task: null, car: null, wageT: 0, npc: null, fire: null, bins: [], parcels: 0 };
+const jobLvl = k => { const x = (state.jobs && state.jobs[k] && state.jobs[k].xp) || 0; let l = 0; JOB_LVL.forEach((t, i) => { if (x >= t) l = i; }); return l; };
+const jobMult = k => 1 + jobLvl(k) * 0.15;
+function buildJobs() {
+  const pickDoor = (dists, avoid) => DOORS.filter(d => d.y0 < 1 && d.blk && dists.includes(d.blk.dist) && !d.market && !d.home && !d.jail && lifeDoorFree(d) && !avoid.some(a => a && Math.hypot(a.x - d.x, a.z - d.z) < 150)).sort((a, b) => a.id - b.id);
+  const c = pickDoor(['midtown', 'downtown'], [])[3], h = pickDoor(['downtown', 'midtown', 'mixed'], [c])[0];
+  const sign = (d, text, col, sub) => { if (!d) return; const m = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.3), new THREE.MeshBasicMaterial({ map: canvasTex(512, 124, g => { g.fillStyle = col; g.fillRect(0, 0, 512, 124); g.fillStyle = '#fff'; g.font = 'bold 42px Arial'; g.textAlign = 'center'; g.fillText(text, 256, 60); g.font = '22px Arial'; g.fillText(sub, 256, 102); }) })); m.position.set(d.fx + d.nx * 0.15, d.y0 + 3.7, d.fz + d.nz * 0.15); m.rotation.y = Math.atan2(d.nx, d.nz); scene.add(m); const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(col), transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(d.x, groundY(d.x, d.z) + 0.05, d.z); scene.add(ring); };
+  if (c) { JOB.center = c; c.jobs = true; sign(c, '💼 İŞ KURUMU', '#1a5a9a', 'Vista Bay İstihdam Merkezi · meslek seç, mesaiye başla'); }
+  if (h) { JOB.hospital = h; h.hospital = true; sign(h, '🏥 VİSTA BAY HASTANESİ', '#c81e2a', 'Acil Servis · ambulans girişi'); }
+  // dumpster model for the garbage route
+  JOB.binGeo = merge([colorize(new THREE.BoxGeometry(1.6, 1.1, 1.0).translate(0, 0.55, 0), '#2a6a3a'), colorize(new THREE.BoxGeometry(1.7, 0.1, 1.1).translate(0, 1.15, 0), '#1a4a2a')]);
+}
+function jobItems() {
+  const it = [{ sec: JOB.cur ? `Mesaidesin: ${JOBS[JOB.cur].icon} ${JOBS[JOB.cur].name}` : 'Meslek seç · aracın kapıda teslim edilir · mesaide 2 dakikada bir maaş' }];
+  if (JOB.cur) it.push({ name: '🏁 Mesaiyi bitir', desc: 'Görev aracı geri alınır', price: 0, btn: 'BİTİR', close: true, buy: () => endJob(true) });
+  for (const k in JOBS) {
+    const J = JOBS[k], l = jobLvl(k), x = (state.jobs && state.jobs[k] && state.jobs[k].xp) || 0, nx = JOB_LVL[l + 1];
+    it.push({ name: `${J.icon} ${J.name} · ${J.ranks[l]}`, desc: `${J.desc} · kazanç x${jobMult(k).toFixed(2)} · ${nx ? `terfi: ${x}/${nx} XP` : 'en üst rütbe'}`, price: 0, btn: JOB.cur === k ? 'MESAİDE' : 'BAŞLA', dis: JOB.cur === k ? 'MESAİDE' : null, close: true, buy: () => startJob(k) });
+  }
+  return it;
+}
+function decorateJobCar(c, k) {
+  const add = (geo, col, glow) => { const m = new THREE.Mesh(geo, glow ? new THREE.MeshBasicMaterial({ color: col }) : new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 })); c.group.add(m); return m; };
+  c.jobLights = [];
+  if (k === 'fire') { add(new THREE.BoxGeometry(0.5, 0.18, 8).translate(0, 3.35, -0.5), '#c8c8c8'); for (let i = 0; i < 12; i++) add(new THREE.BoxGeometry(0.6, 0.06, 0.08).translate(0, 3.48, -4 + i * 0.65), '#e8e8e8'); add(new THREE.CylinderGeometry(0.25, 0.25, 1.6, 10).rotateZ(Math.PI / 2).translate(0, 1.2, -5.6), '#f2c200'); }
+  if (k === 'ambulance') { add(new THREE.BoxGeometry(2.06, 0.25, 4.2).translate(0, 1.0, -0.2), '#d81e2a'); add(new THREE.BoxGeometry(0.06, 0.6, 0.6).translate(1.04, 1.6, -0.6), '#d81e2a'); add(new THREE.BoxGeometry(0.06, 0.6, 0.6).translate(-1.04, 1.6, -0.6), '#d81e2a'); }
+  if (k === 'garbage') add(new THREE.BoxGeometry(1.9, 1.2, 2.4).translate(0, 2.4, -1.1), '#3a8a4a');
+  if (k === 'courier') add(new THREE.BoxGeometry(2.04, 0.4, 3).translate(0, 1.6, -0.8), '#f2c200');
+  if (k === 'fire' || k === 'ambulance') for (const s of [-1, 1]) { const m = add(new THREE.BoxGeometry(0.4, 0.16, 0.24).translate(s * 0.4, k === 'fire' ? 3.25 : 2.3, k === 'fire' ? 5 : 1.4), s < 0 ? '#ff2020' : (k === 'fire' ? '#ff2020' : '#2060ff'), true); c.jobLights.push(m); }
+}
+function startJob(k) {
+  if (JOB.cur) endJob(false);
+  if (state.jail || (state.baby && state.baby.grow < 70)) { floatText('Şu an çalışamazsın'); return; }
+  const J = JOBS[k], d = JOB.center || { x: player.pos.x, z: player.pos.z, nx: 1, nz: 0 };
+  const [ri, rj] = nearestNode(d.x + d.nx * 12, d.z + d.nz * 12), R = roadProject(d.x + d.nx * 12, d.z + d.nz * 12);
+  const c = createCar(J.car[0], J.car[1], R.x + (R.line === 'x' ? 3 : 0), R.z + (R.line === 'z' ? 3 : 0), R.line === 'x' ? 0 : Math.PI / 2, 'free');
+  c.jobCar = k; c.delivery = true; decorateJobCar(c, k); JOB.car = c; JOB.cur = k; JOB.wageT = 0;
+  JOB.wp = { x: c.group.position.x, z: c.group.position.z, label: 'Görev aracın' };
+  showBig(`${J.icon} MESAİ BAŞLADI`, '#7dff9a', 3, `${J.name} · ${J.ranks[jobLvl(k)]} · görev aracın yolda bekliyor`);
+  newTask();
+}
+function endJob(msg) {
+  clearTask();
+  if (JOB.car && JOB.car !== state.inCar) { scene.remove(JOB.car.group); const i = cars.indexOf(JOB.car); if (i >= 0) cars.splice(i, 1); }
+  else if (JOB.car) { JOB.car.delivery = false; JOB.car.jobCar = null; }
+  JOB.car = null; JOB.cur = null; JOB.wp = null; $('jobHud').textContent = '';
+  if (msg) floatText('🏁 Mesai bitti');
+}
+function clearTask() {
+  const T = JOB.task; if (!T) return;
+  if (T.npc) { scene.remove(T.npc.g); T.npc = null; }
+  for (const b of JOB.bins) scene.remove(b.m); JOB.bins = [];
+  if (JOB.fire) { scene.remove(JOB.fire.light); scene.remove(JOB.fire.flames); JOB.fire = null; }
+  JOB.task = null;
+}
+function sidewalkSpotNear(min, max) {
+  for (let k = 0; k < 40; k++) { const s = randomSidewalk(), d = Math.hypot(s[0] - player.pos.x, s[1] - player.pos.z); if (d > min && d < max && !collide(s[0], s[1], 0.8, 0.5).hit) return s; }
+  return randomSidewalk();
+}
+function newTask() {
+  clearTask(); const k = JOB.cur; if (!k) return;
+  const T = JOB.task = { k, t: 0, stage: 0 };
+  if (k === 'taxi' || k === 'ambulance') {
+    const [x, z] = sidewalkSpotNear(120, 380); T.x = x; T.z = z;
+    T.npc = makeHuman(randLook()); T.npc.g.position.set(x, groundY(x, z), z);
+    if (k === 'ambulance') { T.npc.g.rotation.x = -Math.PI / 2; T.hp = 100; T.label = '🚑 Yaralı ihbarı'; } else T.label = '🚕 Müşteri bekliyor';
+  } else if (k === 'courier') {
+    T.stage = 0; T.x = JOB.center.x; T.z = JOB.center.z; T.label = '📦 Depodan paketleri al'; T.drops = [];
+    const doors = DOORS.filter(d => d.y0 < 1 && d.blk && !d.blk.park && Math.hypot(d.x - JOB.center.x, d.z - JOB.center.z) > 120 && Math.hypot(d.x - JOB.center.x, d.z - JOB.center.z) < 500);
+    for (let i = 0; i < 3 && doors.length; i++) T.drops.push(doors.splice(Math.floor(Math.random() * doors.length), 1)[0]);
+  } else if (k === 'garbage') {
+    T.label = '🗑 Çöp toplama rotası';
+    for (let i = 0; i < 6; i++) { const [x, z] = sidewalkSpotNear(60 + i * 40, 200 + i * 60), m = new THREE.Mesh(JOB.binGeo, M.human); m.position.set(x, groundY(x, z), z); m.rotation.y = Math.random() * 3; scene.add(m); JOB.bins.push({ x, z, m, done: false }); }
+  } else if (k === 'fire') {
+    const cand = []; for (const row of blocks) for (const b of row) if (!b.park) for (const o of b.bld) { if (o.cem || o.grave || o.h < 6) continue; const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2, d = Math.hypot(cx - player.pos.x, cz - player.pos.z); if (d > 150 && d < 550) cand.push(o); }
+    const o = cand.length ? pick(cand) : null; if (!o) { T.k = null; return; }
+    const R = roadProject((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2);
+    const fx = clamp(R.x, o.x0, o.x1), fz = clamp(R.z, o.z0, o.z1);
+    JOB.fire = { x: fx, z: fz, y: Math.min(o.h, 14), hp: 100, o, light: new THREE.PointLight(0xff7020, 600, 40, 1.6), t: 150 };
+    JOB.fire.light.position.set(fx, Math.min(o.h, 14) * 0.6, fz); scene.add(JOB.fire.light);
+    const fg = new THREE.Group(), fm = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }), fm2 = new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < 9; i++) { const h = MR(2.5, 5), m = new THREE.Mesh(new THREE.ConeGeometry(MR(0.7, 1.3), h, 7).translate(0, h / 2, 0), i % 3 ? fm : fm2); m.position.set(MR(-2.5, 2.5), Math.min(o.h, 14) * MR(0.15, 0.75), MR(-2.5, 2.5)); m.userData.ph = Math.random() * 6; fg.add(m); }
+    fg.position.set(fx, 0, fz); scene.add(fg); JOB.fire.flames = fg;
+    T.x = fx; T.z = fz; T.label = '🔥 Yangın ihbarı';
+    if (typeof breakingNews === 'function' && Math.random() < 0.5) breakingNews(`${(b => b ? AREA_NAMES[b.dist] : 'Şehir')(blockAt(fx, fz))} bölgesinde bir binada yangın çıktı. İtfaiye ekipleri yolda.`);
+  }
+  if (T.x !== undefined) JOB.wp = { x: T.x, z: T.z, label: T.label };
+  AudioSys.tone(880, 0.12, 0.12, 'sine'); AudioSys.tone(1100, 0.12, 0.1, 'sine', 1, 0.15);
+}
+function jobPay(base, label, xp, extra = '') {
+  const k = JOB.cur, amt = Math.round(base * jobMult(k) / 5) * 5, before = jobLvl(k);
+  earn(amt, `${JOBS[k].icon} ${label}`);
+  state.jobs = state.jobs || {}; state.jobs[k] = state.jobs[k] || { xp: 0, done: 0 }; state.jobs[k].xp += xp; state.jobs[k].done++;
+  const after = jobLvl(k);
+  if (after > before) showBig(`🎖 TERFİ: ${JOBS[k].ranks[after].toUpperCase()}`, '#ffd23a', 4, `${JOBS[k].name} · kazanç x${jobMult(k).toFixed(2)} · maaş artışı`);
+  else showBig(`${JOBS[k].icon} +$${amt}`, '#7dff9a', 2.2, `${label}${extra} · +${xp} XP`);
+  AudioSys.cash(); saveGame(); setTimeout(() => { if (JOB.cur === k) newTask(); }, 2500); JOB.task = null;
+}
+function sprayWater() {
+  const c = state.inCar, F = JOB.fire; if (!c) return;
+  const p = c.group.position, fx = Math.sin(c.h), fz = Math.cos(c.h);
+  const tx = F ? F.x : p.x + fx * 20, tz = F ? F.z : p.z + fz * 20, ty = F ? F.y * 0.55 : 2, d = Math.hypot(tx - p.x, tz - p.z);
+  for (let k = 0; k < 4; k++) { const s = MR(0.6, 1); FX.add.spawn(p.x, 3.3, p.z, (tx - p.x) / d * 22 * s + MR(-1, 1), (ty - 3) / Math.max(d, 1) * 22 + 3, (tz - p.z) / d * 22 * s + MR(-1, 1), 0.12, 0.9, 0, 0.6, 0.8, 1, 0.7, 10); }
+  if (F && d < 30) { F.hp -= 18 * Math.min(0.1, state.realDt || 1 / 60); if (Math.random() < 0.3) AudioSys.burst(0.08, 900, 0.08, 'highpass'); }
+  state.fireCd = 0.05;
+}
+function updateJobs(dt) {
+  const el = $('jobHud');
+  if (!JOB.cur) { if (el.textContent) el.textContent = ''; return; }
+  const k = JOB.cur, J = JOBS[k], c = JOB.car, inJobCar = state.inCar && state.inCar === c, T = JOB.task;
+  // wages while on duty
+  JOB.wageT += dt; if (JOB.wageT > 120) { JOB.wageT = 0; earn(60 + jobLvl(k) * 40, `💼 ${J.name} maaşı`); floatText(`💼 Maaş yattı · +$${60 + jobLvl(k) * 40}`); }
+  if (c && c.jobLights) { const on = Math.floor(state.now * 6) % 2; c.jobLights.forEach((m, i) => m.visible = !!(on ^ (i & 1))); }
+  if (c && c.dead) { endJob(false); showBig('MESAİ BİTTİ', '#ff5050', 3, 'Görev aracı hurdaya döndü'); return; }
+  let txt = `${J.icon} ${J.name} · ${J.ranks[jobLvl(k)]}`;
+  if (!T) { if (el.textContent !== txt) el.textContent = txt; return; }
+  T.t += dt;
+  const near = (x, z, r) => Math.hypot(player.pos.x - x, player.pos.z - z) < r, carSp = inJobCar ? carSpeed(c) : 99;
+  if (k === 'taxi') {
+    if (T.npc) { T.npc.phase += dt * 3; T.npc.armR.rotation.x = T.stage === 0 ? -2.6 + Math.sin(T.npc.phase) * 0.4 : 0; }
+    if (T.stage === 0) {
+      txt += ' · 🙋 müşteriyi al';
+      if (inJobCar && near(T.x, T.z, 9) && carSp < 2) { T.stage = 1; scene.remove(T.npc.g); T.npc = null; const [x, z] = sidewalkSpotNear(250, 650); T.dx = x; T.dz = z; T.dist = Math.hypot(x - T.x, z - T.z); T.t = 0; T.hp0 = c.health; JOB.wp = { x, z, label: 'Müşterinin adresi' }; floatText('🚕 "Merhaba, şu adrese lütfen!"'); }
+    } else {
+      const limit = Math.round(T.dist / 9 + 25); txt += ` · 📍 ${Math.round(Math.hypot(player.pos.x - T.dx, player.pos.z - T.dz))} m · ⏱ ${Math.max(0, Math.ceil(limit - T.t))} sn`;
+      if (inJobCar && near(T.dx, T.dz, 10) && carSp < 2) { const fast = T.t < limit, clean = c.health >= T.hp0 - 5, tip = (fast ? 40 : 0) + (clean ? 30 : 0); jobPay(120 + T.dist * 0.35 + tip, 'Taksi ücreti', 15 + (fast ? 5 : 0), tip ? ` · bahşiş $${tip}` : ''); }
+    }
+  } else if (k === 'ambulance') {
+    if (T.stage === 0) {
+      T.hp -= dt * 0.35; txt += ` · 🩹 yaralı ${Math.max(0, Math.ceil(T.hp))}% · ${Math.round(Math.hypot(player.pos.x - T.x, player.pos.z - T.z))} m`;
+      if (!state.inCar && near(T.x, T.z, 2)) state.interact = { label: '🩺 İLK YARDIM · ambulansa taşı', fn: () => { T.stage = 1; scene.remove(T.npc.g); T.npc = null; const h = JOB.hospital; T.dx = h.x; T.dz = h.z; JOB.wp = { x: h.x, z: h.z, label: 'Hastane' }; floatText('🚑 Yaralı ambulansta · hastaneye yetiştir!'); } };
+    } else {
+      T.hp -= dt * 0.5; txt += ` · 🏥 hastaneye · yaralı ${Math.max(0, Math.ceil(T.hp))}%`;
+      if (inJobCar && near(T.dx, T.dz, 14) && carSp < 3) jobPay(220 + Math.max(0, T.hp) * 3, T.hp > 50 ? 'Hasta kurtarıldı' : 'Hasta yetiştirildi', 20);
+    }
+    if (T.hp <= 0 && JOB.task) { showBig('HASTA KAYBEDİLDİ', '#ff5050', 2.5, 'Daha hızlı olmalısın'); setTimeout(newTask, 2500); JOB.task = null; if (T.npc) scene.remove(T.npc.g); }
+  } else if (k === 'courier') {
+    if (T.stage === 0) { txt += ' · 📦 depoya git (İş Kurumu)'; if (near(T.x, T.z, 12)) { T.stage = 1; JOB.parcels = T.drops.length; floatText(`📦 ${T.drops.length} paket yüklendi`); } }
+    else {
+      const d = T.drops.find(q => !q.done);
+      if (!d) { jobPay(150 + T.drops.length * 90 + (T.t < 240 ? 80 : 0), 'Teslimat turu', 20, T.t < 240 ? ' · hız primi' : ''); }
+      else {
+        JOB.wp = { x: d.x, z: d.z, label: 'Teslimat adresi' }; txt += ` · 📦 ${T.drops.filter(q => !q.done).length} paket · ${Math.round(Math.hypot(player.pos.x - d.x, player.pos.z - d.z))} m`;
+        if (!state.inCar && near(d.x, d.z, 2)) state.interact = { label: '📦 PAKETİ TESLİM ET', fn: () => { d.done = true; AudioSys.pickup(); floatText('📦 Teslim edildi · imza alındı'); } };
+      }
+    }
+  } else if (k === 'garbage') {
+    const left = JOB.bins.filter(b => !b.done);
+    if (left.length) {
+      const b = left.reduce((a, q) => Math.hypot(q.x - player.pos.x, q.z - player.pos.z) < Math.hypot(a.x - player.pos.x, a.z - player.pos.z) ? q : a);
+      JOB.wp = { x: b.x, z: b.z, label: 'Çöp konteyneri' }; txt += ` · 🗑 ${6 - left.length}/6 konteyner`;
+      if (near(b.x, b.z, inJobCar ? 9 : 2.5) && !state.interact) state.interact = { label: '🗑 KONTEYNERİ BOŞALT', fn: () => { b.done = true; b.m.rotation.x = 0.6; b.m.position.y += 0.3; AudioSys.crash(0.2); for (let i = 0; i < 12; i++) FX.norm.spawn(b.x, 1.2, b.z, MR(-1, 1), MR(1, 3), MR(-1, 1), 0.3, 0.3, 1.5, 0.3, 0.3, 0.2, 0.9, 10); } };
+    } else {
+      txt += ' · ♻ depoya dön ve boşalt'; JOB.wp = { x: JOB.center.x, z: JOB.center.z, label: 'Depo' };
+      if (near(JOB.center.x, JOB.center.z, 14)) jobPay(260 + (T.t < 300 ? 90 : 0), 'Çöp turu', 22, T.t < 300 ? ' · hız primi' : '');
+    }
+  } else if (k === 'fire') {
+    const F = JOB.fire; if (!F) { newTask(); return; }
+    F.t -= dt; F.light.intensity = (500 + Math.random() * 300) * (0.3 + F.hp / 140);
+    for (const m of F.flames.children) { m.userData.ph += dt * 9; const k = Math.max(0.05, F.hp / 100) * (0.8 + Math.sin(m.userData.ph) * 0.25); m.scale.set(k, k * (1 + Math.sin(m.userData.ph * 1.7) * 0.2), k); }
+    if (Math.hypot(camera.position.x - F.x, camera.position.z - F.z) < 300) for (let i = 0; i < 3; i++) { FX.add.spawn(F.x + MR(-2, 2), F.y * MR(0.3, 0.9), F.z + MR(-2, 2), MR(-0.5, 0.5), MR(2, 5), MR(-0.5, 0.5), MR(0.6, 1.4), 1, 1.5, 3, 1.2, 0.2, 1, -1); FX.norm.spawn(F.x + MR(-2, 2), F.y + MR(0, 2), F.z + MR(-2, 2), MR(-0.5, 0.5), MR(2, 4), MR(-0.5, 0.5), MR(2, 4), 3, 6, 0.15, 0.14, 0.13, 0.7, -0.4); }
+    txt += ` · 🔥 ${Math.max(0, Math.ceil(F.hp))}% · ${Math.round(Math.hypot(player.pos.x - F.x, player.pos.z - F.z))} m · ⏱ ${Math.max(0, Math.ceil(F.t))} sn${inJobCar && near(F.x, F.z, 30) ? ' · ATEŞ ile su sık!' : ''}`;
+    if (!state.inCar && near(F.x, F.z, 6)) { state.health -= dt * 6; }
+    if (F.hp <= 0) { scene.remove(F.light); scene.remove(F.flames); JOB.fire = null; jobPay(300 + Math.max(0, F.t) * 2, 'Yangın söndürüldü', 25); }
+    else if (F.t <= 0) { scene.remove(F.light); scene.remove(F.flames); JOB.fire = null; showBig('BİNA KÜLE DÖNDÜ', '#ff5050', 2.5, 'Yangına geç kalındı'); setTimeout(newTask, 3000); JOB.task = null; }
+  }
+  if (el.textContent !== txt) el.textContent = txt;
+}
+function jobDoorInteract(d) {
+  if (d.jobs) { state.interact = { label: '💼 İŞ KURUMU · meslek seç / mesai', fn: () => openShop('jobs') }; return true; }
+  if (d.hospital) { state.interact = { label: '🏥 HASTANE · tedavi ol ($150)', fn: () => { if (state.health >= 100) { floatText('🏥 Sağlığın yerinde'); return; } if (state.money < 150) { floatText('💸 $150 gerekli'); return; } state.money -= 150; ledger('🏥 Tedavi', -150); state.health = 100; floatText('🏥 Tedavi edildin · can %100'); AudioSys.success(); } }; return true; }
+  return false;
+}
+function jobsPhoneHtml() {
+  return `<div class="phSec">💼 Meslekler</div>` + Object.entries(JOBS).map(([k, J]) => { const l = jobLvl(k), x = (state.jobs && state.jobs[k] && state.jobs[k].xp) || 0; return `<div class="phRow"><i class="phIc">${J.icon}</i><div><b>${J.name} · ${J.ranks[l]}</b><small>${x} XP${JOB_LVL[l + 1] ? ' / ' + JOB_LVL[l + 1] : ' · en üst rütbe'} · ${(state.jobs && state.jobs[k] && state.jobs[k].done) || 0} görev${JOB.cur === k ? ' · 🟢 mesaide' : ''}</small></div></div>`; }).join('') + (JOB.center ? `<button class="phBig" data-jgps="1">📍 İş Kurumu'nu işaretle</button>` : '');
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -7753,6 +7946,7 @@ function applyHit(res, w, pellet) {
   if (res.kind === 'ped' || res.kind === 'remote') for (let k = 0; k < 5; k++) FX.norm.spawn(res.x, res.y, res.z, MR(-1.5, 1.5), MR(0.5, 2.5), MR(-1.5, 1.5), 0.4, 0.28, 0.2, 0.55, 0.02, 0.02, 0.9, 10);
 }
 function fire() {
+  if (state.inCar && state.inCar.jobCar === 'fire') { sprayWater(); return; }
   if (state.fireCd > 0 || state.dead || state.cabin || state.swim) return;
   if (!state.ownedW[state.weapon] || state.ammo[state.weapon] <= 0) { nextWeapon(); return; }
   if (babyBlocks('gun')) { state.fireCd = 1.5; return; }
@@ -9481,7 +9675,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
-    if ((d.market || d.home) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && lifeDoorInteract(d)) return;
+    if ((d.market || d.home || d.jobs || d.hospital) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d))) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -9652,6 +9846,7 @@ function loop(now) {
   updateFamily(dt);
   updateCemetery(dt);
   updateJail(dt);
+  updateJobs(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

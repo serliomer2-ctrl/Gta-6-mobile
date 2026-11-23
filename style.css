@@ -363,3 +363,6 @@ body.decor #touch .btn,body.decor #bDecor{display:none!important}
 body.isBaby #babyHud{display:block}
 
 #jailHud{display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(104px + env(safe-area-inset-top,0px));z-index:13;background:#2a2410ee;border:1px solid #e8c040;color:#fff3c8;font:700 14px Rajdhani,sans-serif;padding:5px 12px;border-radius:9px;pointer-events:none;white-space:nowrap}
+
+#jobHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(250px + env(safe-area-inset-top,0px));z-index:12;background:#0e2a4ae6;border:1px solid #6ab0ff;color:#e0f0ff;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis}
+#jobHud:empty{display:none}
