@@ -7030,14 +7030,16 @@ function onHostConn(conn) {
   });
   conn.on('data', d => { if (conn.pid) hostRecv(id, d); });
   conn.on('close', () => dropPlayer(id));
-  conn.on('error', () => dropPlayer(id));
+  conn.on('error', e => { console.warn('conn', e && e.type); if (!conn.open) dropPlayer(id); });
 }
 function hostRecv(id, d) {
+  if (d && d.t === '_ch') { d = unchunk(id, d); if (!d) return; }
   if (!d || !d.t || !scene) return;
+  if (d.t === 'bye') { const c = MP.conns.get(id); try { c && c.close(); } catch (e) { } dropPlayer(id); return; }
   if (d.t === 'hello') {
     const r = ensureRemote(id, d.info);
     const players = [{ id: 'h', info: myInfo() }]; for (const [rid, rr] of MP.remotes) if (rid !== id) players.push({ id: rid, info: rr.info });
-    MP.conns.get(id).send({ t: 'welcome', id, players, time: state.time, weather: state.weather, code: MP.code, ...worldManifest() });
+    wireSend(MP.conns.get(id), { t: 'welcome', id, players, time: state.time, weather: state.weather, code: MP.code, ...worldManifest() });
     mpBroadcast({ t: 'join', id, info: r.info }, id);
     hostVerify(id, d.tk, d.info);
     mpFeed(`🟢 ${r.info.name} katıldı`); AudioSys.tone(880, 0.12, 0.12, 'sine');
@@ -7058,10 +7060,30 @@ function dropPlayer(id) {
   removeRemote(id);
   if (MP.host) mpBroadcast({ t: 'leave', id });
 }
+// big messages (welcome with photos, home sync, graves…) are split into ≤ ~14 KB parts and joined again on arrival
+const WIRE = { seq: 0, bufs: new Map(), enc: new TextEncoder() };
+function wireSend(c, msg) {
+  if (!c || !c.open) return;
+  const s = JSON.stringify(msg);
+  if (s.length < 4800 || WIRE.enc.encode(s).length < 15000) { try { c.send(msg); } catch (e) { } return; }
+  if (c.reliable === false) return;                       // never chunk over the unreliable channel
+  const k = (++WIRE.seq).toString(36), n = Math.ceil(s.length / 4600);
+  for (let i = 0; i < n; i++) { try { c.send({ t: '_ch', k, i, n, s: s.slice(i * 4600, (i + 1) * 4600) }); } catch (e) { return; } }
+}
+function unchunk(from, d) {
+  const key = from + '|' + d.k; let b = WIRE.bufs.get(key);
+  if (!b) { if (!(d.n > 0 && d.n < 400)) return null; b = { n: d.n, parts: [], got: 0, t: performance.now() }; WIRE.bufs.set(key, b); }
+  if (typeof d.s !== 'string' || b.parts[d.i] !== undefined) return null;
+  b.parts[d.i] = d.s; b.got++;
+  if (WIRE.bufs.size > 40) for (const [kk, bb] of WIRE.bufs) if (performance.now() - bb.t > 30000) WIRE.bufs.delete(kk);
+  if (b.got < b.n) return null;
+  WIRE.bufs.delete(key);
+  try { return JSON.parse(b.parts.join('')); } catch (e) { return null; }
+}
 function mpBroadcast(msg, except) { for (const [id, c] of MP.conns) if (id !== except) mpSendTo(id, msg); }
 function mpSendTo(id, msg) {
   const f = MP.fast.get(id), c = (msg.t === 'st' || msg.t === 'wt' || msg.t === 'wp') && f && f.open ? f : MP.conns.get(id);
-  if (c && c.open) { try { c.send(msg); } catch (e) { } }
+  wireSend(c, msg);
 }
 // ---------------- joining
 function connectTo(peer, targetId, timeout = 12000) {
@@ -7084,8 +7106,8 @@ async function mpJoin(code) {
 function attachClient(conn, code) {
   Object.assign(MP, { hostConn: conn, on: true, host: false, code, pub: String(code).startsWith('pub') });
   conn.on('data', clientRecv);
-  conn.on('close', () => mpLost('Oda sahibi ayrıldı'));
-  conn.on('error', () => mpLost('Bağlantı hatası'));   // 'hello' is sent from mpAfterStart() once the world is built
+  conn.on('close', () => { if (MP.hostConn === conn) mpLost('Oda sahibi ayrıldı'); });
+  conn.on('error', e => { console.warn('conn', e && e.type); if (!conn.open && MP.hostConn === conn) mpLost('Bağlantı hatası'); });   // 'hello' is sent from mpAfterStart() once the world is built
   // second, unreliable/unordered data channel for 20 Hz state packets (no head-of-line blocking on packet loss)
   try { const f = MP.peer.connect(MP_PREFIX + code, { label: 'fast', reliable: false, serialization: 'json' }); f.on('open', () => { MP.fastConn = f; }); f.on('data', clientRecv); f.on('close', () => { if (MP.fastConn === f) MP.fastConn = null; }); f.on('error', () => { }); } catch (e) { }
 }
@@ -7103,7 +7125,11 @@ async function mpQuickJoin(status) {
   throw new Error('Tüm genel odalar dolu');
 }
 function clientRecv(d) {
+  if (d && d.t === '_ch') { d = unchunk('h', d); if (!d) return; }
   if (!d || !d.t) return;
+  MP.lastHostT = performance.now();
+  if (d.t === 'ping') return;
+  if (d.t === 'bye') { if (!MP.host) mpLost('Oda sahibi oyundan çıktı'); return; }
   if (d.t === 'welcome') {
     MP.myId = d.id; for (const p of d.players) ensureRemote(p.id, p.info);
     rebuildWorldFromHost(d); applySharedManifest(d); sendScore();
@@ -7127,12 +7153,44 @@ function mpSend(msg) {
     return;
   }
   const c = msg.t === 'st' && MP.fastConn && MP.fastConn.open ? MP.fastConn : MP.hostConn;
-  if (c && c.open) { try { c.send(msg); } catch (e) { } }
+  wireSend(c, msg);
 }
 function mpLost(reason) {
-  if (!MP.on) return;
+  if (!MP.on || MP.migrating) return;
+  if (!MP.host && MP.code && MP.myId) { migrateHost(reason); return; }
   showBig('BAĞLANTI KOPTU', '#ff5050', 3, reason + ' · tek oyunculu devam ediyorsun');
   mpLeave(true);
+}
+setInterval(() => { if (MP.on && MP.host && MP.conns.size) mpBroadcast({ t: 'ping' }); }, 2000);
+// closing the tab: tell the room right away so the others migrate / drop us immediately
+addEventListener('pagehide', () => { try { if (MP.on) { if (MP.host) mpBroadcast({ t: 'bye' }); else wireSend(MP.hostConn, { t: 'bye' }); } } catch (e) { } });   // keeps working while the host's tab is in the background
+const pidNum = id => id === 'h' ? 0 : +String(id).replace(/\D/g, '') || 9999;
+async function migrateHost(reason) {
+  const code = MP.code, pub = MP.pub, me = MP.myId;
+  const ids = [...MP.remotes.keys()].filter(id => id !== 'h').concat(me).sort((a, b) => pidNum(a) - pidNum(b));
+  const leader = ids[0], leaderName = leader === me ? 'Sen' : (MP.remotes.get(leader) || { info: { name: 'Bir oyuncu' } }).info.name;
+  MP.migrating = true;
+  showBig('🔄 ODA SAHİBİ AYRILDI', '#ffd23a', 4, leader === me ? 'Yeni oda sahibi sensin · oda yeniden kuruluyor…' : `${leaderName} yeni oda sahibi · yeniden bağlanılıyor…`);
+  mpLeave(true);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let ok = false;
+  try {
+    if (leader === me) {
+      for (let k = 0; k < 15 && !ok; k++) {
+        try { await mpHost(code, pub); ok = true; }
+        catch (e) { if (e.type === 'unavailable-id' && k >= 2) { try { await mpJoin(code); ok = true; break; } catch (x) { } } await sleep(2000); }   // the old host is still there: just rejoin
+      }
+    } else {
+      await sleep(2500);
+      for (let k = 0; k < 10 && !ok; k++) { try { await mpJoin(code); ok = true; } catch (e) { await sleep(2000); } }
+      if (!ok) for (let k = 0; k < 5 && !ok; k++) { try { await mpHost(code, pub); ok = true; } catch (e) { await sleep(1500); } }   // leader never showed up: take over
+    }
+  } finally { MP.migrating = false; }
+  if (!ok) { showBig('BAĞLANTI KOPTU', '#ff5050', 3, reason + ' · tek oyunculu devam ediyorsun'); return; }
+  MP.lastHostT = performance.now();
+  updateOnlineHUD();
+  if (MP.host) { showBig('👑 ODA SENDE', '#7dff9a', 3, `Oda ${pub ? '(genel)' : code} devam ediyor · diğer oyuncular bağlanıyor`); mpFeed('👑 Yeni oda sahibi sensin'); }
+  else { sendHello(); mpFeed(`🔄 Odaya yeniden bağlandın · oda sahibi: ${leaderName}`); }
 }
 function mpLeave(silent) {
   if (BH.cur) endBigHeistLocal();
@@ -7316,6 +7374,7 @@ function mpUpdate(rdt) {
   if (!MP.on) return;
   MP.acc += rdt;
   if (MP.acc >= MP_TICK) { MP.acc = Math.min(MP.acc - MP_TICK, MP_TICK); mpSend(myState()); }
+  if (!MP.host && MP.myId && !MP.migrating && MP.lastHostT && performance.now() - MP.lastHostT > 9000 && !document.hidden) mpLost('Oda sahibi yanıt vermiyor');
   if (MP.host && MP.remotes.size) hostStreamWorld(rdt);
   if (MP.host) { MP.worldT += rdt; if (MP.worldT > 5) { MP.worldT = 0; mpBroadcast({ t: 'world', time: state.time, weather: state.weather }); } }
   updateRemotes(rdt);
@@ -8474,7 +8533,7 @@ async function flushSave(keepalive) {
 async function getTicket(aud) { if (!loggedIn()) return null; try { return (await api('/ticket', { aud: String(aud) })).ticket; } catch (e) { return null; } }
 async function sendHello() {
   const tk = await getTicket(MP.code);
-  if (MP.hostConn && MP.hostConn.open) MP.hostConn.send({ t: 'hello', info: myInfo(), tk });
+  wireSend(MP.hostConn, { t: 'hello', info: myInfo(), tk });
 }
 async function hostVerify(id, tk, info) {
   const name = String(info && info.name || '').toLowerCase();

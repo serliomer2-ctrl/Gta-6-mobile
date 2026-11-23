@@ -103,6 +103,8 @@ Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
 - **Katıl**: kodu yaz, bağlan · **⚡ Hızlı Katıl**: açık genel odaya girer, yoksa yeni genel oda açar
 - En fazla 8 oyuncu; konum/araç/silah/ateş 20 tick/sn senkron, 120 ms tamponlu yumuşatma (lerp)
+- **👑 Oda sahibi devri**: oda sahibi oyundan çıkarsa oda kapanmaz — kalan oyuncular arasından en eski katılan aynı oda koduyla (ya da aynı genel odayla) odayı yeniden kurar, diğerleri birkaç saniye içinde otomatik bağlanır; para ve ilerleme korunur. Oda sahibi 9 sn yanıt vermezse de devir başlar
+- **Büyük paketler**: karşılama paketi (VistaGram fotoğrafları, mezarlar, dünya durumu) gibi 14 KB'tan büyük mesajlar parçalanıp birleştirilir — eskiden bu mesajlar yeni katılan oyuncuyu anında düşürüyordu
 - Kafada isim etiketi, can barı ve aranma yıldızı; mini haritada renkli noktalar
 - 💬 Hızlı sohbet (8 hazır mesaj) ve ifadeler: el sallama, dans, sevinme, korna (PC: T)
 - Sunucu gerekmez: PeerJS (WebRTC) ile eşler arası; para ve envanter tek oyunculudan gelir
