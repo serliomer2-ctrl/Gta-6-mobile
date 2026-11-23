@@ -137,6 +137,15 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
 - **Numaralar**: 🪑 otur, 🌀 yuvarlan, 🐾 pati ver, 🗣 konuş (havlar/miyavlar), 🎾 top getir (köpekler · barınaktan $30 top). Denedikçe öğrenir (%0 → %100); aç ya da mutsuzken söz dinlemez. Numaralar online'da diğer oyunculara da görünür
 - **Bakım**: tokluk ~40 dakikada biter, aç kalınca mutluluğu düşer ve yavaşlar. Barınakta mama ($40/5), oyuncak top ve veteriner kontrolü ($150) var. Dostun ve öğrendiği numaralar kayda yazılır
 
+## 🏢 Şirket kurma
+- **İşyerleri**: şehirde 6 satılık işyeri (mavi halka + "SATILIK İŞYERİ" tabelası, haritada mavi nokta, telefonda 🏢 Şirket → 📍): 2 × **🚕 Taksi Şirketi** ($30.000), 2 × **🚚 Nakliye Şirketi** ($45.000), 2 × **🍽 Restoran** ($25.000). Satın alınca şirketine isim verirsin; tabela senin adın ve logo rengine döner (online'da herkes görür)
+- **Filo / kapasite**: taksi ($8.000), kamyon ($15.000) ya da masa ($1.500) al; işyerini Küçük → Orta → Büyük'e büyüt (kapasite ve ⭐ artar). Şirketin taksileri ve kamyonları logolu olarak şehir trafiğinde dolaşır
+- **Çalışanlar**: aday listesinden yıldızlı (beceri) şoför / aşçı-garson işe al, kov; her biri saatlik maaş ister. Maaşlar ödenmezse moral çöker, istifa ederler. Her araç bir şoför, her 3 masa bir çalışan ister
+- **Strateji**: fiyat (Ucuz / Normal / Pahalı: fiyat, talep ve ⭐ puanı değişir), 📣 reklam kampanyası (6 saat talep ×1,4), logo rengi
+- **Her oyun saati** (40 sn) gelir-gider hesaplanır: ciro = çalışan birim × talep (⭐ puan, fiyat, reklam, saat: restoranlar öğle/akşam, taksiler gece, nakliye gündüz yoğun) × pazar payı × çalışan becerisi. Rastgele olaylar: kaza, VIP müşteri, büyük sözleşme, yemek eleştirmeni, internet yorumları, hijyen denetimi. Kâr şirket kasasında birikir; istediğin zaman çek ya da kasaya para yatır. Saatlik rapor ve toplam ciro tutulur; oyunda değilken de (en fazla 8 saat, yarı hızda) çalışmaya devam eder
+- **Rakipler**: her sektörde bir NPC firma (Sarı Kaplan Taksi, Anadolu Lojistik, Lezzet Durağı) ve odadaki diğer oyuncuların aynı sektördeki şirketleri pazar payını paylaşır — puanı ve filosu güçlü olan daha çok müşteri alır. Başka oyuncuların restoranında $25'a yemek yiyebilirsin, para onun şirket kasasına gider; kendi restoranında bedava yersin
+- **Şirketi sat**: değerinin (araçlar, işyeri, büyütmeler, kasa) karşılığını alırsın
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)

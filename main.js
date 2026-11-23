@@ -388,6 +388,7 @@ function init() {
   buildCasino();
   buildCarClub();
   buildShelter();
+  buildBizPremises();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -2532,6 +2533,7 @@ function drawMinimap() {
   drawAnomMap(dot);
   drawDisMap(dot);
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
+  if (!state.interior) for (const Pm of BIZ.prem) { const o = premOwner(Pm); dot(Pm.d.x, Pm.d.z, o ? (o.me ? '#7dff9a' : o.color) : '#40a0ff', o && o.me ? 8 : 6, !!(o && o.me)); }
   if (!state.interior && PET.shelter) dot(PET.shelter.x, PET.shelter.z, '#40c060', 7, false);
   if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
@@ -2864,7 +2866,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2885,6 +2887,7 @@ function shopItems(type) {
   if (type === 'jobs') return jobItems();
   if (type === 'drag') return dragItems();
   if (type === 'pets') return petShopItems();
+  if (type === 'biz') return bizItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2956,7 +2959,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2971,7 +2974,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.dragBest = d.dragBest || 0;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -3337,7 +3340,7 @@ function cleanupRico(m) {
 }
 
 // ============================================================ SMARTPHONE UI
-const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['jobs', '💼', 'Meslek', '#1a5a9a'], ['pets', '🐾', 'Evcil', '#2a6a3a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
+const APPS = [['valet', '🚗', 'Vale', '#1e6ad8'], ['bank', '🏦', 'Banka', '#1a9a50'], ['contracts', '🎯', 'Kontrat', '#c8283a'], ['props', '🏠', 'Emlak', '#d88a10'], ['world', '🗺', 'Dünya', '#6a3ac8'], ['wallet', '🪪', 'Cüzdan', '#3a5a8a'], ['photo', '📷', 'Foto', '#3a3a48'], ['vg', '📸', 'VistaGram', '#c13584'], ['news', '📰', 'Haberler', '#b01822'], ['family', '👪', 'Aile', '#c8508a'], ['jobs', '💼', 'Meslek', '#1a5a9a'], ['pets', '🐾', 'Evcil', '#2a6a3a'], ['biz', '🏢', 'Şirket', '#3a4a8a'], ['settings', '⚙️', 'Ayarlar', '#5a5f6a']];
 function togglePhone() { if (state.phoneOpen) closePhone(); else openPhone(); }
 function openPhone() {
   if (state.shopOpen || state.dead || state.dialog || state.photo) return;
@@ -3404,6 +3407,8 @@ function renderPhone(app) {
       <div class="phRow"><div><b>🏁 Stunt atlayışları ${Object.keys(state.stuntsDone).length}/${ramps.length}</b><small>Rampalardan hızla atla · ilk atlayış x2 bonus</small></div></div></div>`;
   } else if (app === 'wallet') {
     h = walletHtml(head);
+  } else if (app === 'biz') {
+    h = bizPhoneHtml(head);
   } else if (app === 'pets') {
     h = petsPhoneHtml(head);
   } else if (app === 'jobs') {
@@ -3440,6 +3445,8 @@ function initPhone() {
     else if (d.fav) { const c = cars[+d.fav], was = c.fav; for (const o of cars) o.fav = false; c.fav = !was; saveGame(); renderPhone('valet'); }
     else if (d.contract) { startContract(+d.contract); closePhone(); }
     else if (d.tgps) { const t = TURFS.find(q => q.id === d.tgps); state.waypoint = { x: t.x, z: t.z, label: t.name }; floatText('📍 ' + t.name + ' işaretlendi'); closePhone(); }
+    else if (d.bgps) { const P = BIZ.prem.find(q => q.id === d.bgps); if (P) { state.waypoint = { x: P.d.x, z: P.d.z, label: BIZ_TYPES[P.type].n }; floatText('📍 İşyeri işaretlendi'); } closePhone(); }
+    else if (d.bman) { closePhone(); BIZ.cur = BIZ.prem.find(q => state.biz && q.id === state.biz.prem); openShop('biz'); }
     else if (d.sgps) { state.waypoint = { x: PET.shelter.x, z: PET.shelter.z, label: 'Hayvan Barınağı' }; floatText('📍 Hayvan Barınağı işaretlendi'); closePhone(); }
     else if (d.jgps) { state.waypoint = { x: JOB.center.x, z: JOB.center.z, label: 'İş Kurumu' }; floatText('📍 İş Kurumu işaretlendi'); closePhone(); }
     else if (d.will) { closePhone(); willModal(); }
@@ -7788,6 +7795,175 @@ function initPetUI() {
 }
 function shelterDoorInteract(d) { if (!d.shelter) return false; state.interact = { label: '🐾 HAYVAN BARINAĞI · sahiplen / mama / oyuncak', fn: () => openShop('pets') }; return true; }
 
+// ============================================================ COMPANIES: taxi firm, haulage, restaurant — premises, employees, pricing, ads, hourly P&L, rivals
+const BIZ_TYPES = {
+  taxi: { n: 'Taksi Şirketi', icon: '🚕', unit: 'Taksi', unitCost: 8000, caps: [4, 8, 14], role: 'Şoför', wage: 60, rev: 270, upkeep: 20, perStaff: 1, price: 30000, rival: { name: 'Sarı Kaplan Taksi', rating: 55, units: 6 } },
+  cargo: { n: 'Nakliye Şirketi', icon: '🚚', unit: 'Kamyon', unitCost: 15000, caps: [3, 6, 10], role: 'Kamyon şoförü', wage: 80, rev: 470, upkeep: 40, perStaff: 1, price: 45000, rival: { name: 'Anadolu Lojistik', rating: 58, units: 5 } },
+  food: { n: 'Restoran', icon: '🍽', unit: 'Masa', unitCost: 1500, caps: [6, 12, 20], role: 'Aşçı/Garson', wage: 50, rev: 110, upkeep: 8, perStaff: 3, price: 25000, rival: { name: 'Lezzet Durağı', rating: 52, units: 10 } },
+};
+const BIZ_LEVELS = ['Küçük', 'Orta', 'Büyük'], BIZ_UP = [0, 20000, 60000];
+const BIZ_PRICES = [{ n: 'Ucuz', m: 0.8, d: 1.3, r: 6 }, { n: 'Normal', m: 1, d: 1, r: 0 }, { n: 'Pahalı', m: 1.35, d: 0.7, r: -6 }];
+const BIZ_COLORS = ['#e8443a', '#2e86de', '#20bf6b', '#f7b731', '#8854d0', '#fd79a8', '#16161a', '#f2f2f2'];
+const FIRST = ['Ahmet', 'Ayşe', 'Mehmet', 'Fatma', 'Can', 'Elif', 'Emre', 'Zeynep', 'Burak', 'Selin', 'Mert', 'Deniz', 'Kemal', 'Esra', 'Oğuz', 'Gül'];
+const LAST = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Aydın', 'Arslan', 'Koç', 'Kurt', 'Öztürk'];
+const BIZ = { prem: [], fleet: [], hourT: 0, offline: false, guests: [] };
+const myBiz = () => state.biz || null;
+function buildBizPremises() {
+  const used = d => d.market || d.home || d.jail || d.jobs || d.hospital || d.casino || d.shelter;
+  const pick2 = (dists, type) => { const out = []; for (const d of DOORS.filter(q => q.y0 < 1 && q.blk && dists.includes(q.blk.dist) && !used(q) && !q.biz && lifeDoorFree(q)).sort((a, b) => (a.id * 7919 % 101) - (b.id * 7919 % 101))) { if (out.length >= 2) break; if (out.some(o => Math.hypot(o.x - d.x, o.z - d.z) < 150) || BIZ.prem.some(o => Math.hypot(o.d.x - d.x, o.d.z - d.z) < 60)) continue; out.push(d); d.biz = true; } for (const [i, d] of out.entries()) BIZ.prem.push({ id: type + i, type, d }); };
+  pick2(['mixed', 'midtown'], 'taxi'); pick2(['industrial', 'mixed'], 'cargo'); pick2(['beach', 'downtown', 'midtown'], 'food');
+  for (const P of BIZ.prem) {
+    P.d.biz = P;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(document.createElement('canvas')) }));
+    m.position.set(P.d.fx + P.d.nx * 0.16, P.d.y0 + 3.75, P.d.fz + P.d.nz * 0.16); m.rotation.y = Math.atan2(P.d.nx, P.d.nz); scene.add(m); P.sign = m;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x40a0ff, transparent: true, opacity: 0.8, depthWrite: false })); ring.position.set(P.d.x, groundY(P.d.x, P.d.z) + 0.05, P.d.z); scene.add(ring);
+    drawBizSign(P);
+  }
+}
+function premOwner(P) { const B = myBiz(); if (B && B.prem === P.id) return { me: true, name: B.name, color: B.color, rating: B.rating }; for (const r of MP.remotes.values()) { const c = r.info.company; if (c && c.prem === P.id) return { me: false, r, name: c.name, color: c.color, rating: c.rating }; } return null; }
+function drawBizSign(P) {
+  const T = BIZ_TYPES[P.type], o = premOwner(P), cv = P.sign.material.map.image; cv.width = 512; cv.height = 124; const g = cv.getContext('2d');
+  g.fillStyle = o ? o.color : '#1a2a3a'; g.fillRect(0, 0, 512, 124); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 88, 512, 36);
+  g.fillStyle = o && ['#f2f2f2', '#f7b731'].includes(o.color) ? '#111' : '#fff'; g.font = 'bold 40px Arial'; g.textAlign = 'center';
+  g.fillText(`${T.icon} ${o ? o.name.slice(0, 18) : 'SATILIK İŞYERİ'}`, 256, 58); g.fillStyle = '#fff'; g.font = '22px Arial';
+  g.fillText(o ? `${T.n} · ⭐ ${Math.round(o.rating)}${o.me ? ' · SENİN' : ''}` : `${T.n} kurmak için · $${T.price.toLocaleString('tr-TR')}`, 256, 113);
+  P.sign.material.map.needsUpdate = true; P.signKey = o ? o.name + o.rating + o.color : '';
+}
+const empName = () => `${pick(FIRST)} ${pick(LAST)}`;
+function candidates(T) { const out = []; for (let i = 0; i < 4; i++) { const sk = 1 + Math.floor(Math.random() * 5); out.push({ name: empName(), skill: sk, wage: Math.round(T.wage * (0.75 + sk * 0.12)) }); } return out; }
+function foundBiz(P) {
+  const T = BIZ_TYPES[P.type];
+  const name = ((prompt(`${T.n} adı?`, `${(MP.on ? MP.name : 'Vista')} ${T.unit === 'Masa' ? 'Lokantası' : T.unit === 'Taksi' ? 'Taksi' : 'Lojistik'}`) || '') .replace(/[<>]/g, '').trim() || `${MP.name || 'Vista'} ${T.n}`).slice(0, 20);
+  state.biz = { type: P.type, prem: P.id, name, color: pick(BIZ_COLORS), level: 0, units: P.type === 'food' ? 4 : 1, staff: [{ name: empName(), skill: 2, wage: T.wage, morale: 70 }], cash: 2000, price: 1, rating: 50, ads: 0, lastT: Date.now(), hist: [], cand: candidates(T), founded: Date.now(), totalRev: 0 };
+  sendInfo(); saveGame(); drawBizSign(P);
+  showBig(`🏢 ${name.toUpperCase()} KURULDU`, '#7dff9a', 4, `${T.n} · ilk çalışanın işe başladı · telefonda 🏢 Şirket ile yönet`);
+  if (typeof breakingNews === 'function') breakingNews(`İş dünyasında yeni oyuncu: ${name} kapılarını açtı.`, true);
+}
+function bizActive(B) { const T = BIZ_TYPES[B.type]; return Math.min(B.units, B.staff.length * T.perStaff); }
+function bizRivals(B) {
+  const T = BIZ_TYPES[B.type], list = [{ name: T.rival.name, rating: T.rival.rating, units: T.rival.units, npc: true }];
+  for (const r of MP.remotes.values()) { const c = r.info.company; if (c && c.type === B.type) list.push({ name: c.name, rating: c.rating, units: c.units, who: r.info.name }); }
+  return list;
+}
+function bizShare(B) {
+  const sc = x => x.rating * Math.sqrt(Math.max(1, x.units)), rv = bizRivals(B), mine = sc({ rating: B.rating, units: bizActive(B) });
+  const total = mine + rv.reduce((a, x) => a + sc(x), 0);
+  return Math.min(1, (mine / total) * (1 + 0.35 * rv.length) * 1.15);
+}
+function bizHour(B, offline) {
+  const T = BIZ_TYPES[B.type], P = BIZ_PRICES[B.price], act = bizActive(B), h = state.time;
+  const timeF = B.type === 'food' ? ((h >= 12 && h < 14) || (h >= 19 && h < 22) ? 1.45 : h < 7 ? 0.3 : 0.9) : B.type === 'taxi' ? (h >= 20 || h < 3 ? 1.3 : 1) : (h >= 7 && h < 19 ? 1.2 : 0.6);
+  const skill = B.staff.reduce((a, e) => a + e.skill, 0) / Math.max(1, B.staff.length);
+  const demand = (0.45 + B.rating / 100) * P.d * (B.ads > 0 ? 1.4 : 1) * timeF;
+  let rev = act * T.rev * P.m * demand * bizShare(B) * (1 + (skill - 3) * 0.06) * MR(0.85, 1.15) * (offline ? 0.5 : 1);
+  const wages = B.staff.reduce((a, e) => a + e.wage, 0), upkeep = B.units * T.upkeep;
+  let note = '';
+  if (!offline && Math.random() < 0.12) {
+    const ev = pick(B.type === 'food' ? ['critic', 'vip', 'health'] : B.type === 'taxi' ? ['crash', 'vip', 'review'] : ['crash', 'contract', 'review']);
+    if (ev === 'crash') { rev -= 1500; note = `💥 Bir ${T.unit.toLowerCase()} kaza yaptı · tamir -$1.500`; }
+    if (ev === 'vip' || ev === 'contract') { rev += 2000; note = ev === 'vip' ? '🌟 VIP müşteri · +$2.000' : '📄 Büyük nakliye sözleşmesi · +$2.000'; }
+    if (ev === 'critic') { const up = Math.random() < 0.5 + (B.rating - 50) / 100; B.rating = clamp(B.rating + (up ? 10 : -10), 0, 100); note = up ? '📝 Yemek eleştirmeni övdü · ⭐ +10' : '📝 Yemek eleştirmeni beğenmedi · ⭐ -10'; }
+    if (ev === 'review') { const up = Math.random() < 0.6; B.rating = clamp(B.rating + (up ? 6 : -6), 0, 100); note = up ? '👍 İnternette övgü dolu yorumlar · ⭐ +6' : '👎 Kötü yorumlar yağdı · ⭐ -6'; }
+    if (ev === 'health') { rev -= 800; note = '🧪 Hijyen denetimi · ceza -$800'; }
+  }
+  B.cash += rev - wages - upkeep; B.totalRev += Math.max(0, rev);
+  // payroll & morale
+  const paid = B.cash >= 0;
+  for (const e of B.staff) e.morale = clamp(e.morale + (paid ? 1.5 : -15) - (B.price === 0 ? 0.5 : 0) + (e.wage > T.wage ? 1 : 0) - MR(0, 1.2), 0, 100);
+  const quit = !offline ? B.staff.filter(e => e.morale < 18 && Math.random() < 0.35) : [];
+  for (const e of quit) { B.staff.splice(B.staff.indexOf(e), 1); note += ` · 🚪 ${e.name} istifa etti`; }
+  // rating drifts toward a target
+  const morale = B.staff.reduce((a, e) => a + e.morale, 0) / Math.max(1, B.staff.length);
+  const target = clamp(45 + (morale - 50) * 0.35 + BIZ_PRICES[B.price].r + (B.ads > 0 ? 5 : 0) + B.level * 4 + (skill - 3) * 3, 5, 98);
+  B.rating += (target - B.rating) * 0.15; if (B.ads > 0) B.ads--;
+  const row = { t: clockStr(), rev: Math.round(rev), cost: Math.round(wages + upkeep), net: Math.round(rev - wages - upkeep), note };
+  B.hist.unshift(row); if (B.hist.length > 12) B.hist.pop();
+  return row;
+}
+function updateBiz(dt) {
+  const B = myBiz();
+  // premise signs follow owners (rivals online too)
+  BIZ.signT = (BIZ.signT || 0) - dt; if (BIZ.signT <= 0) { BIZ.signT = 2; for (const P of BIZ.prem) { const o = premOwner(P), k = o ? o.name + o.rating + o.color : ''; if (k !== P.signKey) drawBizSign(P); } }
+  if (!state.inCar && !state.interior && !state.dead) for (const P of BIZ.prem) if (Math.hypot(player.pos.x - P.d.x, player.pos.z - P.d.z) < 1.3) { bizDoorInteract(P.d); break; }
+  if (!B) { clearFleet(); return; }
+  if (!BIZ.offline) {   // earnings while you were away (half rate, max 8 game hours)
+    BIZ.offline = true; const hours = Math.min(8, Math.floor((Date.now() - (B.lastT || Date.now())) / (HOUR_SEC * 1000)));
+    if (hours > 0) { let net = 0; for (let i = 0; i < hours; i++) net += bizHour(B, true).net; setTimeout(() => showBig(`🏢 ${B.name}`, '#7dff9a', 4, `Sen yokken ${hours} saat çalıştı · net ${net >= 0 ? '+' : ''}$${net.toLocaleString('tr-TR')} · şirket kasası $${Math.round(B.cash).toLocaleString('tr-TR')}`), 3000); }
+  }
+  BIZ.hourT += dt;
+  if (BIZ.hourT >= HOUR_SEC) {
+    BIZ.hourT = 0; const row = bizHour(B, false); B.lastT = Date.now();
+    if (row.note) floatText(`🏢 ${row.note}`);
+    if (B.cash < 0) floatText(`🏢 ${B.name} kasası ekside! Maaşlar ödenemedi · para yatır`);
+    if (Math.floor(state.time) % 6 === 0) B.cand = candidates(BIZ_TYPES[B.type]);
+    sendInfo(); saveGame();
+  }
+  updateFleet(B, dt);
+}
+// ---------------- company vehicles drive around town (taxi / haulage), restaurant guests
+function clearFleet() { for (const c of BIZ.fleet) { scene.remove(c.group); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); } BIZ.fleet = []; }
+function updateFleet(B, dt) {
+  const want = B.type === 'food' || state.interior ? 0 : Math.min(4, bizActive(B));
+  while (BIZ.fleet.length > want) { const c = BIZ.fleet.pop(); scene.remove(c.group); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1); }
+  if (BIZ.fleet.length < want && !(MP.on && !MP.host && NW.client && false)) {
+    const c = createCar(B.type === 'taxi' ? 'taxi' : 'van', B.color, 0, 0, 0, 'free'); c.bizCar = true; c.delivery = true;
+    const sign = new THREE.Mesh(B.type === 'taxi' ? new THREE.BoxGeometry(0.7, 0.25, 0.3).translate(0, 1.55, -0.2) : new THREE.BoxGeometry(1.95, 1.1, 2.6).translate(0, 2.2, -1), new THREE.MeshBasicMaterial({ map: canvasTex(128, 48, g => { g.fillStyle = B.color; g.fillRect(0, 0, 128, 48); g.fillStyle = ['#f2f2f2', '#f7b731'].includes(B.color) ? '#111' : '#fff'; g.font = 'bold 18px Arial'; g.textAlign = 'center'; g.fillText(B.name.slice(0, 12), 64, 30); }) }));
+    c.group.add(sign); placeOnRoad(c, 'near'); BIZ.fleet.push(c);
+  }
+}
+// ---------------- management menu
+function bizItems() {
+  const B = myBiz(); const it = [];
+  if (!B) {
+    const P = BIZ.cur;
+    if (!P) return [{ sec: 'Şirket kurmak için şehirdeki 🏢 SATILIK İŞYERİ tabelalarına git' }];
+    const T = BIZ_TYPES[P.type], o = premOwner(P);
+    it.push({ sec: `${T.icon} ${T.n} işyeri` });
+    if (o && !o.me) it.push({ name: `🏢 ${esc(o.name)}`, desc: `Bu işyeri ${o.r ? esc(o.r.info.name) : 'başka bir oyuncu'}'ya ait · rakibin!`, price: 0, dis: 'DOLU', buy: () => { } });
+    else it.push({ name: `🔑 İşyerini al ve ${T.n} kur`, desc: `İlk çalışan ve ${P.type === 'food' ? '4 masa' : '1 ' + T.unit.toLowerCase()} dahil · şirket kasasına $2.000 sermaye`, price: T.price, close: true, buy: () => foundBiz(P) });
+    return it;
+  }
+  const T = BIZ_TYPES[B.type], act = bizActive(B), cap = T.caps[B.level], last = B.hist[0];
+  it.push({ sec: `${T.icon} ${B.name} · ${BIZ_LEVELS[B.level]} · ⭐ ${Math.round(B.rating)} · pazar payı %${Math.round(bizShare(B) * 100)}` });
+  it.push({ name: `💰 Şirket kasası: $${Math.round(B.cash).toLocaleString('tr-TR')}`, desc: last ? `Son saat: gelir $${last.rev} · gider $${last.cost} · net ${last.net >= 0 ? '+' : ''}$${last.net}${last.note ? ' · ' + last.note : ''}` : 'İlk saat raporu birazdan', price: 0, btn: 'ÇEK', dis: B.cash < 100 ? 'BOŞ' : null, buy: () => { const a = Math.floor(B.cash); B.cash -= a; earn(a, `🏢 ${B.name} kâr payı`); } });
+  it.push({ name: '🏦 Kasaya $5.000 yatır', desc: 'Maaşlar ödenmezse moral çöker, çalışanlar istifa eder', price: 5000, buy: () => { B.cash += 5000; } });
+  it.push({ sec: `${T.unit}lar · ${B.units}/${cap} · çalışan ${act}` });
+  it.push({ name: `➕ ${T.unit} al`, desc: `${T.unit} başına saatte ~$${T.rev} ciro · bakım $${T.upkeep}/saat`, price: T.unitCost, dis: B.units >= cap ? 'KAPASİTE' : null, buy: () => { B.units++; } });
+  if (B.level < 2) it.push({ name: `🏗 İşyerini büyüt: ${BIZ_LEVELS[B.level + 1]}`, desc: `Kapasite ${T.caps[B.level + 1]} ${T.unit.toLowerCase()} · ⭐ +4`, price: BIZ_UP[B.level + 1], buy: () => { B.level++; } });
+  it.push({ sec: `Çalışanlar · ${B.staff.length} kişi${B.type === 'food' ? ' (her çalışan 3 masaya bakar)' : ''}` });
+  for (const e of B.staff) it.push({ name: `👤 ${e.name} · ${T.role} · ${'★'.repeat(e.skill)}`, desc: `Maaş $${e.wage}/saat · moral ${Math.round(e.morale)}%${e.morale < 30 ? ' ⚠ istifa edebilir' : ''}`, price: 0, btn: 'ÇIKAR', buy: () => { B.staff.splice(B.staff.indexOf(e), 1); floatText(`👋 ${e.name} işten çıkarıldı`); } });
+  for (const c of B.cand || []) it.push({ name: `🧑‍💼 Aday: ${c.name} · ${'★'.repeat(c.skill)}`, desc: `İstediği maaş $${c.wage}/saat`, price: 0, btn: 'İŞE AL', dis: B.staff.length >= Math.ceil(cap / T.perStaff) + 1 ? 'YETER' : null, buy: () => { B.staff.push({ ...c, morale: 75 }); B.cand.splice(B.cand.indexOf(c), 1); floatText(`🤝 ${c.name} işe başladı`); } });
+  it.push({ sec: 'Strateji' });
+  BIZ_PRICES.forEach((P, i) => it.push({ name: `🏷 Fiyat: ${P.n}`, desc: `fiyat x${P.m} · talep x${P.d} · ⭐ ${P.r >= 0 ? '+' : ''}${P.r}`, price: 0, btn: 'SEÇ', dis: B.price === i ? 'SEÇİLİ' : null, buy: () => { B.price = i; } }));
+  it.push({ name: '📣 Reklam kampanyası (6 saat)', desc: 'Talep x1.4 · ⭐ +5 · VistaGram ve radyoda', price: 3000, dis: B.ads > 0 ? `${B.ads} SAAT` : null, buy: () => { B.ads = 6; if (typeof breakingNews === 'function' && Math.random() < 0.5) breakingNews(`Reklam arası: ${B.name}! Vista Bay'in en iyi ${T.n.toLowerCase()}.`); } });
+  it.push({ name: '🎨 Logo rengini değiştir', desc: 'Tabela ve araçlarda', price: 500, buy: () => { B.color = BIZ_COLORS[(BIZ_COLORS.indexOf(B.color) + 1) % BIZ_COLORS.length]; clearFleet(); } });
+  it.push({ sec: 'Rakipler' });
+  for (const r of bizRivals(B)) it.push({ name: `${r.npc ? '🏢' : '⚔'} ${esc(r.name)}${r.who ? ' · ' + esc(r.who) : ''}`, desc: `⭐ ${Math.round(r.rating)} · ${r.units} ${T.unit.toLowerCase()}`, price: 0, dis: r.npc ? 'NPC' : 'OYUNCU', buy: () => { } });
+  if (B.hist.length) { it.push({ sec: 'Saatlik rapor' }); for (const h of B.hist.slice(0, 6)) it.push({ name: `${h.t} · net ${h.net >= 0 ? '+' : ''}$${h.net}`, desc: `gelir $${h.rev} · gider $${h.cost}${h.note ? ' · ' + h.note : ''}`, price: 0, dis: h.net >= 0 ? '📈' : '📉', buy: () => { } }); }
+  const value = Math.round(B.units * T.unitCost * 0.6 + T.price * 0.7 + BIZ_UP.slice(1, B.level + 1).reduce((a, b) => a + b, 0) * 0.6 + Math.max(0, B.cash));
+  it.push({ sec: 'Şirketi sat' }, { name: `💼 Şirketi devret · değer $${value.toLocaleString('tr-TR')}`, desc: 'İşyeri, araçlar ve kasa satılır', price: 0, btn: 'SAT', close: true, buy: () => { if (!confirm(`${B.name} $${value.toLocaleString('tr-TR')}'a satılsın mı?`)) return; state.biz = null; clearFleet(); earn(value, '💼 Şirket satışı'); sendInfo(); saveGame(); for (const P of BIZ.prem) drawBizSign(P); showBig('💼 ŞİRKET SATILDI', '#ffd040', 3, `+$${value.toLocaleString('tr-TR')}`); } });
+  return it;
+}
+function bizDoorInteract(d) {
+  if (!d.biz) return false; const P = d.biz, o = premOwner(P), T = BIZ_TYPES[P.type];
+  if (o && !o.me && P.type === 'food') { state.interact = { label: `🍽 ${o.name} · YEMEK YE ($25)`, fn: () => { if (state.money < 25) { floatText('💸 $25 gerekli'); return; } state.money -= 25; ledger(`🍽 ${o.name}`, -25); state.food = Math.min(100, (state.food ?? 100) + 45); state.water = Math.min(100, (state.water ?? 100) + 20); floatText(`🍽 Afiyet olsun · 🍔 +45 · ${o.name}`); if (o.r) mpSend({ t: 'biz_sale', to: o.r.id, amt: 25 }); } }; return true; }
+  if (o && o.me) { state.interact = { label: P.type === 'food' ? `🍽 ${o.name} · yönet / bedava ye` : `🏢 ${o.name} · şirketi yönet`, fn: () => { if (P.type === 'food') { state.food = Math.min(100, (state.food ?? 100) + 30); } BIZ.cur = P; openShop('biz'); } }; return true; }
+  state.interact = { label: o ? `🏢 ${o.name} · rakip ${T.n}` : `🏢 SATILIK İŞYERİ · ${T.n} · $${T.price.toLocaleString('tr-TR')}`, fn: () => { BIZ.cur = P; if (myBiz()) { floatText('🏢 Zaten bir şirketin var · önce onu sat'); return; } openShop('biz'); } };
+  return true;
+}
+function handleBiz(d) {
+  if (d.t === 'biz_sale') { const B = myBiz(), r = MP.remotes.get(d.id); if (B && B.type === 'food') { const a = Math.min(100, +d.amt || 0); B.cash += a; B.totalRev += a; floatText(`🍽 ${r ? r.info.name : 'Bir oyuncu'} restoranında yemek yedi · kasaya +$${a}`); } return true; }
+  return false;
+}
+function bizPhoneHtml(head) {
+  const B = myBiz(); let h = head('🏢 Şirket', '#3a4a8a') + '<div class="phBody">';
+  if (!B) h += `<div class="phEmpty">Henüz şirketin yok.<br>Şehirdeki 🏢 SATILIK İŞYERİ tabelalarından birine git: 🚕 taksi garajı, 🚚 nakliye deposu ya da 🍽 restoran.</div>` + BIZ.prem.map(P => { const o = premOwner(P), T = BIZ_TYPES[P.type]; return `<div class="phRow"><i class="phIc">${T.icon}</i><div><b>${o ? esc(o.name) : T.n + ' · satılık'}</b><small>${o ? (o.me ? 'Senin' : 'Rakip · ⭐ ' + Math.round(o.rating)) : '$' + T.price.toLocaleString('tr-TR')}</small></div><button class="phBtn" data-bgps="${P.id}">📍</button></div>`; }).join('');
+  else { const T = BIZ_TYPES[B.type], last = B.hist[0]; h += `<div class="phBal"><small>${T.icon} ${T.n} · ${BIZ_LEVELS[B.level]} · ⭐ ${Math.round(B.rating)}</small><b>${esc(B.name)}</b></div><div class="phBal"><small>Şirket kasası${last ? ` · son saat net ${last.net >= 0 ? '+' : ''}$${last.net}` : ''}</small><b>$${Math.round(B.cash).toLocaleString('tr-TR')}</b></div>
+    <div class="phRow"><div><b>${B.units} ${T.unit.toLowerCase()} · ${B.staff.length} çalışan · pazar payı %${Math.round(bizShare(B) * 100)}</b><small>Toplam ciro $${Math.round(B.totalRev).toLocaleString('tr-TR')}${B.ads ? ' · 📣 reklam ' + B.ads + ' saat' : ''}</small></div></div>
+    <button class="phBig" data-bman="1">📊 Şirketi yönet</button><button class="phBig" data-bgps="${B.prem}">📍 İşyerini işaretle</button>`; }
+  return h + '</div>';
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -8048,7 +8224,7 @@ function newPeer(id) {
     p.on('error', e => { if (done) return; done = true; clearTimeout(to); try { p.destroy(); } catch (x) { } rej(e); });
   });
 }
-function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover, spouse: spouseName() || null, family: !!(state.family && state.spouse), baby: state.baby ? Math.floor(state.baby.grow) : null, parents: state.baby ? state.baby.parents : null, jail: !!state.jail, pet: state.pet ? { breed: state.pet.breed, name: state.pet.name, home: !!state.pet.home } : null }; }
+function myInfo() { return { name: MP.name, color: MP.color, look: state.look, crew: MP.crew || null, cop: !!state.cop, rank: myRank(), hover: !!state.hover, spouse: spouseName() || null, family: !!(state.family && state.spouse), baby: state.baby ? Math.floor(state.baby.grow) : null, parents: state.baby ? state.baby.parents : null, jail: !!state.jail, pet: state.pet ? { breed: state.pet.breed, name: state.pet.name, home: !!state.pet.home } : null, company: state.biz ? { type: state.biz.type, prem: state.biz.prem, name: state.biz.name, color: state.biz.color, rating: Math.round(state.biz.rating), units: bizActive(state.biz) } : null }; }
 // ---------------- hosting
 async function mpHost(fixedId, pub) {
   let peer = null, code = null;
@@ -8284,6 +8460,7 @@ function applyPacket(d) {
   if (handleDis(d)) return;
   if (handleTuning(d)) return;
   if (handlePets(d)) return;
+  if (handleBiz(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -10535,7 +10712,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
-    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d))) return;
+    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter || d.biz) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d) || bizDoorInteract(d))) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -10711,6 +10888,7 @@ function loop(now) {
   updateDisasters(dt);
   updateTuning(dt); updateDrift(dt); updateDrag(dt); updateCarShow(dt); remoteNitroFx();
   updatePets(dt);
+  updateBiz(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');
