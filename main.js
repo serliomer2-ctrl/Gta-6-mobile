@@ -385,6 +385,7 @@ function init() {
   buildPrison();
   buildJobs();
   buildCasino();
+  buildCarClub();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -1242,7 +1243,7 @@ const carFwd = c => c.vx * Math.sin(c.h) + c.vz * Math.cos(c.h);
 
 function carPhysics(c, dt, throttle, steerIn, hand) {
   const s = c.spec, sin = Math.sin(c.h), cos = Math.cos(c.h), up = c.up || { engine: 0, grip: 0 };
-  const sMax = s.max * (1 + 0.2 * up.engine), sAcc = s.acc * (1 + 0.15 * up.engine), brk = 1 + 0.2 * up.grip;
+  const sMax = s.max * (1 + 0.2 * up.engine) * (up.turbo ? 1.12 : 1) * (c.nitroOn ? 1.22 : 1), sAcc = s.acc * (1 + 0.15 * up.engine) * (up.turbo ? 1.18 : 1) * (c.nitroOn ? 1.6 : 1), brk = 1 + 0.2 * up.grip;
   let vF = c.vx * sin + c.vz * cos, vL = c.vx * -cos + c.vz * sin;
   const grounded = !c.air;
   if (grounded) {
@@ -1279,7 +1280,7 @@ function integrateCar(c, dt) {
   }
   if (impact > 9) damageCar(c, (impact - 9) * 2.2, true);
   if (impact > 11) bikeCrash(c, impact);
-  if (impact > 4 && c.mode === 'player') { state.shake = Math.min(1, impact / 25); AudioSys.crash(impact / 30); }
+  if (impact > 4 && c.mode === 'player') { c.crashT = state.now; state.shake = Math.min(1, impact / 25); AudioSys.crash(impact / 30); }
   c.group.position.x = x; c.group.position.z = z;
   // vertical
   const g = groundY(x, z);
@@ -2443,7 +2444,7 @@ function initInput() {
   };
   btn('bFire', 'TFire'); btn('bJump', 'TJump'); btn('bGas', 'TGas'); btn('bBrake', 'TBrake'); btn('bHand', 'THand'); btn('bUp', 'TUp'); btn('bDown', 'TDown'); btn('bGear', 'TGear'); btn('bDive', 'TDive');
   btn('bEnter', 'TEnter', enterCar);
-  btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact); btn('bHover', 'THov', toggleHover);
+  btn('bWeapon', 'TW', () => nextWeapon()); btn('bRadio', 'TR', toggleRadio); btn('bAct', 'TA', interact); btn('bHover', 'THov', toggleHover); btn('bNitro', 'TNitro');
   $('bRadio').textContent = ['📻', '🔈', '🔇'][state.soundMode];
 }
 function readInput() {
@@ -2529,6 +2530,7 @@ function drawMinimap() {
   drawAnomMap(dot);
   drawDisMap(dot);
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
+  if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
   if (!state.interior && JAIL.door) dot(JAIL.door.x, JAIL.door.z, '#e8c040', 7, false);
@@ -2859,7 +2861,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -2878,6 +2880,7 @@ function shopItems(type) {
   if (type === 'homebuy') return homeShopItems();
   if (type === 'wed') return wedItems();
   if (type === 'jobs') return jobItems();
+  if (type === 'drag') return dragItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
     const it = [
@@ -2907,6 +2910,7 @@ function shopItems(type) {
     { sec: 'Boya' }];
   for (const [n, hex] of PAINTS) it.push({ name: `<i class="sw" style="background:${hex}"></i>${n}`, desc: 'Metalik boya', price: 250, buy: () => { c.paintM = paintMat(hex); if (!c.dead) c.paint.material = c.paintM; c.owned = true; } });
   it.push(...garageStyleItems(c));
+  it.push(...tuningItems(c));
   it.push({ sec: 'Garajdan Araç Çağır' });
   it.push({ name: '🏎 HIZLI SPOR ARABA', desc: `Süper araba · ${Math.round(CAR_SPECS.super.max * 3.6)} km/s`, price: 16000, buy: () => buyCar('super', 'Spor araba', garageSpot(cars.filter(o => o.owned).length), 'garajın önünde'), close: true });
   it.push({ name: '🛡 ZIRHLI ARAÇ', desc: 'Kurşun geçirmez SUV · 3x dayanıklılık', price: 12000, buy: () => buyCar('armored', 'Zırhlı araç', garageSpot(cars.filter(o => o.owned).length), 'garajın önünde'), close: true });
@@ -2948,7 +2952,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
     }));
     accountSaved();
   } catch (e) { }
@@ -2963,7 +2967,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {};
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.dragBest = d.dragBest || 0;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -7379,6 +7383,194 @@ function handleDis(d) {
 }
 function drawDisMap(dot) { const A = DIS.cur; if (!A) return; for (const S of A.spots) if (!S.done) dot(S.x, S.z, Math.sin(state.now * 6 + S.i) > 0 ? '#ff3030' : '#ffd040', 9, true); }
 
+// ============================================================ TUNING & CAR CLUB: turbo, nitro, body kits · drift score · drag strip · car show
+const KITS = [null, { n: 'Spor spoiler', p: 2500 }, { n: 'Geniş gövde + spoiler + marşpiye', p: 5000 }, { n: 'Pist kiti (dev kanat, splitter, kaput hava alığı)', p: 9000 }];
+const NITRO_CAP = [0, 3, 5, 8];
+const DR = { pts: 0, t: 0, idle: 0, mult: 1, active: false };
+// ---------------- body kits (meshes added to the car; shown to other players too)
+function applyKit(c, kit) {
+  if (c.kitGroup) { c.group.remove(c.kitGroup); c.kitGroup = null; }
+  if (!kit || c.spec.boat || c.spec.heli || c.spec.plane || c.spec.bike || c.spec.bus) return;
+  const s = c.spec, xs = (s.body || [[-2.2, 0], [2.2, 0]]).map(p => p[0]), L = Math.max(...xs.map(Math.abs)), W = (s.W || 1.9);
+  const rearTop = Math.max(...(s.body || [[0, 1]]).filter(p => p[0] < -L * 0.6).map(p => p[1]), 0.9);
+  const carbon = new THREE.MeshStandardMaterial({ color: 0x18181c, metalness: 0.5, roughness: 0.35 }), g = new THREE.Group(), B = (w, h, d, x, y, z, m = carbon) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  const wing = kit === 3 ? 0.55 : 0.32;
+  for (const sx of [-1, 1]) B(0.06, wing, 0.18, sx * W * 0.32, rearTop + wing / 2, -L + 0.3);
+  B(W * 0.98, 0.05, kit === 3 ? 0.5 : 0.36, 0, rearTop + wing, -L + 0.28);
+  if (kit === 3) for (const sx of [-1, 1]) B(0.04, 0.22, 0.52, sx * W * 0.49, rearTop + wing + 0.08, -L + 0.28);
+  if (kit >= 2) { for (const sx of [-1, 1]) { B(0.12, 0.14, L * 1.4, sx * (W / 2 + 0.03), 0.22, 0); B(0.14, 0.22, 0.9, sx * (W / 2 + 0.04), 0.5, L * 0.62, c.paintM); B(0.14, 0.22, 0.9, sx * (W / 2 + 0.04), 0.5, -L * 0.62, c.paintM); } }
+  if (kit === 3) { B(W * 1.02, 0.05, 0.35, 0, 0.18, L + 0.05); const scoop = B(0.5, 0.12, 0.7, 0, 1.0, L * 0.45); scoop.material = carbon; }
+  c.group.add(g); c.kitGroup = g;
+}
+const _applyCarStyle0 = applyCarStyle;
+applyCarStyle = function (c, neon, rim, kit) { _applyCarStyle0(c, neon, rim); applyKit(c, kit !== undefined ? kit : c.up && c.up.kit); };
+function tuningItems(c) {
+  if (c.spec.boat || c.spec.heli || c.spec.plane) return [];
+  const it = [{ sec: 'Tuning · Vista Performance' }];
+  it.push({ name: `🌀 TURBO ${c.up.turbo ? '✓' : ''}`, desc: '+%12 azami hız, +%20 hızlanma · gaz bırakınca "psssh" sesi', price: 6000, dis: c.up.turbo ? 'TAKILI' : null, buy: () => { c.up.turbo = 1; c.owned = true; } });
+  for (let l = 1; l <= 3; l++) it.push({ name: `🔥 NİTRO ${'■'.repeat(l)}${'□'.repeat(3 - l)}`, desc: `${NITRO_CAP[l]} sn tüp · N tuşu / 🔥 düğmesi basılı · kendini yavaşça doldurur`, price: [0, 3000, 5000, 8000][l], dis: (c.up.nitro || 0) >= l ? 'TAKILI' : (c.up.nitro || 0) < l - 1 ? 'ÖNCE ' + (l - 1) : null, buy: () => { c.up.nitro = l; c.nitro = NITRO_CAP[l]; c.owned = true; } });
+  if (!c.spec.bike && !c.spec.bus) {
+    it.push({ sec: 'Gövde kiti · online herkese görünür' });
+    for (let k = 1; k <= 3; k++) it.push({ name: `🏁 ${KITS[k].n}`, desc: 'Karbon fiber parçalar · sergide puan getirir', price: KITS[k].p, dis: c.up.kit === k ? 'TAKILI' : null, buy: () => { c.up.kit = k; c.owned = true; applyCarStyle(c, c.up.neon, c.up.rim); } });
+    if (c.up.kit) it.push({ name: '✖ Kiti sök', desc: 'Orijinal gövdeye dön', price: 0, btn: 'SÖK', buy: () => { c.up.kit = 0; applyCarStyle(c, c.up.neon, c.up.rim); } });
+  }
+  return it;
+}
+// ---------------- nitro & turbo while driving
+function updateTuning(dt) {
+  const c = state.inCar;
+  document.body.classList.toggle('hasNitro', !!(c && c.up && c.up.nitro));
+  if (!c || !c.up || c.spec.boat || c.spec.heli || c.spec.plane) { if (c) c.nitroOn = false; return; }
+  const cap = NITRO_CAP[c.up.nitro || 0];
+  if (cap) {
+    if (c.nitro == null) c.nitro = cap;
+    const want = !!(keys.KeyN || keys.TNitro) && c.nitro > 0 && !DRAG.hold;
+    if (want && !c.nitroOn) { AudioSys.burst(0.5, 600, 0.35, 'bandpass'); state.shake = Math.max(state.shake, 0.15); }
+    c.nitroOn = want;
+    if (want) {
+      c.nitro = Math.max(0, c.nitro - dt);
+      const fx = Math.sin(c.h), fz = Math.cos(c.h), p = c.group.position, L = 2.4;
+      for (let k = 0; k < 3; k++) FX.add.spawn(p.x - fx * L + MR(-0.2, 0.2), c.y + 0.4, p.z - fz * L + MR(-0.2, 0.2), -fx * 8 + MR(-1, 1), MR(0, 0.6), -fz * 8 + MR(-1, 1), MR(0.25, 0.5), 0.25, 0.5, 0.5, 0.6, 3, 1, 0);
+      if (Math.random() < dt * 20) AudioSys.burst(0.06, 300, 0.12, 'lowpass');
+    } else c.nitro = Math.min(cap, c.nitro + dt * 0.18);
+    const el = $('bNitro'); if (el) el.style.setProperty('--n', (c.nitro / cap * 100).toFixed(0) + '%');
+  } else c.nitroOn = false;
+  // turbo blow-off when lifting after full throttle
+  if (c.up.turbo) { const thr = input.my > 0.5 || input.gas; if (thr) c.boostT = (c.boostT || 0) + dt; else { if (c.boostT > 0.7 && carSpeed(c) > 12) { AudioSys.burst(0.35, 3200, 0.25, 'highpass'); AudioSys.tone(1800, 0.25, 0.05, 'sine', 0.4); } c.boostT = 0; } }
+}
+// ---------------- drift score
+function updateDrift(dt) {
+  const c = state.inCar, el = $('driftHud');
+  const ok = c && !c.spec.boat && !c.spec.heli && !c.spec.plane && !c.spec.bike && !c.air;
+  const sp = ok ? carSpeed(c) : 0;
+  // the arcade physics rotates velocity with the car, so "drift" = sustained yaw rate at speed (handbrake slides count more)
+  let yaw = 0; if (ok) { yaw = c._dh != null ? Math.abs(wrapA(c.h - c._dh)) / Math.max(dt, 1e-3) : 0; c._dh = c.h; }
+  const sliding = ok && sp > 9 && (yaw > (input.hand ? 0.55 : 1.1)), slip = yaw * (input.hand ? 3 : 2);
+  if (ok && c.crashT && state.now - c.crashT < 0.2 && DR.active) { DR.active = false; DR.pts = 0; showBig('💥 DRİFT KAYBEDİLDİ', '#ff5050', 1.5); el.textContent = ''; return; }
+  if (sliding) {
+    if (!DR.active) { DR.active = true; DR.pts = 0; DR.t = 0; }
+    DR.t += dt; DR.idle = 0; DR.mult = Math.min(5, 1 + Math.floor(DR.t / 2));
+    DR.pts += slip * sp * dt * 1.6 * DR.mult;
+  } else if (DR.active) {
+    DR.idle += dt;
+    if (DR.idle > 1.2 || !ok) {
+      DR.active = false; const pts = Math.round(DR.pts);
+      if (pts >= 300) {
+        const pay = Math.round(pts / 25 / 5) * 5; earn(pay, '🏁 Drift');
+        const best = pts > (state.bestDrift || 0); if (best) state.bestDrift = pts;
+        showBig(`🏁 DRİFT ${pts.toLocaleString('tr-TR')}`, best ? '#ffd040' : '#7dff9a', 2.2, `+$${pay}${best ? ' · YENİ REKOR!' : ` · rekor ${(state.bestDrift || 0).toLocaleString('tr-TR')}`}`);
+        if (best && MP.on && pts > 3000) mpSend({ t: 'chat', m: `🏁 Drift rekoru: ${pts}` });
+      }
+    }
+  }
+  const txt = DR.active && DR.pts > 50 ? `DRIFT ${Math.round(DR.pts).toLocaleString('tr-TR')} ×${DR.mult}` : '';
+  if (el.textContent !== txt) el.textContent = txt;
+}
+// ---------------- drag strip on the airport taxiway (402 m) + car club podium
+const DRAG = { x0: 0, x1: 0, z: 0, laneA: 0, laneB: 0, cur: null, hold: false, tree: [] };
+const DRAG_AI = [{ n: 'Çaylak', vmax: 46, tau: 3.2, prize: 600, fee: 100 }, { n: 'Sokak Kralı', vmax: 60, tau: 2.7, prize: 1500, fee: 250 }, { n: 'Efsane', vmax: 76, tau: 2.3, prize: 4000, fee: 600 }];
+const CLUB = { x: 0, z: 0, show: null, remoteShow: new Map(), plat: null };
+function buildCarClub() {
+  const A = AIRPORT.taxi, z = (A.z0 + A.z1) / 2;
+  DRAG.x0 = A.x0 + 25; DRAG.x1 = DRAG.x0 + 402; DRAG.z = z; DRAG.laneA = z - 4.5; DRAG.laneB = z + 4.5;
+  const y = groundY(DRAG.x0, z), white = new THREE.MeshBasicMaterial({ color: 0xffffff }), checker = new THREE.MeshBasicMaterial({ map: canvasTex(64, 16, g => { for (let i = 0; i < 16; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : '#111'; g.fillRect(i * 4, j * 4, 4, 4); } }) });
+  for (const [x, m] of [[DRAG.x0, white], [DRAG.x1, checker]]) { const l = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 20).rotateX(-Math.PI / 2), m); l.position.set(x, y + 0.06, z); scene.add(l); }
+  // christmas tree
+  const pole = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x222226 })); pole.position.set(DRAG.x0 - 2, y + 1.6, z); scene.add(pole);
+  for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), new THREE.MeshBasicMaterial({ color: 0x331111 })); m.position.set(DRAG.x0 - 2, y + 3.4 - i * 0.45, z); scene.add(m); DRAG.tree.push(m); }
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.3), new THREE.MeshBasicMaterial({ map: canvasTex(512, 110, g => { g.fillStyle = '#111'; g.fillRect(0, 0, 512, 110); g.fillStyle = '#ffd040'; g.font = 'bold 46px Arial'; g.textAlign = 'center'; g.fillText('🏁 VISTA DRAG STRIP', 256, 58); g.fillStyle = '#fff'; g.font = '22px Arial'; g.fillText('402 m · ışıklar yeşile dönünce bas!', 256, 94); }), side: THREE.DoubleSide }));
+  sign.position.set(DRAG.x0 - 6, y + 4.5, z); sign.rotation.y = -Math.PI / 2; scene.add(sign);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.7, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(DRAG.x0 - 12, y + 0.06, z); scene.add(ring); DRAG.ring = [DRAG.x0 - 12, z];
+  // car club podium next to the strip (apron)
+  const P = AIRPORT.apron; CLUB.x = P.x0 + 30; CLUB.z = P.z0 + 25;
+  const plat = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.4, 0.25, 32), new THREE.MeshStandardMaterial({ color: 0x2a2a32, metalness: 0.6, roughness: 0.3 })); plat.position.set(CLUB.x, groundY(CLUB.x, CLUB.z) + 0.12, CLUB.z); scene.add(plat); CLUB.plat = plat;
+  const glowR = new THREE.Mesh(new THREE.RingGeometry(4.2, 4.6, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff40c0, transparent: true, opacity: 0.8, depthWrite: false })); glowR.position.set(CLUB.x, plat.position.y + 0.14, CLUB.z); scene.add(glowR);
+  const s2 = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.3), new THREE.MeshBasicMaterial({ map: canvasTex(512, 110, g => { g.fillStyle = '#1a0a2a'; g.fillRect(0, 0, 512, 110); g.fillStyle = '#ff60d0'; g.font = 'bold 44px Arial'; g.textAlign = 'center'; g.fillText('🏆 VISTA ARAÇ KULÜBÜ', 256, 58); g.fillStyle = '#fff'; g.font = '22px Arial'; g.fillText('Aracını platforma çıkar · jüri puanlasın', 256, 94); }), side: THREE.DoubleSide }));
+  s2.position.set(CLUB.x, plat.position.y + 4.2, CLUB.z - 6); scene.add(s2);
+}
+function dragItems() {
+  const c = state.inCar, it = [{ sec: `🏁 Drag yarışı · rekorun: ${state.dragBest ? state.dragBest.toFixed(2) + ' sn' : 'yok'}` }];
+  if (!c || c.spec.boat || c.spec.heli || c.spec.plane) { it.push({ name: 'Bir arabayla gel', desc: 'Drag için kara aracı gerekli', price: 0, dis: '—', buy: () => { } }); return it; }
+  DRAG_AI.forEach((R, i) => it.push({ name: `🏎 ${R.n} ile yarış`, desc: `Rakip ~${dragAiTime(R).toFixed(1)} sn · kazanırsan $${R.prize.toLocaleString('tr-TR')}`, price: R.fee, close: true, buy: () => startDrag(i) }));
+  return it;
+}
+const dragAiDist = (R, t) => R.vmax * (t - R.tau * (1 - Math.exp(-t / R.tau)));
+function dragAiTime(R) { let t = 0; while (dragAiDist(R, t) < 402 && t < 60) t += 0.01; return t; }
+function startDrag(i) {
+  const c = state.inCar; if (!c) return; const R = DRAG_AI[i];
+  c.group.position.set(DRAG.x0 - 1.5, c.group.position.y, DRAG.laneA); c.h = Math.PI / 2; c.group.rotation.set(0, c.h, 0); c.vx = c.vz = 0; c.y = groundY(DRAG.x0, DRAG.laneA);
+  const ai = createCar(pick(['sport', 'super']), pick(['#c81e1e', '#f2c200', '#1e6ad8', '#18181c']), DRAG.x0 - 1.5, DRAG.laneB, Math.PI / 2, 'free'); ai.delivery = true; ai.dragAi = true;
+  DRAG.cur = { R, ai, t: -3.2, start: false, false: false, react: null, top: 0, aiT: dragAiTime(R) };
+  DRAG.hold = true; camYaw = c.h + Math.PI; floatText('🏁 Işıklara dikkat… yeşilde gaza bas!');
+}
+function endDrag(msg) {
+  const D = DRAG.cur; if (!D) return;
+  if (D.ai) { scene.remove(D.ai.group); const i = cars.indexOf(D.ai); if (i >= 0) cars.splice(i, 1); }
+  DRAG.cur = null; DRAG.hold = false; for (const m of DRAG.tree) m.material.color.set(0x331111);
+  if (msg) showBig(msg[0], msg[1], 3.5, msg[2]);
+}
+function updateDrag(dt) {
+  const D = DRAG.cur, c = state.inCar;
+  if (!D) { if (!state.interact && !state.interior && Math.hypot(player.pos.x - DRAG.ring[0], player.pos.z - DRAG.ring[1]) < 3) state.interact = { label: '🏁 DRAG YARIŞI', fn: () => openShop('drag') }; return; }
+  if (!c) { endDrag(['DRAG İPTAL', '#ff5050', 'Araçtan indin']); return; }
+  D.t += dt;
+  // lights: 3 ambers then green
+  DRAG.tree.forEach((m, i) => m.material.color.set(D.t >= 0 ? (i === 3 ? 0x20ff40 : 0x331111) : (D.t > -3 + i * 0.9 && i < 3 ? 0xffb020 : 0x331111)));
+  if (D.t < 0) {
+    if (Math.abs(c.group.position.x - (DRAG.x0 - 1.5)) > 1.2 && !D.false) { D.false = true; endDrag(['🚫 KAÇAK ÇIKIŞ', '#ff5050', 'Yeşil yanmadan gaza bastın · diskalifiye']); return; }
+    c.vx = c.vz = 0; if (input.my > 0.3 || input.gas) c.jumpT = (c.jumpT || 0) + dt;
+    return;
+  }
+  if (!D.start) { D.start = true; DRAG.hold = false; AudioSys.tone(1400, 0.25, 0.15, 'square'); }
+  if (D.react == null && (input.my > 0.3 || input.gas)) D.react = D.t;
+  D.top = Math.max(D.top, carSpeed(c) * 3.6);
+  // opponent
+  const ax = DRAG.x0 - 1.5 + dragAiDist(D.R, D.t); D.ai.group.position.set(Math.min(ax, DRAG.x1 + 40), D.ai.group.position.y, DRAG.laneB); D.ai.vx = D.R.vmax; D.ai.spin = (D.ai.spin || 0) + dt * 30; for (const s of D.ai.spinners) s.rotation.z = -D.ai.spin;
+  if (c.group.position.x >= DRAG.x1) {
+    const t = D.t, win = t < D.aiT, best = !state.dragBest || t < state.dragBest; if (best) state.dragBest = t;
+    if (win) earn(D.R.prize, '🏁 Drag zaferi');
+    if (MP.on) mpSend({ t: 'chat', m: `🏁 Drag ${t.toFixed(2)} sn${win ? ' · ' + D.R.n + ' yenildi' : ''}` });
+    endDrag([win ? '🏆 DRAG KAZANILDI!' : '🏁 RAKİP DAHA HIZLI', win ? '#ffd040' : '#ff8080', `${t.toFixed(2)} sn (rakip ${D.aiT.toFixed(2)}) · tepki ${(D.react || 0).toFixed(2)} sn · ${Math.round(D.top)} km/s${win ? ' · +$' + D.R.prize.toLocaleString('tr-TR') : ''}${best ? ' · REKOR!' : ''}`]);
+    saveGame(); return;
+  }
+  if (D.t > 40 || Math.abs(c.group.position.z - DRAG.laneA) > 30) endDrag(['DRAG İPTAL', '#ff5050', 'Pistten çıktın']);
+}
+// ---------------- car show
+function carShowScore(c) {
+  const base = { super: 30, sport: 24, armored: 16, suv: 12, pickup: 10, sedan: 8, taxi: 6, van: 6, bike: 14 }[c.kind] || 8, u = c.up;
+  const parts = [['Model', base], ['Motor', u.engine * 6], ['Fren', u.grip * 3], ['Turbo', u.turbo ? 9 : 0], ['Nitro', (u.nitro || 0) * 4], ['Gövde kiti', (u.kit || 0) * 7], ['Neon', u.neon ? 6 : 0], ['Jant', u.rim ? 4 : 0], ['Zırh', u.armor ? 2 : 0], ['Hasar', -Math.round((1 - c.health / c.maxHealth) * 20)]];
+  const taste = Math.round(MR(-4, 6)), sum = clamp(parts.reduce((a, p) => a + p[1], 0) + taste, 1, 100);
+  return { sum, parts: parts.filter(p => p[1]), taste };
+}
+function updateCarShow(dt) {
+  if (CLUB.plat) CLUB.plat.rotation.y += dt * 0.3;
+  const c = state.inCar, onPod = c && Math.hypot(c.group.position.x - CLUB.x, c.group.position.z - CLUB.z) < 4 && carSpeed(c) < 1;
+  if (onPod && !state.interact) state.interact = { label: '🏆 ARACINI SERGİLE · jüri puanlasın', fn: () => {
+    const S = carShowScore(c), key = 'vb_show_' + c.kind + carHex(c) + Math.floor(Date.now() / 86400000);
+    let paid = false; try { paid = !!localStorage.getItem(key); if (!paid) localStorage.setItem(key, '1'); } catch (e) { }
+    const pay = paid ? 0 : S.sum * 15; if (pay) earn(pay, '🏆 Araç sergisi');
+    showBig(`🏆 JÜRİ PUANI: ${S.sum}/100`, S.sum >= 70 ? '#ffd040' : '#7dff9a', 4.5, S.parts.map(p => `${p[0]} ${p[1] > 0 ? '+' : ''}${p[1]}`).join(' · ') + ` · jüri zevki ${S.taste >= 0 ? '+' : ''}${S.taste}${pay ? ` · +$${pay}` : ' · bugün bu araçla ödül aldın'}`);
+    CLUB.show = { score: S.sum, t: 120 }; if (MP.on) mpSend({ t: 'show', on: 1, score: S.sum, car: carName(c) }); AudioSys.success();
+  } };
+  if (CLUB.show) { CLUB.show.t -= dt; if (!onPod || CLUB.show.t <= 0) { CLUB.show = null; if (MP.on) mpSend({ t: 'show', on: 0 }); } }
+  // remote cars on display: walk up and like them
+  if (!state.inCar && !state.interact) for (const [id, s] of CLUB.remoteShow) { const r = MP.remotes.get(id); if (!r) { CLUB.remoteShow.delete(id); continue; } if (Math.hypot(player.pos.x - CLUB.x, player.pos.z - CLUB.z) < 8 && !s.liked) { state.interact = { label: `👍 ${r.info.name}'in ${s.car} aracını BEĞEN · jüri ${s.score}/100`, fn: () => { s.liked = true; mpSend({ t: 'show_like', to: id }); floatText('👍 Beğendin'); } }; break; } }
+}
+function handleTuning(d) {
+  const r = MP.remotes.get(d.id);
+  if (d.t === 'show') { if (d.on) { CLUB.remoteShow.set(d.id, { score: +d.score || 0, car: String(d.car || '').slice(0, 20), liked: false }); if (r && Math.hypot(player.pos.x - CLUB.x, player.pos.z - CLUB.z) < 200) floatText(`🏆 ${r.info.name} aracını sergiliyor (${+d.score}/100)`); } else CLUB.remoteShow.delete(d.id); return true; }
+  if (d.t === 'show_like') { if (CLUB.show && r) { earn(150, '👍 Sergi beğenisi'); addRep(5); floatText(`👍 ${r.info.name} aracını beğendi · +$150`); } return true; }
+  return false;
+}
+
+function remoteNitroFx() {
+  for (const r of MP.remotes.values()) {
+    const s = r.snaps[r.snaps.length - 1]; if (!s || !s.nt || !r.veh) continue;
+    const c = r.veh, fx = Math.sin(r.r), fz = Math.cos(r.r);
+    if (Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 150) for (let k = 0; k < 2; k++) FX.add.spawn(r.x - fx * 2.4, r.y + 0.4, r.z - fz * 2.4, -fx * 8 + MR(-1, 1), MR(0, 0.6), -fz * 8 + MR(-1, 1), MR(0.25, 0.5), 0.25, 0.5, 0.5, 0.6, 3, 1, 0);
+  }
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -7873,6 +8065,7 @@ function applyPacket(d) {
   if (handlePrison(d)) return;
   if (handleCasino(d)) return;
   if (handleDis(d)) return;
+  if (handleTuning(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -7966,8 +8159,8 @@ function updateRemotes(dt) {
     const far = Math.hypot(r.x - player.pos.x, r.z - player.pos.z) > 320;
     const h = r.human;
     // vehicle visual
-    const key = s.v ? s.v + s.vc + (s.ug || '') + (s.rm || '') : '';
-    if (key !== r.vehKey) { if (r.veh) { if (h.g.parent === r.veh.group) scene.add(h.g); scene.remove(r.veh.group); r.veh = null; } if (s.v) { r.veh = vehVisual(s.v, s.vc); applyCarStyle(r.veh, s.ug, s.rm); } r.vehKey = key; }
+    const key = s.v ? s.v + s.vc + (s.ug || '') + (s.rm || '') + (s.kt || '') : '';
+    if (key !== r.vehKey) { if (r.veh) { if (h.g.parent === r.veh.group) scene.add(h.g); scene.remove(r.veh.group); r.veh = null; } if (s.v) { r.veh = vehVisual(s.v, s.vc); applyCarStyle(r.veh, s.ug, s.rm, s.kt || 0); } r.vehKey = key; }
     if (r.veh) {
       const c = r.veh, gp = c.group;
       gp.visible = !far; gp.position.set(r.x, r.y, r.z); gp.rotation.set(s.px || 0, r.r, s.rz || 0);
@@ -8006,7 +8199,7 @@ function myState() {
   const c = state.inCar, p = c ? c.group.position : player.pos, f2 = v => Math.round(v * 100) / 100;
   const o = { t: 'st', x: f2(p.x), y: f2(c ? c.y : player.pos.y), z: f2(p.z), r: Math.round((c ? c.h : player.yaw) * 1000) / 1000, sp: f2(c ? carFwd(c) : player.speed), hp: Math.max(0, Math.round(state.health)), wn: state.wanted, w: state.weapon, aim: player.aimT > 0 ? 1 : 0, dead: state.dead ? 1 : 0 };
   if (state.passenger) o.pas = state.passenger;
-  if (c && c.up) { if (c.up.neon) o.ug = c.up.neon; if (c.up.rim) o.rm = c.up.rim; }
+  if (c && c.up) { if (c.up.neon) o.ug = c.up.neon; if (c.up.rim) o.rm = c.up.rim; if (c.up.kit) o.kt = c.up.kit; if (c.nitroOn) o.nt = 1; }
   if (c) { o.v = c.kind; o.vc = '#' + c.paintM.color.getHexString(THREE.SRGBColorSpace); o.px = f2(c.group.rotation.x); o.rz = f2(c.group.rotation.z); o.st = f2(c.steer); if (c.spec.plane) o.gr = c.gear ? 1 : 0; }
   if (state.cabin && !state.cabin.jumped) { const F = state.cabin; Object.assign(o, { v: 'airliner', vc: '#f4f4f2', x: f2(F.x), y: f2(F.y), z: f2(F.z), r: Math.round(F.h * 1000) / 1000, px: f2(-F.pitch), rz: f2(F.roll), sp: f2(F.speed) }); }
   return o;
@@ -10298,6 +10491,7 @@ function loop(now) {
   updateJobs(dt);
   updateCasino(dt);
   updateDisasters(dt);
+  updateTuning(dt); updateDrift(dt); updateDrag(dt); updateCarShow(dt); remoteNitroFx();
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

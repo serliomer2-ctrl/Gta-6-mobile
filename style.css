@@ -390,3 +390,9 @@ body.isBaby #babyHud{display:block}
 
 #disHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(278px + env(safe-area-inset-top,0px));z-index:12;background:#5a1010e6;border:1px solid #ff7050;color:#ffe8e0;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap;animation:blink 1.2s steps(1) infinite}
 #disHud:empty{display:none}
+
+.btn.nos{display:none}
+body.incar.hasNitro .btn.nos{display:flex}
+#bNitro{right:calc(136px + var(--sr,0px));bottom:170px;background:linear-gradient(0deg,#2060ffaa var(--n,100%),#ffffff22 var(--n,100%));border-color:#80c0ff;font-size:12px}
+#driftHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(30% + env(safe-area-inset-top,0px));z-index:12;font:400 46px 'Bebas Neue',Impact,sans-serif;color:#ffd040;text-shadow:3px 3px 0 #000,0 0 18px #ff8000;pointer-events:none;letter-spacing:2px}
+#driftHud:empty{display:none}

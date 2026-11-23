@@ -124,6 +124,12 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
 - **🏚 Deprem**: ekran sarsılır, araç alarmları çalar, yayalar ve trafik panikler, ara ara artçı sarsıntılar olur. Sokaklardaki 6 enkaz yığınını kaz, altındakileri çıkar
 - **🔥 Orman yangını**: şehir parklarında yangın çıkar ve her 40 sn'de yayılır (en fazla 12 nokta); yangın söndürücüyle söndür
 
+## 🏎 Tuning & araç kulübü
+- **Garajda yeni tuning** (🔧 garaj, araçtayken): **🌀 Turbo** ($6.000 · +%12 azami hız, +%20 hızlanma, gazı bırakınca "psssh"), **🔥 Nitro** 3 seviye ($3.000 / $5.000 / $8.000 · 3 / 5 / 8 sn tüp; N tuşu ya da mobilde 🔥 NİTRO düğmesi basılı; egzozdan mavi alev, tüp kendini yavaşça doldurur), **🏁 Gövde kitleri**: spor spoiler, geniş gövde + spoiler + marşpiye, pist kiti (dev kanat, splitter, kaput hava alığı). Kit ve nitro alevi online'da diğer oyunculara görünür; hepsi kayda yazılır
+- **🏁 Drift puanı**: el freni ya da sert dönüşle yüksek hızda kaydıkça puan toplanır, kaydıkça çarpan ×5'e kadar çıkar; drift bitince puan paraya çevrilir (300+ puan), drift sırasında çarparsan puan yanar. En iyi drift rekoru kaydedilir
+- **🏁 Vista Drag Strip** (havalimanı taksi yolu, sarı halka): 402 m düz pist, Noel ağacı ışıkları (3 sarı → yeşil); erken çıkarsan diskalifiye. Rakipler: Çaylak (~11,9 sn, $600), Sokak Kralı (~9,3 sn, $1.500), Efsane (~7,5 sn, $4.000). Sonuçta süre, tepki süresi, son hız ve rekor gösterilir
+- **🏆 Vista Araç Kulübü** (apronda dönen platform): aracını platforma çıkar ve dur → jüri model, motor, fren, turbo, nitro, kit, neon, jant ve hasara göre 100 üzerinden puanlar (puan × $15, her araçla günde bir kez). Online'da diğer oyuncular sergilenen aracını 👍 beğenebilir (+$150 ve itibar)
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
