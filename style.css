@@ -366,3 +366,24 @@ body.isBaby #babyHud{display:block}
 
 #jobHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(250px + env(safe-area-inset-top,0px));z-index:12;background:#0e2a4ae6;border:1px solid #6ab0ff;color:#e0f0ff;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis}
 #jobHud:empty{display:none}
+
+#casino{display:none;position:fixed;inset:0;z-index:40;align-items:center;justify-content:center;background:#000a;font-family:Rajdhani,sans-serif;color:#fff}
+.csBox{width:min(380px,94vw);max-height:94vh;overflow-y:auto;background:linear-gradient(160deg,#2a0a34,#0a0a2a);border:2px solid #d8a830;border-radius:16px;padding:10px 12px 14px;box-shadow:0 10px 40px #000c;text-align:center}
+.csHead{display:flex;align-items:center;gap:8px;margin-bottom:6px}.csHead b{flex:1;text-align:left;font-size:20px;color:#ffd040}.csHead span{color:#7dff9a;font-weight:700}
+.csBox button{border:0;border-radius:9px;font:700 15px Rajdhani,sans-serif;cursor:pointer;color:#fff;background:#ffffff1c;padding:7px 10px}
+.csBox button:disabled{opacity:.4}
+.csJack{color:#ffd040;font-weight:800;font-size:18px;text-shadow:0 0 10px #ffa000}
+.csReels{display:flex;justify-content:center;gap:8px;margin:10px 0}.csReels i{font-style:normal;font-size:46px;width:72px;height:72px;line-height:72px;background:#fff;border-radius:12px;border:3px solid #d8a830}
+.csMsg{min-height:22px;margin:6px 0;font-weight:700;font-size:16px}
+.csChips{display:flex;gap:5px;justify-content:center;margin:6px 0;flex-wrap:wrap}.csChips button{border-radius:50%!important;width:52px;height:52px;padding:0!important;background:#8a1a2a!important;border:3px dashed #fff8!important;font-size:13px!important}.csChips button.on{background:#d8a830!important;color:#222!important}
+.csGo{background:linear-gradient(#e8b830,#b8801a)!important;color:#221!important;font-size:18px!important;padding:10px 22px!important;margin:4px}.csGo.alt{background:#2a5aaa!important;color:#fff!important;font-size:15px!important}
+.csPay{display:block;color:#ccc;margin-top:6px}
+.csWheel{width:120px;height:120px;margin:6px auto;border-radius:50%;background:conic-gradient(#c81e1e 0 10deg,#141414 10deg 20deg,#c81e1e 20deg 30deg,#141414 30deg 40deg,#1a8a3a 40deg 50deg,#c81e1e 50deg 60deg,#141414 60deg 70deg,#c81e1e 70deg 80deg,#141414 80deg 90deg,#c81e1e 90deg 100deg,#141414 100deg 110deg,#c81e1e 110deg 120deg,#141414 120deg 130deg,#c81e1e 130deg 140deg,#141414 140deg 150deg,#c81e1e 150deg 160deg,#141414 160deg 170deg,#c81e1e 170deg 180deg,#141414 180deg 190deg,#c81e1e 190deg 200deg,#141414 200deg 210deg,#c81e1e 210deg 220deg,#141414 220deg 230deg,#c81e1e 230deg 240deg,#141414 240deg 250deg,#c81e1e 250deg 260deg,#141414 260deg 270deg,#c81e1e 270deg 280deg,#141414 280deg 290deg,#c81e1e 290deg 300deg,#141414 300deg 310deg,#c81e1e 310deg 320deg,#141414 320deg 330deg,#c81e1e 330deg 340deg,#141414 340deg 350deg,#c81e1e 350deg 360deg);border:5px solid #d8a830;display:flex;align-items:center;justify-content:center}
+.csWheel b{width:54px;height:54px;line-height:54px;border-radius:50%;background:#2a0a34;font-size:24px;border:2px solid #d8a830}
+.csWheel.spin{animation:csSpin .5s linear infinite}@keyframes csSpin{to{transform:rotate(360deg)}}
+.csBets{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:6px 0}.csBets small{display:block;color:#ffd040;font-size:11px}
+.csNum{display:flex;gap:6px;justify-content:center}.csNum input{width:70px;border-radius:8px;border:1px solid #fff4;background:#0008;color:#fff;font:700 15px Rajdhani,sans-serif;text-align:center}
+.csBj{background:#1a6a3a;border-radius:12px;padding:8px;margin:6px 0}.csBj small{display:block;color:#dfe;margin-top:4px}
+.card{display:inline-block;font-style:normal;background:#fff;color:#111;border-radius:6px;min-width:34px;padding:8px 4px;margin:3px;font-weight:800;font-size:18px;box-shadow:0 2px 4px #0006}.card.red{color:#c81e1e}
+.csRow{display:flex;justify-content:center;flex-wrap:wrap}
+#csCanvas{width:min(300px,80vw);height:auto;border-radius:12px;border:2px solid #d8a830;background:#111;touch-action:none}

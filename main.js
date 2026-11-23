@@ -359,6 +359,7 @@ function init() {
   vgLoad();
   initDecorUI();
   initFamilyUI();
+  initCasinoUI();
   buildWrecks();
   buildSpecialVehicles();
   buildPlanes();
@@ -383,6 +384,7 @@ function init() {
   buildCemetery();
   buildPrison();
   buildJobs();
+  buildCasino();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -2526,6 +2528,7 @@ function drawMinimap() {
   if (state.flightJob && state.flightJob.tx !== undefined) dot(state.flightJob.tx, state.flightJob.tz, '#4aa8ff', 11, true);
   drawAnomMap(dot);
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
+  if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
   if (!state.interior && JAIL.door) dot(JAIL.door.x, JAIL.door.z, '#e8c040', 7, false);
   if (!state.interior && CEM.cx !== undefined) dot(CEM.gate[0], CEM.gate[1], CEM.funeral && state.now < CEM.funeral.until ? (Math.sin(state.now * 6) > 0 ? '#ffffff' : '#606060') : '#9a9a96', 7, !!(CEM.funeral && state.now < CEM.funeral.until));
@@ -2858,7 +2861,7 @@ function openShop(type, zone = null) {
   $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
-function closeShop() { state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
+function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
 function shopItems(type) {
   if (type === 'elev') return elevItems();
   if (type === 'ticket') return ticketItems();
@@ -6933,6 +6936,303 @@ function jobsPhoneHtml() {
   return `<div class="phSec">💼 Meslekler</div>` + Object.entries(JOBS).map(([k, J]) => { const l = jobLvl(k), x = (state.jobs && state.jobs[k] && state.jobs[k].xp) || 0; return `<div class="phRow"><i class="phIc">${J.icon}</i><div><b>${J.name} · ${J.ranks[l]}</b><small>${x} XP${JOB_LVL[l + 1] ? ' / ' + JOB_LVL[l + 1] : ' · en üst rütbe'} · ${(state.jobs && state.jobs[k] && state.jobs[k].done) || 0} görev${JOB.cur === k ? ' · 🟢 mesaide' : ''}</small></div></div>`; }).join('') + (JOB.center ? `<button class="phBig" data-jgps="1">📍 İş Kurumu'nu işaretle</button>` : '');
 }
 
+// ============================================================ VISTA CASINO & ARCADE: slots, roulette, blackjack, darts, bowling, player-vs-player bets
+const CAS = { door: null, I: null, jackpot: 5000, game: null, duel: null, inv: null, lostToday: 0, day: 0 };
+const LOSS_LIMIT = 25000;
+function casinoBet(amt) {
+  const day = Math.floor(Date.now() / 86400000); if (CAS.day !== day) { CAS.day = day; CAS.lostToday = 0; }
+  if (state.money < amt) { floatText('💸 Yeterli paran yok'); AudioSys.fail(); return false; }
+  if (CAS.lostToday >= LOSS_LIMIT) { floatText('🛑 Sorumlu oyun: bugünkü kayıp limitine ulaştın ($25.000)'); AudioSys.fail(); return false; }
+  state.money -= amt; CAS.lostToday += amt; ledger('🎰 Bahis', -amt); return true;
+}
+function casinoWin(amt, label) { if (amt <= 0) return; CAS.lostToday = Math.max(0, CAS.lostToday - amt); state.money += amt; ledger('🎰 ' + label, amt); S().earned += amt; AudioSys.cash(); }
+function buildCasino() {
+  const d = DOORS.filter(q => q.y0 < 1 && q.blk && (q.blk.dist === 'downtown' || q.blk.dist === 'midtown') && !q.market && !q.home && !q.jail && !q.jobs && !q.hospital && lifeDoorFree(q) && (!JOB.center || Math.hypot(JOB.center.x - q.x, JOB.center.z - q.z) > 120)).sort((a, b) => b.id - a.id)[2];
+  if (!d) return; CAS.door = d; d.casino = true;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 1.8), new THREE.MeshBasicMaterial({ map: canvasTex(512, 144, g => { const gr = g.createLinearGradient(0, 0, 512, 0); gr.addColorStop(0, '#3a0a4a'); gr.addColorStop(1, '#0a0a3a'); g.fillStyle = gr; g.fillRect(0, 0, 512, 144); g.shadowColor = '#ffd040'; g.shadowBlur = 18; g.fillStyle = '#ffd040'; g.font = 'bold 62px Georgia'; g.textAlign = 'center'; g.fillText('🎰 VISTA CASINO', 256, 78); g.shadowBlur = 0; g.font = '22px Arial'; g.fillStyle = '#fff'; g.fillText('Slot · Rulet · Blackjack · Dart · Bowling', 256, 122); }) }));
+  sign.position.set(d.fx + d.nx * 0.15, d.y0 + 3.9, d.fz + d.nz * 0.15); sign.rotation.y = Math.atan2(d.nx, d.nz); scene.add(sign); CAS.sign = sign;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(d.x, groundY(d.x, d.z) + 0.05, d.z); scene.add(ring);
+  // interior
+  const W = 28, D = 20, ox = -6400, z1 = -2400, z0 = z1 - D, x0 = ox - W / 2, x1 = ox + W / 2, cz = (z0 + z1) / 2, G = genMats();
+  const I = { name: 'Vista Casino', x0, x1, z0, z1, h: 5, boxes: [], spawn: [ox, z1 - 2.6, Math.PI], exitAt: [ox, z1 - 0.6], ext: [d.x, d.z], extOut: [d.x + d.nx * 1.2, d.z + d.nz * 1.2, Math.atan2(d.nx, d.nz)], casino: true, spots: [] };
+  const L = new Map(), add = (mat, geo) => { if (!L.has(mat)) L.set(mat, []); L.get(mat).push(geo); };
+  const box = (x, y, z, w, h, dd, mat, solid = true) => { add(mat, new THREE.BoxGeometry(w, h, dd).translate(x, y + h / 2, z)); if (solid) I.boxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - dd / 2, z1: z + dd / 2, y0: y, y1: y + h }); };
+  const S2 = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, envMapIntensity: 0.25, ...o });
+  const carpet = new THREE.MeshStandardMaterial({ map: canvasTex(128, 128, g => { g.fillStyle = '#5a0a1e'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#c89a30'; g.lineWidth = 3; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(32 + (i % 2) * 64, 32 + Math.floor(i / 2) * 64, 20, 0, 7); g.stroke(); } }), roughness: 1 });
+  carpet.map.wrapS = carpet.map.wrapT = THREE.RepeatWrapping; carpet.map.repeat.set(7, 5);
+  const wall = S2(0x2a1030), gold = S2(0xd8a830, { metalness: 0.8, roughness: 0.3 }), felt = S2(0x1a6a3a, { roughness: 1 }), wood = G.darkWood, black = S2(0x141418);
+  box(ox, -0.1, cz, W, 0.1, D, carpet, false); box(ox, 5, cz, W + 0.6, 0.2, D + 0.6, S2(0x1a0a20), false);
+  for (const [x, z, w, dd] of [[ox, z0 - 0.15, W + 0.6, 0.3], [ox, z1 + 0.15, W + 0.6, 0.3], [x0 - 0.15, cz, 0.3, D], [x1 + 0.15, cz, 0.3, D]]) box(x, 0, z, w, 5.1, dd, wall, false);
+  for (const z of [z0 + 0.05, z1 - 0.05]) box(ox, 4.2, z, W, 0.12, 0.06, gold, false);
+  // slot machines along the left wall
+  const glow = new THREE.MeshBasicMaterial({ color: 0xffd040 }), scr = new THREE.MeshBasicMaterial({ color: 0x40a0ff });
+  for (let k = 0; k < 6; k++) { const z = z0 + 3 + k * 2.4; box(x0 + 0.8, 0, z, 1, 1.9, 1.1, S2(k % 2 ? 0x8a1a2a : 0x1a2a8a)); box(x0 + 1.32, 1.1, z, 0.04, 0.5, 0.8, scr, false); box(x0 + 0.8, 1.9, z, 1, 0.12, 1.1, glow, false); I.spots.push({ x: x0 + 2.2, z, g: 'slots', label: '🎰 SLOT MAKİNESİ' }); }
+  // roulette & blackjack tables
+  box(ox - 3, 0, cz - 2, 4.2, 0.85, 2.2, wood); box(ox - 3, 0.85, cz - 2, 4, 0.04, 2, felt, false);
+  const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.18, 24), new THREE.MeshStandardMaterial({ map: canvasTex(256, 256, g => { for (let i = 0; i < 37; i++) { g.fillStyle = i === 0 ? '#1a8a3a' : RL_RED.has(RL_ORDER[i]) ? '#c81e1e' : '#141414'; g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 126, i / 37 * Math.PI * 2, (i + 1) / 37 * Math.PI * 2); g.fill(); } g.fillStyle = '#c89a30'; g.beginPath(); g.arc(128, 128, 40, 0, 7); g.fill(); }), roughness: 0.4 }));
+  wheel.position.set(ox - 4.4, 0.98, cz - 2); scene.add(wheel); CAS.wheel = wheel;
+  I.spots.push({ x: ox - 3, z: cz - 0.2, g: 'roulette', label: '🎡 RULET MASASI' });
+  box(ox + 3.5, 0, cz - 2, 3.6, 0.85, 1.8, wood); box(ox + 3.5, 0.85, cz - 2, 3.4, 0.04, 1.6, felt, false);
+  I.spots.push({ x: ox + 3.5, z: cz - 0.4, g: 'blackjack', label: '🃏 BLACKJACK MASASI' });
+  const dealer = makeHuman({ skin: pick(SKIN), shirt: '#f2f2f2', pants: '#141418', hair: '#1a1210', shoes: '#111', glasses: false }); dealer.g.position.set(ox + 3.5, 0, cz - 3.4); I.dealer = dealer;
+  // darts + bowling lane (arcade corner on the right)
+  box(x1 - 0.1, 1.3, z0 + 4, 0.1, 1, 1, S2(0x1a1a1a), false);
+  const board = new THREE.Mesh(new THREE.CircleGeometry(0.45, 24), new THREE.MeshBasicMaterial({ map: canvasTex(128, 128, g => dartBoardDraw(g, 128)) })); board.position.set(x1 - 0.16, 1.8, z0 + 4); board.rotation.y = -Math.PI / 2; scene.add(board);
+  I.spots.push({ x: x1 - 4, z: z0 + 4, g: 'darts', label: '🎯 DART' });
+  box(x1 - 3, 0, z0 + 11, 2.2, 0.05, 12, S2(0xc8a070, { roughness: 0.2 }), false);
+  for (let r = 0; r < 4; r++) for (let c = 0; c <= r; c++) add(S2(0xf2f2f2), new THREE.CylinderGeometry(0.06, 0.09, 0.38, 8).translate(x1 - 3 + (c - r / 2) * 0.3, 0.19, z0 + 5.6 - r * 0.28));
+  I.spots.push({ x: x1 - 3, z: z0 + 17.5, g: 'bowling', label: '🎳 BOWLING' });
+  // bar + chandeliers
+  box(x1 - 8, 0, z1 - 2.2, 0.8, 1.1, 3.4, wood); box(x1 - 8, 1.1, z1 - 2.2, 1, 0.06, 3.6, gold, false);
+  I.spots.push({ x: x1 - 9.2, z: z1 - 2.2, g: 'bar', label: '🍸 BAR · içecek ($15)' });
+  for (const [x, z] of [[ox - 5, cz], [ox + 5, cz], [ox, cz - 5]]) { add(gold, new THREE.CylinderGeometry(0.9, 0.5, 0.5, 12).translate(x, 4.4, z)); add(glow, new THREE.SphereGeometry(0.35, 10, 8).translate(x, 4.1, z)); }
+  for (const [m, list] of L) { const mm = new THREE.Mesh(merge(list), m); mm.receiveShadow = true; scene.add(mm); for (const g of list) g.dispose(); }
+  INTERIORS.casino = I; CAS.I = I;
+}
+function enterCasino() {
+  const f = $('fade'); f.style.opacity = 1;
+  setTimeout(() => { const I = CAS.I; state.interior = 'casino'; player.pos.set(I.spawn[0], 0, I.spawn[1]); player.yaw = Math.PI; camYaw = 0; camDist = 3.2; interiorLight.position.set((I.x0 + I.x1) / 2, 4.3, (I.z0 + I.z1) / 2); interiorLight.color.set(0xffe0b0); interiorLight.intensity = 38; f.style.opacity = 0; floatText(`🎰 Vista Casino · jackpot $${Math.round(CAS.jackpot).toLocaleString('tr-TR')}`); }, 350);
+}
+function updateCasinoInside(dt) {
+  if (CAS.wheel) CAS.wheel.rotation.y += dt * (CAS.spinFast ? 9 : 0.4);
+  if (state.interact) return;
+  for (const s of CAS.I.spots) if (Math.hypot(player.pos.x - s.x, player.pos.z - s.z) < 1.8) { state.interact = { label: s.label, fn: () => s.g === 'bar' ? barDrink() : openGame(s.g) }; return; }
+}
+function barDrink() { if (!casinoBet(15)) return; state.water = Math.min(100, (state.water ?? 100) + 25); floatText('🍸 Kokteyl · 💧 +25'); AudioSys.tone(900, 0.1, 0.08, 'sine'); }
+// ---------------- overlay
+function openGame(g, duel) {
+  CAS.game = { g, duel: duel || null };
+  state.shopOpen = 'casino'; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { } for (const k in keys) keys[k] = false;
+  $('casino').style.display = 'flex'; renderGame();
+}
+function closeGame() { if (CAS.anim) { cancelAnimationFrame(CAS.anim); CAS.anim = null; } if (CAS.game && CAS.game.duel && !CAS.game.sent) sendDuelScore(0); CAS.game = null; $('casino').style.display = 'none'; if (state.shopOpen === 'casino') state.shopOpen = null; CAS.spinFast = false; saveGame(); }
+const chipRow = (sel) => `<div class="csChips">${[10, 50, 100, 500, 1000].map(v => `<button data-chip="${v}" class="${CAS.chip === v ? 'on' : ''}">$${v}</button>`).join('')}</div>`;
+function renderGame() {
+  const G = CAS.game; if (!G) return; CAS.chip = CAS.chip || 50;
+  if (G.pickDuel) return duelInvite();
+  const head = (t) => `<div class="csHead"><b>${t}</b><span>$${Math.round(state.money).toLocaleString('tr-TR')}</span><button data-cs="close">✕</button></div>`;
+  let h = '';
+  if (G.g === 'slots') h = head('🎰 SLOT') + `<div class="csJack">💰 JACKPOT $${Math.round(CAS.jackpot).toLocaleString('tr-TR')}</div><div class="csReels">${(G.reels || ['🍒', '🔔', '7️⃣']).map(s => `<i>${s}</i>`).join('')}</div><div class="csMsg">${G.msg || '3 aynı sembol kazandırır · 7️⃣7️⃣7️⃣ = JACKPOT'}</div>${chipRow()}<button class="csGo" data-cs="spin" ${G.busy ? 'disabled' : ''}>ÇEVİR</button><small class="csPay">🍒×3 5x · 🍋×3 8x · 🔔×3 12x · ⭐×3 20x · 💎×3 50x · 🍒🍒 2x</small>`;
+  if (G.g === 'roulette') {
+    const bets = [['red', '🔴 Kırmızı', 2], ['black', '⚫ Siyah', 2], ['even', 'Çift', 2], ['odd', 'Tek', 2], ['low', '1-18', 2], ['high', '19-36', 2], ['d1', '1-12', 3], ['d2', '13-24', 3], ['d3', '25-36', 3]];
+    h = head('🎡 RULET') + `<div class="csWheel ${G.busy ? 'spin' : ''}"><b>${G.res == null ? '?' : G.res}</b></div><div class="csMsg">${G.msg || 'Bahsini seç, çarkı çevir'}</div>${chipRow()}
+      <div class="csBets">${bets.map(([k, n, x]) => `<button data-rl="${k}" ${G.busy ? 'disabled' : ''}>${n}<small>${x}x</small></button>`).join('')}</div>
+      <div class="csNum"><input id="rlNum" type="number" min="0" max="36" placeholder="0-36"><button data-rl="num" ${G.busy ? 'disabled' : ''}>Sayıya oyna · 36x</button></div>`;
+  }
+  if (G.g === 'blackjack') {
+    const B = G.bj, hand = (cs, hide) => cs.map((c, i) => `<i class="card ${'♥♦'.includes(c.s) ? 'red' : ''}">${hide && i === 1 ? '🂠' : c.r + c.s}</i>`).join('');
+    h = head('🃏 BLACKJACK') + (B ? `<div class="csBj"><small>Krupiye ${B.done ? '· ' + bjVal(B.d) : ''}</small><div>${hand(B.d, !B.done)}</div><small>Sen · ${bjVal(B.p)}</small><div>${hand(B.p)}</div></div><div class="csMsg">${G.msg || ''}</div>` : `<div class="csMsg">${G.msg || '21\'e en yakın olan kazanır · Blackjack 3:2 öder · krupiye 17\'de durur'}</div>`)
+      + (B && !B.done ? `<div class="csRow"><button class="csGo" data-bj="hit">ÇEK</button><button class="csGo" data-bj="stand">DUR</button><button class="csGo" data-bj="double" ${B.p.length > 2 || state.money < B.bet ? 'disabled' : ''}>İKİYE KATLA</button></div>` : chipRow() + `<button class="csGo" data-bj="deal">DAĞIT</button>`);
+  }
+  if (G.g === 'darts' || G.g === 'bowling') {
+    const duel = G.duel;
+    h = head(G.g === 'darts' ? '🎯 DART' : '🎳 BOWLING') + `<canvas id="csCanvas" width="300" height="${G.g === 'darts' ? 300 : 360}"></canvas><div class="csMsg" id="csMsg">${G.msg || (duel ? `⚔ Düello: ${esc(duel.vs)} ile $${duel.stake} · en yüksek skor kazanır` : G.g === 'darts' ? '3 ok at · $50 · 100+ puan 2x, 150+ puan 4x' : '2 atış · $50 · 7+ kuka 2x, strike 5x')}</div>`
+      + (G.playing ? `<button class="csGo" data-cs="act">${G.g === 'darts' ? 'AT!' : G.stage === 0 ? 'NİŞAN AL' : 'FIRLAT!'}</button>` : (duel ? `<button class="csGo" data-cs="play">BAŞLA</button>` : `<button class="csGo" data-cs="play">OYNA · $50</button>`) + (MP.on && !duel ? `<button class="csGo alt" data-cs="duel">⚔ Oyuncuya meydan oku</button>` : ''));
+  }
+  $('casino').innerHTML = `<div class="csBox">${h}</div>`;
+  if (G.g === 'darts' || G.g === 'bowling') { if (CAS.anim) cancelAnimationFrame(CAS.anim); CAS.anim = null; arcadeLoop(); }
+}
+// ---------------- slots
+const SLOT_SYM = ['🍒', '🍋', '🔔', '⭐', '💎', '7️⃣'], SLOT_W = [30, 25, 18, 12, 8, 4], SLOT_X = { '🍒': 5, '🍋': 8, '🔔': 12, '⭐': 20, '💎': 50 };
+const slotRoll = () => { let r = Math.random() * 97; for (let i = 0; i < 6; i++) { r -= SLOT_W[i]; if (r < 0) return SLOT_SYM[i]; } return '🍒'; };
+function spinSlots() {
+  const G = CAS.game, bet = CAS.chip; if (G.busy || !casinoBet(bet)) return;
+  G.busy = true; CAS.jackpot += bet * 0.05; const res = [slotRoll(), slotRoll(), slotRoll()]; let t = 0;
+  const iv = setInterval(() => { t++; G.reels = G.reels || ['🍒', '🍒', '🍒']; for (let i = 0; i < 3; i++) if (t < 8 + i * 5) G.reels[i] = SLOT_SYM[Math.floor(Math.random() * 6)]; else G.reels[i] = res[i]; AudioSys.tone(400 + t * 15, 0.03, 0.05, 'square'); renderGame();
+    if (t >= 18) { clearInterval(iv); G.busy = false; let win = 0;
+      if (res[0] === res[1] && res[1] === res[2]) { if (res[0] === '7️⃣') { win = Math.round(CAS.jackpot); CAS.jackpot = 5000; showBig('💰 JACKPOT!', '#ffd040', 4, `+$${win.toLocaleString('tr-TR')}`); if (typeof breakingNews === 'function') breakingNews(`Vista Casino'da büyük ikramiye! Şanslı bir oyuncu $${win.toLocaleString('tr-TR')} jackpot kazandı.`, true); } else win = bet * SLOT_X[res[0]]; }
+      else if (res.filter(s => s === '🍒').length === 2) win = bet * 2;
+      G.msg = win ? `🎉 Kazandın: $${win.toLocaleString('tr-TR')}` : 'Olmadı, bir daha dene'; casinoWin(win, 'Slot kazancı'); if (!win) AudioSys.fail(); renderGame(); } }, 70);
+}
+// ---------------- roulette (European, single zero)
+const RL_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+const RL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+function playRoulette(kind) {
+  const G = CAS.game, bet = CAS.chip; let num = null;
+  if (kind === 'num') { num = Math.floor(+(($('rlNum') || {}).value)); if (!(num >= 0 && num <= 36)) { floatText('0-36 arası bir sayı gir'); return; } }
+  if (G.busy || !casinoBet(bet)) return;
+  G.busy = true; CAS.spinFast = true; G.res = null; G.msg = 'Çark dönüyor…'; renderGame();
+  const res = Math.floor(Math.random() * 37); let t = 0;
+  const iv = setInterval(() => { t++; G.res = RL_ORDER[Math.floor(Math.random() * 37)]; AudioSys.tone(1200, 0.02, 0.04, 'square'); renderGame();
+    if (t > 22) { clearInterval(iv); G.res = res; G.busy = false; CAS.spinFast = false;
+      const red = RL_RED.has(res), win = res === 0 ? (kind === 'num' && num === 0) : { red, black: !red, even: res % 2 === 0, odd: res % 2 === 1, low: res <= 18, high: res >= 19, d1: res <= 12, d2: res > 12 && res <= 24, d3: res > 24, num: res === num }[kind];
+      const mult = kind === 'num' ? 36 : kind[0] === 'd' ? 3 : 2, pay = win ? bet * mult : 0;
+      G.msg = `${res === 0 ? '🟢' : red ? '🔴' : '⚫'} ${res} · ${pay ? `kazandın $${pay.toLocaleString('tr-TR')}` : 'kaybettin'}`; casinoWin(pay, 'Rulet kazancı'); if (!pay) AudioSys.fail(); renderGame(); } }, 90);
+}
+// ---------------- blackjack
+const bjDeck = () => { const d = []; for (const s of '♠♥♦♣') for (const r of ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']) d.push({ r, s }); for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; } return d; };
+function bjVal(cs) { let v = 0, a = 0; for (const c of cs) { if (c.r === 'A') { a++; v += 11; } else v += 'JQK'.includes(c.r) ? 10 : +c.r; } while (v > 21 && a) { v -= 10; a--; } return v; }
+function bjAct(k) {
+  const G = CAS.game;
+  if (k === 'deal') { if (!casinoBet(CAS.chip)) return; const deck = bjDeck(); G.bj = { deck, p: [deck.pop(), deck.pop()], d: [deck.pop(), deck.pop()], bet: CAS.chip, done: false }; G.msg = ''; if (bjVal(G.bj.p) === 21) return bjEnd(); }
+  const B = G.bj; if (!B || B.done) return renderGame();
+  if (k === 'hit') { B.p.push(B.deck.pop()); if (bjVal(B.p) > 21) return bjEnd(); }
+  if (k === 'double') { if (!casinoBet(B.bet)) return; B.bet *= 2; B.p.push(B.deck.pop()); return bjEnd(); }
+  if (k === 'stand') return bjEnd();
+  AudioSys.tone(700, 0.05, 0.06, 'triangle'); renderGame();
+}
+function bjEnd() {
+  const G = CAS.game, B = G.bj; B.done = true;
+  const pv = bjVal(B.p), bj = pv === 21 && B.p.length === 2;
+  if (pv <= 21 && !bj) while (bjVal(B.d) < 17) B.d.push(B.deck.pop());
+  const dv = bjVal(B.d), dbj = dv === 21 && B.d.length === 2;
+  let pay = 0, msg;
+  if (pv > 21) msg = `💥 ${pv} · battın`;
+  else if (bj && !dbj) { pay = Math.round(B.bet * 2.5); msg = '🃏 BLACKJACK!'; }
+  else if (dv > 21 || pv > dv) { pay = B.bet * 2; msg = `✅ ${pv} - ${dv} · kazandın`; }
+  else if (pv === dv) { pay = B.bet; msg = `🤝 ${pv} - ${dv} · berabere`; }
+  else msg = `❌ ${pv} - ${dv} · krupiye kazandı`;
+  G.msg = msg + (pay ? ` · +$${pay.toLocaleString('tr-TR')}` : ''); casinoWin(pay, 'Blackjack'); if (!pay) AudioSys.fail(); renderGame();
+}
+// ---------------- darts
+const DART_SEC = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+function dartBoardDraw(g, S) {
+  const c = S / 2, R = S / 2 - 2;
+  for (let i = 0; i < 20; i++) { const a0 = (i - 0.5) / 20 * Math.PI * 2 - Math.PI / 2, a1 = (i + 0.5) / 20 * Math.PI * 2 - Math.PI / 2; for (const [r0, r1, col] of [[R * 0.95, R, i % 2 ? '#1a8a3a' : '#c81e1e'], [R * 0.62, R * 0.95, i % 2 ? '#f2e8c8' : '#141414'], [R * 0.57, R * 0.62, i % 2 ? '#1a8a3a' : '#c81e1e'], [R * 0.1, R * 0.57, i % 2 ? '#f2e8c8' : '#141414']]) { g.fillStyle = col; g.beginPath(); g.arc(c, c, r1, a0, a1); g.arc(c, c, r0, a1, a0, true); g.fill(); } }
+  g.fillStyle = '#1a8a3a'; g.beginPath(); g.arc(c, c, R * 0.1, 0, 7); g.fill(); g.fillStyle = '#c81e1e'; g.beginPath(); g.arc(c, c, R * 0.045, 0, 7); g.fill();
+  if (S > 200) { g.fillStyle = '#fff'; g.font = 'bold 13px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2 - Math.PI / 2; g.fillText(DART_SEC[i], c + Math.cos(a) * R * 1.0 - Math.cos(a) * 9, c + Math.sin(a) * R - Math.sin(a) * 9); } }
+}
+function dartScore(x, y, S) {
+  const c = S / 2, R = S / 2 - 12, dx = x - c, dy = y - c, d = Math.hypot(dx, dy) / R;
+  if (d < 0.045) return 50; if (d < 0.1) return 25; if (d > 1) return 0;
+  let a = Math.atan2(dy, dx) + Math.PI / 2; if (a < 0) a += Math.PI * 2; const sec = DART_SEC[Math.round(a / (Math.PI * 2) * 20) % 20];
+  return d > 0.95 ? sec * 2 : d > 0.57 && d < 0.62 ? sec * 3 : sec;
+}
+// ---------------- bowling (top-down lane, swinging aim, 10 pins with simple circle physics)
+function bowlReset(G) { G.pins = []; for (let r = 0; r < 4; r++) for (let c = 0; c <= r; c++) G.pins.push({ x: 150 + (c - r / 2) * 34, y: 70 - r * 26 + 26 * 3 - 60, vx: 0, vy: 0, down: false }); }
+function arcadeLoop() {
+  const G = CAS.game; if (!G) { CAS.anim = null; return; }
+  const cv = $('csCanvas'); if (!cv) { CAS.anim = requestAnimationFrame(arcadeLoop); return; }
+  const g = cv.getContext('2d'), t = performance.now() / 1000;
+  if (G.g === 'darts') {
+    g.fillStyle = '#1a1020'; g.fillRect(0, 0, 300, 300); g.save(); g.translate(10, 10); dartBoardDraw(g, 280); g.restore();
+    for (const d of G.darts || []) { g.fillStyle = '#ffd040'; g.beginPath(); g.arc(d.x, d.y, 4, 0, 7); g.fill(); g.strokeStyle = '#000'; g.stroke(); }
+    if (G.playing) { const sway = 1 + (G.darts || []).length * 0.15; G.ax = 150 + Math.sin(t * 2.1 * sway) * 70 + Math.sin(t * 5.3) * 14; G.ay = 150 + Math.sin(t * 2.9 * sway + 1) * 70 + Math.cos(t * 4.1) * 14; g.strokeStyle = '#40ffd0'; g.lineWidth = 2; g.beginPath(); g.arc(G.ax, G.ay, 10, 0, 7); g.moveTo(G.ax - 16, G.ay); g.lineTo(G.ax + 16, G.ay); g.moveTo(G.ax, G.ay - 16); g.lineTo(G.ax, G.ay + 16); g.stroke(); }
+  } else {
+    if (!G.pins) bowlReset(G);
+    g.fillStyle = '#c8a070'; g.fillRect(60, 0, 180, 360); g.fillStyle = '#3a2a1a'; g.fillRect(40, 0, 20, 360); g.fillRect(240, 0, 20, 360); g.fillStyle = '#1a1010'; g.fillRect(0, 0, 40, 360); g.fillRect(260, 0, 40, 360);
+    for (let i = 0; i < 7; i++) { g.fillStyle = '#8a5a3a'; g.beginPath(); g.moveTo(150 + (i - 3) * 20, 250); g.lineTo(145 + (i - 3) * 20, 262); g.lineTo(155 + (i - 3) * 20, 262); g.fill(); }
+    const B = G.ball;
+    if (G.playing && G.stage === 0) { G.aim = 150 + Math.sin(t * 2.2) * 75; }
+    if (G.playing && G.stage === 1) { G.spin = Math.sin(t * 3.1) * 1; }
+    if (B) {
+      for (let s = 0; s < 4; s++) {
+        B.vx += B.curve * 0.004; B.x += B.vx; B.y += B.vy;
+        if (B.x < 60 || B.x > 240) { B.vx = 0; B.x = clamp(B.x, 50, 250); B.gutter = true; }
+        for (const P of G.pins) { if (P.down && Math.hypot(P.vx, P.vy) < 0.05) continue; const d = Math.hypot(P.x - B.x, P.y - B.y); if (d < 17 && !B.gutter) { const nx = (P.x - B.x) / d, ny = (P.y - B.y) / d; P.vx += nx * 3.2 + B.vx * 0.3; P.vy += ny * 3.2 + B.vy * 0.4; P.down = true; } }
+        for (const P of G.pins) { P.x += P.vx; P.y += P.vy; P.vx *= 0.97; P.vy *= 0.97; for (const Q of G.pins) { if (Q === P) continue; const d = Math.hypot(Q.x - P.x, Q.y - P.y); if (d < 14 && d > 0 && (Math.hypot(P.vx, P.vy) > 0.6)) { Q.vx += (Q.x - P.x) / d * 1.6; Q.vy += (Q.y - P.y) / d * 1.6; Q.down = true; } } }
+      }
+      if (B.y < -20) { G.ball = null; const n = G.pins.filter(p => p.down).length; G.shots.push(n - (G.prevDown || 0)); G.prevDown = n;
+        if (G.shots.length === 1 && n === 10) { G.strike = true; endArcade(); } else if (G.shots.length >= 2) endArcade(); else { G.stage = 0; G.pins = G.pins.filter(p => !p.down).map(p => ({ ...p, vx: 0, vy: 0 })); G.prevDown = 0; G.left = G.pins.length; G.msg = `${n} kuka devrildi · ikinci atış (kalan ${G.pins.length})`; renderGame(); } }
+    }
+    for (const P of G.pins) { g.fillStyle = P.down ? '#888' : '#fff'; g.beginPath(); g.arc(P.x, P.y, 7, 0, 7); g.fill(); g.strokeStyle = '#c81e1e'; g.lineWidth = 2; g.stroke(); }
+    const bx = B ? B.x : (G.aim || 150), by = B ? B.y : 330;
+    g.fillStyle = '#2a3a8a'; g.beginPath(); g.arc(bx, by, 10, 0, 7); g.fill();
+    if (G.playing && !B) { g.strokeStyle = '#40ffd0'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (G.spin || 0) * 40, 60); g.stroke(); g.setLineDash([]); }
+  }
+  CAS.anim = requestAnimationFrame(arcadeLoop);
+}
+function arcadeAct() {
+  const G = CAS.game; if (!G || !G.playing) return;
+  if (G.g === 'darts') {
+    G.darts.push({ x: G.ax, y: G.ay }); const sc = dartScore(G.ax - 10, G.ay - 10, 280); G.score += sc; AudioSys.tone(300, 0.08, 0.15, 'square');
+    G.msg = `🎯 ${sc} puan · toplam ${G.score} · ${3 - G.darts.length} ok kaldı`; const me = $('csMsg'); if (me) me.textContent = G.msg;
+    if (G.darts.length >= 3) endArcade();
+  } else {
+    if (G.ball) return;
+    if (G.stage === 0) { G.stage = 1; renderGame(); return; }
+    G.ball = { x: G.aim, y: 330, vx: 0, vy: -4.2, curve: G.spin || 0 }; G.stage = 2; AudioSys.burst(0.6, 200, 0.2); renderGame();
+  }
+}
+function startArcade() {
+  const G = CAS.game;
+  if (!G.duel && !casinoBet(50)) return;
+  Object.assign(G, { playing: true, score: 0, darts: [], shots: [], stage: 0, ball: null, strike: false, prevDown: 0, msg: null, sent: false }); if (G.g === 'bowling') bowlReset(G);
+  renderGame();
+}
+function endArcade() {
+  const G = CAS.game; G.playing = false;
+  if (G.g === 'bowling') { const down = G.shots.reduce((a, b) => a + b, 0); G.score = down + (G.strike ? 5 : 0); }
+  const sc = G.score;
+  if (G.duel) { G.msg = `Skorun: ${sc} · rakibin skoru bekleniyor…`; renderGame(); sendDuelScore(sc); return; }
+  const mult = G.g === 'darts' ? (sc >= 150 ? 4 : sc >= 100 ? 2 : sc >= 60 ? 1 : 0) : (G.strike ? 5 : sc >= 7 ? 2 : sc >= 5 ? 1 : 0);
+  const pay = 50 * mult; casinoWin(pay, G.g === 'darts' ? 'Dart ödülü' : 'Bowling ödülü');
+  G.msg = `${G.g === 'darts' ? '🎯' : G.strike ? '🎳 STRIKE!' : '🎳'} Skor ${sc}${G.g === 'bowling' ? ' kuka' : ''} · ${pay ? '+$' + pay : 'ödül yok'}`;
+  if (!pay) AudioSys.fail(); renderGame();
+}
+// ---------------- player-vs-player duels (darts / bowling, both stake the same amount, the higher score takes the pot)
+function duelInvite() {
+  const G = CAS.game, near = [...MP.remotes.values()].filter(r => !r.info.jail); G.pickDuel = true;
+  if (!near.length) { G.pickDuel = false; G.msg = '⚔ Odada meydan okunacak oyuncu yok'; renderGame(); return; }
+  $('casino').innerHTML = `<div class="csBox"><div class="csHead"><b>⚔ ${G.g === 'darts' ? 'Dart' : 'Bowling'} düellosu</b><span>$${Math.round(state.money).toLocaleString('tr-TR')}</span><button data-cs="close">✕</button></div><div class="csMsg">Rakip ve bahis seç · ikiniz de aynı miktarı koyarsınız, yüksek skor potu alır</div>${chipRow()}<div class="csBets">${near.map(r => `<button data-duel="${esc(r.id)}">${esc(r.info.name)}</button>`).join('')}</div></div>`;
+}
+function sendDuel(to) {
+  const G = CAS.game, stake = CAS.chip; G.pickDuel = false;
+  if (!casinoBet(stake)) { renderGame(); return; }
+  CAS.duel = { id: Math.random().toString(36).slice(2, 8), vs: to, g: G.g, stake, mine: null, theirs: null, accepted: false, t: 30 };
+  mpSend({ t: 'duel', to, g: G.g, stake, did: CAS.duel.id }); floatText('⚔ Meydan okuma gönderildi'); G.msg = `⚔ ${MP.remotes.get(to).info.name} cevabı bekleniyor…`; renderGame();
+}
+function sendDuelScore(sc) {
+  const D = CAS.duel; if (!D || D.mine != null) return; D.mine = sc; if (CAS.game) CAS.game.sent = true;
+  mpSend({ t: 'duel_sc', to: D.vs, did: D.id, sc }); resolveDuel();
+}
+function resolveDuel() {
+  const D = CAS.duel; if (!D || D.mine == null || D.theirs == null) return;
+  const r = MP.remotes.get(D.vs), name = r ? r.info.name : 'Rakip';
+  let msg;
+  if (D.mine > D.theirs) { casinoWin(D.stake * 2, 'Düello kazancı'); msg = `🏆 Kazandın! ${D.mine} - ${D.theirs} · +$${D.stake * 2}`; showBig('🏆 DÜELLOYU KAZANDIN', '#ffd040', 3, `${name} · +$${D.stake * 2}`); }
+  else if (D.mine === D.theirs) { casinoWin(D.stake, 'Düello iadesi'); msg = `🤝 Berabere ${D.mine} - ${D.theirs} · bahis iade`; }
+  else { msg = `😞 ${name} kazandı · ${D.mine} - ${D.theirs}`; AudioSys.fail(); }
+  CAS.duel = null; if (CAS.game) { CAS.game.duel = null; CAS.game.msg = msg; renderGame(); } else floatText(msg);
+}
+function handleCasino(d) {
+  const r = MP.remotes.get(d.id);
+  switch (d.t) {
+    case 'duel':
+      if (!r || CAS.duel || CAS.inv) { mpSend({ t: 'duel_no', to: d.id, did: d.did }); return true; }
+      CAS.inv = { from: d.id, g: d.g === 'bowling' ? 'bowling' : 'darts', stake: Math.max(10, Math.min(1000, +d.stake || 0)), did: String(d.did).slice(0, 10) };
+      mpModal(`<b>⚔ ${esc(r.info.name)} seni ${CAS.inv.g === 'darts' ? 'dart' : 'bowling'} düellosuna çağırıyor</b><small>Bahis: $${CAS.inv.stake} (ikiniz de koyarsınız, yüksek skor $${CAS.inv.stake * 2} alır)</small><div class="mmBtns"><button data-csd="yes" ${state.money < CAS.inv.stake ? 'disabled' : ''}>KABUL</button><button data-csd="no" class="grey">Reddet</button></div>`);
+      return true;
+    case 'duel_ok': if (CAS.duel && CAS.duel.id === d.did) { CAS.duel.accepted = true; const vs = r ? r.info.name : 'Rakip'; CAS.duel.vsName = vs; if (!CAS.game) openGame(CAS.duel.g); Object.assign(CAS.game, { duel: { vs, stake: CAS.duel.stake } }); startArcade(); } return true;
+    case 'duel_no': if (CAS.duel && CAS.duel.id === d.did && !CAS.duel.accepted) { casinoWin(CAS.duel.stake, 'Düello iadesi'); CAS.duel = null; if (CAS.game) { CAS.game.msg = '⚔ Meydan okuma reddedildi'; renderGame(); } } return true;
+    case 'duel_sc': if (CAS.duel && CAS.duel.id === d.did) { CAS.duel.theirs = Math.max(0, Math.min(200, +d.sc || 0)); resolveDuel(); } return true;
+  }
+  return false;
+}
+function initCasinoUI() {
+  const el = $('casino');
+  const act = e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return; e.preventDefault(); e.stopPropagation();
+    const d = b.dataset, G = CAS.game; if (!G) return;
+    if (d.cs === 'close') return closeGame();
+    if (d.chip) { CAS.chip = +d.chip; renderGame(); return; }
+    if (d.cs === 'spin') spinSlots();
+    if (d.rl) playRoulette(d.rl);
+    if (d.bj) bjAct(d.bj);
+    if (d.cs === 'play') startArcade();
+    if (d.cs === 'act') arcadeAct();
+    if (d.cs === 'duel') duelInvite();
+    if (d.duel) sendDuel(d.duel);
+  };
+  el.addEventListener('click', act); el.addEventListener('touchstart', act, { passive: false });
+  addEventListener('keydown', e => { if (!CAS.game) return; if (e.code === 'Escape') closeGame(); if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (CAS.game.playing) arcadeAct(); } }, true);
+  $('mpModal').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !b.dataset.csd || !CAS.inv) return;
+    const I = CAS.inv; CAS.inv = null; closeModal();
+    if (b.dataset.csd === 'yes' && casinoBet(I.stake)) {
+      const r = MP.remotes.get(I.from); CAS.duel = { id: I.did, vs: I.from, g: I.g, stake: I.stake, mine: null, theirs: null, accepted: true };
+      mpSend({ t: 'duel_ok', to: I.from, did: I.did }); openGame(I.g, { vs: r ? r.info.name : 'Rakip', stake: I.stake }); startArcade();
+    } else mpSend({ t: 'duel_no', to: I.from, did: I.did });
+  });
+}
+function casinoDoorInteract(d) { if (!d.casino) return false; state.interact = { label: '🎰 VISTA CASINO · içeri gir', fn: enterCasino }; return true; }
+
+function updateCasino(dt) {
+  const D = CAS.duel; if (D && !D.accepted) { D.t -= dt; if (D.t <= 0) { casinoWin(D.stake, 'Düello iadesi'); CAS.duel = null; floatText('⚔ Meydan okumaya cevap gelmedi · bahis iade'); if (CAS.game) { CAS.game.msg = null; renderGame(); } } }
+  if (D && D.accepted && D.mine != null && D.theirs == null) { D.wait = (D.wait || 0) + dt; if (D.wait > 90 || !MP.remotes.has(D.vs)) { casinoWin(D.stake, 'Düello iadesi'); CAS.duel = null; floatText('⚔ Rakip skorunu göndermedi · bahis iade'); } }
+  if (state.interior === 'casino') updateCasinoInside(dt);
+}
+
 // ============================================================ CLOTHING STORE
 const DEFAULT_LOOK = { skin: '#c58c60', shirt: '#e8e4da', pants: '#3a4a5e', hair: '#1a1210', shoes: '#f2f2f2', glasses: true, cap: null, shorts: false, longHair: false };
 const SHIRTS = [['Beyaz', '#f0eee8'], ['Siyah', '#18181c'], ['Kırmızı', '#b0202a'], ['Lacivert', '#1e2e5a'], ['Hawaii Mavisi', '#2a9ab8'], ['Mercan', '#f07060'], ['Haki', '#7a7a50'], ['Pembe', '#f0a0c0']];
@@ -7425,6 +7725,7 @@ function applyPacket(d) {
   if (handleFamily(d)) return;
   if (handleCemetery(d)) return;
   if (handlePrison(d)) return;
+  if (handleCasino(d)) return;
   if (handleSea(d)) return;
   if (handleModes(d)) return;
   if (handlePolice(d)) return;
@@ -9675,7 +9976,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
-    if ((d.market || d.home || d.jobs || d.hospital) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d))) return;
+    if ((d.market || d.home || d.jobs || d.hospital || d.casino) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d))) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -9847,6 +10148,7 @@ function loop(now) {
   updateCemetery(dt);
   updateJail(dt);
   updateJobs(dt);
+  updateCasino(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

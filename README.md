@@ -107,6 +107,17 @@ Telefonda ve bilgisayarda çalışır, kurulum gerekmez.
 - **🚑 Ambulans** (Stajyer → Acil Servis Şefi): yaralının yanında 🩺 İLK YARDIM yap, sirenli ambulansla **🏥 Vista Bay Hastanesi**'ne yetiştir; yaralının durumu zamanla kötüleşir, ne kadar hızlıysan o kadar çok kazanırsın
 - **🏥 Hastane**: kapısında $150'a anında tedavi (can %100)
 
+## 🎰 Vista Casino & eğlence
+Şehir merkezindeki neon tabelalı **🎰 VISTA CASINO**'ya gir (haritada altın sarısı nokta): bordo halılı, avizeli salonda masalara yürü ve E'ye bas. Fiş seçimi: $10 · $50 · $100 · $500 · $1.000.
+- **🎰 Slot makineleri** (6 adet): 🍒🍋🔔⭐💎 üçlüleri 5x-50x, iki kiraz 2x; **7️⃣7️⃣7️⃣ = büyüyen JACKPOT** (her bahsin %5'i havuza; kazanan SON DAKİKA'da duyurulur)
+- **🎡 Rulet** (Avrupa, tek sıfır): kırmızı/siyah, tek/çift, 1-18/19-36 (2x), düzinler (3x), tek sayı (36x); masadaki çark döner
+- **🃏 Blackjack**: krupiye 17'de durur; çek, dur, ikiye katla; blackjack 3:2 öder
+- **🎯 Dart**: sallanan nişangâhla 3 ok at (gerçek dart tahtası puanlaması: 20 dilim, çift/üçlü halka, bull 50); $50 · 100+ puan 2x, 150+ puan 4x
+- **🎳 Bowling**: nişan al (top şeritte gidip gelir), falsoyu ayarla, fırlat; 10 kuka fiziği, 2 atış; 7+ kuka 2x, strike 5x
+- **⚔ Oyuncular arası bahis**: dart veya bowling'de "Oyuncuya meydan oku" → odadaki birini ve bahsi seç; ikiniz de aynı bahsi koyarsınız, yüksek skor potu alır (beraberlikte iade; cevap ya da skor gelmezse otomatik iade)
+- **🍸 Bar**: $15 kokteyl (💧 +25)
+- **🛑 Sorumlu oyun**: günlük $25.000 kayıp limiti
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
