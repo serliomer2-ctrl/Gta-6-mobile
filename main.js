@@ -335,6 +335,7 @@ function init() {
   buildMaterials();
   buildGround();
   buildCity();
+  prepCourt();
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
   buildAirport();
   buildIslands();
@@ -397,6 +398,7 @@ function init() {
   buildCarClub();
   buildShelter();
   buildBizPremises();
+  buildM27();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -1740,7 +1742,7 @@ function updatePlayerFoot(dt) {
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
   let mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
   const run = input.sprint || mag > 0.92;
-  const target = (state.baby && state.baby.grow < 30 ? 0.65 : 1) * (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1) * floodSlow();
+  const target = (state.baby && state.baby.grow < 30 ? 0.65 : 1) * (mag > 0.08 ? (state.hover ? (run ? 24 : 9 + mag * 9) : run ? 6.8 * runBonus() : 2.6 + mag * 1.5) : 0) * (ctfSlow() ? 0.7 : 1) * floodSlow();
   player.speed = damp(player.speed, target, 10, dt);
   if (mag > 0.08) { const l = Math.hypot(mx, mz); mx /= l; mz /= l; if (player.aimT <= 0) player.yaw = wrapA(player.yaw + wrapA(Math.atan2(mx, mz) - player.yaw) * (1 - Math.exp(-12 * dt))); }
   else { mx = Math.sin(player.yaw); mz = Math.cos(player.yaw); }
@@ -2870,6 +2872,7 @@ function drawMinimap() {
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
   if (!state.interior) for (const Pm of BIZ.prem) { const o = premOwner(Pm); dot(Pm.d.x, Pm.d.z, o ? (o.me ? '#7dff9a' : o.color) : '#40a0ff', o && o.me ? 8 : 6, !!(o && o.me)); }
   if (!state.interior && PET.shelter) dot(PET.shelter.x, PET.shelter.z, '#40c060', 7, false);
+  m27MapDots(dot);
   if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
@@ -3133,6 +3136,413 @@ function upgradeTrees(tI, cI) {
   make(STREET_TREES, (i, m, c, [x, y, z]) => { const s = eR(0.62, 0.8); m.compose(ps.set(x, y, z), q.setFromAxisAngle(up, envRng() * 6.3), sc.set(s, s * eR(0.95, 1.1), s)); c.setHSL(eR(0.22, 0.3), eR(0.25, 0.4), eR(0.72, 0.85)); });
 }
 
+// ============================================================ FUEL · GYM · FISHING · LOTTERY · BASKETBALL
+const L2 = () => state.life2 || (state.life2 = { str: 0, sta: 0, gymDay: '', gymN: 0, rod: false, bait: 0, fish: [], best: 0, tickets: [], can: 0, hoopBest: 0, hoopDay: '', fishN: 0 });
+const todayKey = () => new Date().toDateString();
+const seeded = s => () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const M27 = { fuel: [], gym: null, stall: null, kiosk: null, court: null, robCd: {} };
+const signTexM = (w, h, bg, fg, t1, t2) => canvasTex(w, h, g => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(6, 6, w - 12, h - 12); g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `bold ${t2 ? Math.round(h * 0.36) : Math.round(h * 0.5)}px Arial`; g.fillText(t1, w / 2, t2 ? h * 0.4 : h / 2); if (t2) { g.font = `bold ${Math.round(h * 0.2)}px Arial`; g.fillText(t2, w / 2, h * 0.76); } });
+const freeDoorM = q => q.y0 < 1 && q.blk && !(q.market || q.home || q.jail || q.jobs || q.hospital || q.casino || q.shelter || q.biz || q.gym) && lifeDoorFree(q);
+
+// ---------------- generic mini-game panel (bottom of the screen; the 3D scene stays visible)
+const MG = { on: null };
+function mgOpen(o) {
+  MG.on = o; o.t = 0; const el = $('mgPanel');
+  el.innerHTML = `<b>${o.title}</b><small id="mgSub">${o.sub || ''}</small><canvas id="mgCv" width="320" height="54"></canvas><div class="mmBtns"><button id="mgBtn">${o.btn}</button><button id="mgX" class="grey">✕</button></div>`;
+  el.style.display = 'flex';
+  const b = $('mgBtn');
+  b.addEventListener('pointerdown', e => { e.preventDefault(); if (MG.on === o && o.press) o.press(); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { if (MG.on === o && o.release) o.release(); });
+  $('mgX').onclick = () => mgClose(true);
+}
+function mgClose(cancel) { const o = MG.on; MG.on = null; $('mgPanel').style.display = 'none'; if (o && o.close) o.close(!!cancel); }
+const mgSub = t => { const e = $('mgSub'); if (e) e.innerHTML = t; };
+function updateMG(dt) {
+  const o = MG.on; if (!o) return;
+  o.t += dt; if (o.tick) o.tick(dt); if (MG.on !== o) return;
+  const cv = $('mgCv'); if (cv) { const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height); o.draw(g, cv.width, cv.height); }
+}
+addEventListener('keydown', e => { if (!MG.on || !(e.code === 'Space' || e.code === 'KeyE')) return; e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat && MG.on.press) MG.on.press(); }, true);
+addEventListener('keyup', e => { if (!MG.on || !(e.code === 'Space' || e.code === 'KeyE')) return; e.preventDefault(); e.stopImmediatePropagation(); if (MG.on.release) MG.on.release(); }, true);
+const barBg = (g, w, y, h) => { g.fillStyle = '#ffffff18'; g.fillRect(8, y, w - 16, h); };
+
+// ============================================================ ⛽ FUEL
+const fuelable = c => c && c.spec && !c.spec.boat && !c.spec.heli && !c.spec.plane && !c.spec.bus && !c.remote;
+function initFuel(c) { if (c.fuel == null) c.fuel = c.owned ? 100 : 30 + Math.floor(Math.random() * 65); }
+{ const _cp = carPhysics; carPhysics = function (c, dt, thr, ...rest) { if (c.fuel != null && c.fuel <= 0 && c === state.inCar && thr > 0) thr *= 0.06; return _cp(c, dt, thr, ...rest); }; }
+function buildFuelStations() {
+  const cand = blocks.flat().filter(b => b.dist === 'mixed' || b.dist === 'industrial' || b.dist === 'midtown').sort((a, b) => ((a.i * 7 + a.j * 13) % 17) - ((b.i * 7 + b.j * 13) % 17) || a.i - b.i || a.j - b.j);
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f0, roughness: 0.5 }), red = new THREE.MeshStandardMaterial({ color: 0xd8261c, roughness: 0.45 }), dark = new THREE.MeshStandardMaterial({ color: 0x24272c, metalness: 0.4, roughness: 0.5 });
+  for (const b of cand) {
+    if (M27.fuel.length >= 4) break;
+    for (const ox of [0, -20, 20]) {
+      const x = b.cx + ox, z = b.cz + BLOCK / 2 - 2.6;
+      if (SHOPS.some(s => Math.hypot(s.x - x, s.z - z) < 30) || M27.fuel.some(s => Math.hypot(s.x - x, s.z - z) < 180)) continue;
+      if (b.bld.some(o => x + 6 > o.x0 && x - 6 < o.x1 && z + 3 > o.z0 && z - 3 < o.z1)) continue;
+      if (DOORS.some(d => Math.hypot(d.x - x, d.z - z) < 8) || (typeof BUS_STOPS !== 'undefined' && BUS_STOPS.some(s => Math.hypot((s.x || 0) - x, (s.z || s.roadZ || 0) - z) < 14))) continue;
+      const g = new THREE.Group(); g.position.set(x, 0.25, z);
+      g.add(new THREE.Mesh(merge([new THREE.BoxGeometry(11, 0.5, 7.5).translate(0, 4.75, 1)]), white));
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(11.05, 0.22, 7.55).translate(0, 4.45, 1), red));
+      g.add(new THREE.Mesh(merge([[-5, -2.4], [5, -2.4], [-5, 4.4], [5, 4.4]].map(([px, pz]) => new THREE.BoxGeometry(0.3, 4.5, 0.3).translate(px, 2.25, pz))), white));
+      for (const px of [-2.6, 2.6]) {
+        g.add(new THREE.Mesh(new RoundedBoxGeometry(0.9, 1.7, 0.6, 2, 0.08).translate(px, 0.85, 1.7), red));
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.02).translate(px, 1.3, 2.01), new THREE.MeshBasicMaterial({ color: 0x103a20 })));
+        g.add(new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 12, Math.PI).rotateY(Math.PI / 2).translate(px + 0.47, 0.9, 1.7), dark));
+      }
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.8, 2.6).translate(3.4, 1.4, -1.5), white), new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.05).translate(3.0, 1.6, -0.18), new THREE.MeshStandardMaterial({ color: 0x8ab4d0, roughness: 0.1, metalness: 0.5 })));
+      g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(g);
+      makeZone('fuel', x, z - 2.4, 'VISTA PETROL', '⛽', '#2a0604', '#ffcc22', 0xffb020, { glow: true, canopy: true, signY: 5.9, ringR: 3.6, ringOff: 5.4, needCar: true, label: '⛽ YAKIT AL' });
+      M27.fuel.push({ x, z, kx: x + 3.0, kz: z - 0.1, id: M27.fuel.length });
+      break;
+    }
+  }
+}
+function fuelItems() {
+  const c = state.inCar, it = [];
+  if (!fuelable(c)) return [{ sec: 'Bu araç benzinle çalışmıyor' }];
+  initFuel(c);
+  const need = Math.ceil(100 - c.fuel), full = Math.ceil(need * 1.5);
+  it.push({ sec: `⛽ Depo %${Math.round(c.fuel)} · 🛢 bidon ${L2().can}` });
+  it.push({ name: '⛽ Depoyu doldur', desc: `${need} litre · litresi $1,5`, price: full, dis: need < 1 ? 'DOLU' : null, buy: () => { c.fuel = 100; floatText('⛽ Depo full!'); AudioSys.tone(300, 0.6, 0.1, 'sawtooth', 1.4); } });
+  it.push({ name: '⛽ 25 litre', desc: 'Yarım depo bile değil ama idare eder', price: 38, dis: need < 25 ? 'YER YOK' : null, buy: () => { c.fuel = Math.min(100, c.fuel + 25); } });
+  it.push({ name: '🛢 Benzin bidonu', desc: 'Yolda kalırsan B tuşu / ⛽ göstergesine dokun → +30 litre', price: 60, buy: () => { L2().can++; } });
+  it.push({ name: '🥤 Enerji içeceği', desc: 'Susuzluk +35', price: 8, buy: () => { state.water = Math.min(100, (state.water ?? 100) + 35); floatText('🥤 Ferahladın'); } });
+  it.push({ name: '🥪 Sandviç', desc: 'Açlık +30', price: 10, buy: () => { state.food = Math.min(100, (state.food ?? 100) + 30); floatText('🥪 Afiyet olsun'); } });
+  return it;
+}
+function useCan() {
+  const c = state.inCar; if (!fuelable(c)) return;
+  if (!L2().can) { floatText('🛢 Bidonun yok · benzin istasyonundan al'); return; }
+  if (c.fuel > 85) { floatText('⛽ Depo zaten dolu sayılır'); return; }
+  L2().can--; c.fuel = Math.min(100, c.fuel + 30); floatText('🛢 Bidondan +30 litre'); saveGame();
+}
+addEventListener('keydown', e => { if (e.code === 'KeyB' && state.inCar && !state.shopOpen && !state.phoneOpen) useCan(); });
+function updateFuel(dt) {
+  const c = state.inCar, hud = $('fuelHud');
+  if (!fuelable(c)) { if (hud.style.display !== 'none') hud.style.display = 'none'; return; }
+  initFuel(c);
+  const sp = carSpeed(c), before = c.fuel;
+  if (!state.shopOpen) c.fuel = Math.max(0, c.fuel - dt * (0.008 + 0.16 * Math.min(1, sp / c.spec.max)) * (c.nitroOn ? 2.5 : 1) * (c.spec.bike ? 0.6 : 1));
+  if (before >= 15 && c.fuel < 15) { floatText('⛽ Yakıt azaldı · haritada turuncu ⛽ istasyonlar'); AudioSys.tone(880, 0.15, 0.12, 'square'); }
+  if (before > 0 && c.fuel <= 0) showBig('⛽ BENZİN BİTTİ', '#ff9a30', 3, L2().can ? 'B / ⛽ ile bidonu kullan' : 'Aracı istasyona it ya da başka araç bul');
+  hud.style.display = 'block';
+  hud.firstChild.style.width = c.fuel + '%'; hud.firstChild.style.background = c.fuel < 15 ? '#ff3a2a' : c.fuel < 35 ? '#ffb020' : '#5ad06a';
+}
+function updateFuelRob() {
+  if (state.interact || state.inCar || state.interior || state.dead) return;
+  for (const s of M27.fuel) if (Math.hypot(player.pos.x - s.kx, player.pos.z - s.kz) < 1.6) {
+    const cd = (M27.robCd[s.id] || 0) - state.now;
+    state.interact = cd > 0 ? { label: `⛽ Kasa boş · ${Math.ceil(cd)} sn`, fn: null } : { label: '💰 BENZİNLİK KASASINI SOY', fn: () => { M27.robCd[s.id] = state.now + 300; const a = Math.round(MR(300, 900) / 10) * 10; earn(a, '⛽ Benzinlik soygunu'); S().robberies = (S().robberies || 0) + 1; addHeat(2); AudioSys.cash(); floatText(`💰 +$${a} · 🚨 alarm çaldı!`); } };
+    return;
+  }
+}
+
+// ============================================================ 💪 GYM
+function buildGym() {
+  const gl = DOORS.filter(q => freeDoorM(q) && ['midtown', 'mixed', 'downtown'].includes(q.blk.dist)).sort((a, b) => a.id - b.id), d = gl[9] || gl[0]; if (!d) return;
+  d.gym = true; M27.gym = d;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.3), new THREE.MeshBasicMaterial({ map: signTexM(512, 120, '#111', '#ff5a2a', '💪 IRON GYM') }));
+  m.position.set(d.fx + d.nx * 0.15, d.y0 + 3.7, d.fz + d.nz * 0.15); m.rotation.y = Math.atan2(d.nx, d.nz); scene.add(m);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(d.x, groundY(d.x, d.z) + 0.05, d.z); scene.add(ring);
+}
+const fitBar = v => '▮'.repeat(Math.round(v / 10)) + '▯'.repeat(10 - Math.round(v / 10));
+const runBonus = () => 1 + L2().sta * 0.0015;
+function gymItems() {
+  const L = L2(), it = [];
+  if (L.gymDay !== todayKey()) { L.gymDay = todayKey(); L.gymN = 0; }
+  it.push({ sec: `💪 Güç ${fitBar(L.str)} ${Math.round(L.str)} · 🏃 Kondisyon ${fitBar(L.sta)} ${Math.round(L.sta)}` });
+  it.push({ sec: `Bugün ${L.gymN}/6 antrenman · Güç aldığın hasarı %${Math.round(L.str * 0.2)} azaltır · Kondisyon koşu hızını %${Math.round(L.sta * 0.15)} artırır` });
+  const tired = L.gymN >= 6, hungry = (state.food ?? 100) < 15 || (state.water ?? 100) < 15;
+  const W = (name, desc, price, kind) => it.push({ name, desc, price, dis: tired ? 'YORGUN' : hungry ? 'AÇ/SUSUZ' : null, close: true, buy: () => { L.gymN++; state.food = Math.max(0, (state.food ?? 100) - 8); state.water = Math.max(0, (state.water ?? 100) - 12); startRepGame(kind); } });
+  W('🏋 Bench press', 'Güç · yeşil alanda bas, 10 tekrar', 15, 'str');
+  W('🏃 Koşu bandı', 'Kondisyon · ritmi tuttur, 10 tur', 15, 'sta');
+  W('🥊 Kum torbası', 'Güç + Kondisyon (yarı yarıya) · daha hızlı', 25, 'box');
+  it.push({ name: '🥤 Protein shake', desc: 'Açlık +20 · susuzluk +25', price: 12, buy: () => { state.food = Math.min(100, (state.food ?? 100) + 20); state.water = Math.min(100, (state.water ?? 100) + 25); } });
+  it.push({ name: '🚿 Duş al', desc: 'Antrenman sonrası ferahlık · can +15', price: 0, btn: 'DUŞ', buy: () => { state.health = Math.min(100, state.health + 15); floatText('🚿 Tertemiz oldun'); } });
+  return it;
+}
+function startRepGame(kind) {
+  const L = L2(), stat = kind === 'sta' ? L.sta : L.str, speed = (kind === 'box' ? 3.4 : 2.4) + stat / 60;
+  let reps = 0, good = 0, flash = 0, zone = 0.5, last = '';
+  const name = { str: '🏋 BENCH PRESS', sta: '🏃 KOŞU BANDI', box: '🥊 KUM TORBASI' }[kind];
+  mgOpen({
+    title: name, sub: 'Gösterge yeşil alandayken <b>BAS</b> (Space / E) · 0/10', btn: 'BAS',
+    press() {
+      const p = (Math.sin(this.t * speed) + 1) / 2, w = 0.2 - reps * 0.008, ok = Math.abs(p - zone) < w / 2;
+      reps++; if (ok) { good++; AudioSys.tone(660 + good * 30, 0.08, 0.15, 'triangle'); haptic(20); } else AudioSys.tone(180, 0.12, 0.12, 'square');
+      flash = 1; last = ok ? '✅' : '❌'; zone = 0.3 + Math.random() * 0.4;
+      mgSub(`${last} ${good} iyi tekrar · ${reps}/10`);
+      if (reps >= 10) { this.done = true; mgClose(false); }
+    },
+    tick(dt) { this.pos = (Math.sin(this.t * speed) + 1) / 2; this.zone = zone; this.good = good; this.reps = reps; flash = Math.max(0, flash - dt * 3); const h = player.human; if (h) { const a = kind === 'sta' ? 0 : -2.7 * (0.5 + 0.5 * Math.sin(this.t * speed)); if (kind !== 'sta') { h.armL.rotation.x = h.armR.rotation.x = a; } } },
+    draw(g, w, hh) { barBg(g, w, 14, 24); const ww = (0.2 - reps * 0.008) * (w - 16); g.fillStyle = '#3ad06a'; g.fillRect(8 + zone * (w - 16) - ww / 2, 14, ww, 24); const p = (Math.sin(this.t * speed) + 1) / 2; g.fillStyle = flash > 0 ? '#fff' : '#ffd23a'; g.fillRect(8 + p * (w - 16) - 3, 8, 6, 36); },
+    close(cancel) {
+      if (cancel && !this.done) { floatText('Antrenman yarıda kaldı'); return; }
+      const gain = good * 0.7, f = s => gain * (1 - s / 130);
+      if (kind === 'str') L.str = Math.min(100, L.str + f(L.str)); else if (kind === 'sta') L.sta = Math.min(100, L.sta + f(L.sta)); else { L.str = Math.min(100, L.str + f(L.str) * 0.6); L.sta = Math.min(100, L.sta + f(L.sta) * 0.6); }
+      showBig(good >= 8 ? '💪 HARİKA ANTRENMAN' : good >= 5 ? '💪 İYİ ANTRENMAN' : '😮‍💨 ZOR GÜN', good >= 5 ? '#7dff9a' : '#ffb020', 3, `${good}/10 iyi tekrar · 💪 Güç ${Math.round(L.str)} · 🏃 Kondisyon ${Math.round(L.sta)}`);
+      if (good >= 5) addRep(2, 'antrenman'); saveGame();
+    }
+  });
+}
+{ const _ad = applyDamage; applyDamage = function (a) { return _ad(a * (1 - (state.life2 ? state.life2.str : 0) * 0.002)); }; }
+
+// ============================================================ 🎣 FISHING
+const FISH_T = [
+  { k: 'hamsi', n: 'Hamsi', e: '🐟', w: 26, kg: [0.02, 0.05], pkg: 300 }, { k: 'istavrit', n: 'İstavrit', e: '🐟', w: 22, kg: [0.1, 0.3], pkg: 120 },
+  { k: 'cipura', n: 'Çipura', e: '🐠', w: 14, kg: [0.3, 1.2], pkg: 75 }, { k: 'levrek', n: 'Levrek', e: '🐟', w: 12, kg: [0.4, 2.5], pkg: 70 },
+  { k: 'lufer', n: 'Lüfer', e: '🐟', w: 8, night: 2.2, kg: [0.6, 3], pkg: 110 }, { k: 'kalkan', n: 'Kalkan', e: '🐡', w: 4, kg: [1.5, 6], pkg: 90 },
+  { k: 'ahtapot', n: 'Ahtapot', e: '🐙', w: 3, kg: [0.8, 4], pkg: 80 }, { k: 'orkinos', n: 'Orkinos', e: '🐟', w: 1.2, kg: [25, 120], pkg: 28 },
+  { k: 'bot', n: 'Eski bot', e: '🥾', w: 5, kg: [0.6, 0.9], pkg: 0 }, { k: 'sise', n: 'Mesajlı şişe', e: '🍾', w: 0.8, kg: [0.4, 0.5], pkg: 0, treasure: true },
+];
+const FISHING = { cur: null };
+function buildFishStall() {
+  let x = DOCK.x0 - 6, z = DOCK.z + DOCK.w / 2 + 3.5;
+  for (const dx of [0, -4, -8, -12]) if (groundY(DOCK.x0 - 6 + dx, z) > 0.05) { x = DOCK.x0 - 6 + dx; break; }
+  const y = groundY(x, z), g = new THREE.Group(); g.position.set(x, y, z);
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.9 }), cloth = new THREE.MeshStandardMaterial({ map: canvasTex(64, 16, c => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#fff' : '#1f5aa8'; c.fillRect(i * 8, 0, 8, 16); } }), side: THREE.DoubleSide });
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.0, 1.2).translate(0, 0.5, 0), wood), new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.12, 1.1).translate(0, 1.06, 0), new THREE.MeshStandardMaterial({ color: 0xdff4ff, roughness: 0.2 })));
+  g.add(new THREE.Mesh(merge([[-1.5, -0.55], [1.5, -0.55], [-1.5, 0.55], [1.5, 0.55]].map(([a, b]) => new THREE.CylinderGeometry(0.05, 0.05, 2.6, 5).translate(a, 1.3, b))), wood));
+  g.add(new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.7).rotateX(-Math.PI / 2 + 0.25).translate(0, 2.55, 0.1), cloth));
+  for (let i = 0; i < 7; i++) g.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.28, 2, 6).rotateZ(Math.PI / 2).translate(-1.2 + i * 0.4, 1.17, (i % 2) * 0.2 - 0.1), new THREE.MeshStandardMaterial({ color: 0xa0b0c0, metalness: 0.6, roughness: 0.3 })));
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.7), new THREE.MeshBasicMaterial({ map: signTexM(256, 60, '#1f5aa8', '#fff', '🎣 BALIKÇI') })); sm.position.set(0, 2.1, 0.62); g.add(sm);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.rotation.y = 0; scene.add(g);
+  const seller = makeHuman({ skin: '#c58c60', shirt: '#f2f2f2', pants: '#1f3a6a', hair: '#2a2a2a', shoes: '#222', cap: '#1f5aa8', beard: true }); seller.g.position.set(x, y, z - 1.1); seller.g.rotation.y = 0;
+  M27.stall = { x, z: z + 1.4 };
+}
+function fishItems() {
+  const L = L2(), it = [], val = L.fish.reduce((a, f) => a + f.v, 0);
+  it.push({ sec: `🧊 Soğutucu: ${L.fish.length}/20 · değeri $${val} · 🪱 yem ${L.bait} · 🏆 rekor ${L.best ? L.best.toFixed(1) + ' kg' : '-'}` });
+  it.push({ name: '🎣 Olta', desc: 'İskeleden, sahilden ya da tekneden denize bakarken E → olta at', price: 150, dis: L.rod ? 'VAR' : null, buy: () => { L.rod = true; floatText('🎣 Olta senin! Suya bakıp E'); } });
+  it.push({ name: '🪱 Yem ×10', desc: 'Her atış 1 yem', price: 20, buy: () => { L.bait += 10; } });
+  it.push({ name: '💰 Tüm balıkları sat', desc: L.fish.length ? L.fish.map(f => f.e).join('') : 'Soğutucu boş', price: 0, btn: val ? `+$${val}` : 'BOŞ', dis: L.fish.length ? null : 'BOŞ', buy: () => { earn(val, '🎣 Balık satışı'); L.fish = []; AudioSys.cash(); floatText(`🎣 Balıklar satıldı +$${val}`); } });
+  const best = L.fish.slice().sort((a, b) => b.v - a.v)[0];
+  if (L.fish.length) it.push({ name: '🍳 Balık pişir & ye', desc: 'En ucuz balığını ızgara yap · açlık +35', price: 0, btn: 'YE', buy: () => { L.fish.sort((a, b) => a.v - b.v); const f = L.fish.shift(); state.food = Math.min(100, (state.food ?? 100) + 35); floatText(`🍳 ${f.n} ızgara · afiyet olsun`); } });
+  if (best) it.push({ sec: `En değerlisi: ${best.e} ${best.n} ${best.kg.toFixed(2)} kg · $${best.v}` });
+  return it;
+}
+function waterAhead() {
+  const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw);
+  for (const d of [3, 5, 7]) { const x = player.pos.x + fx * d, z = player.pos.z + fz * d; if (groundY(x, z) < -0.4) return [x, z]; }
+  return null;
+}
+function updateFishing(dt) {
+  const F = FISHING.cur;
+  if (F) {
+    if (state.inCar || state.swim || state.dead || Math.hypot(player.pos.x - F.px, player.pos.z - F.pz) > 1.5) { endFishing('🎣 Olta toplandı'); return; }
+    const h = player.human; if (h) { h.armR.rotation.x = -1.1 + (F.phase === 'bite' ? Math.sin(state.now * 30) * 0.05 : 0); h.elbowR.rotation.x = -0.4; }
+    const tip = new THREE.Vector3(); F.rod.updateMatrixWorld(); tip.set(0, 0, 2.2).applyMatrix4(F.rod.matrixWorld);
+    F.t += dt; const bob = F.bob.position;
+    bob.y = WATER_Y + 0.05 + Math.sin(state.now * 2) * 0.04 - (F.phase === 'bite' ? 0.18 + Math.sin(state.now * 25) * 0.05 : 0);
+    const pa = F.line.geometry.attributes.position; pa.setXYZ(0, tip.x, tip.y, tip.z); pa.setXYZ(1, bob.x, bob.y + 0.1, bob.z); pa.needsUpdate = true;
+    if (F.phase === 'wait' && F.t > F.biteAt) { F.phase = 'bite'; F.t = 0; AudioSys.tone(1200, 0.08, 0.2, 'square'); haptic(80); floatText('❗ Vuruyor! ÇEK (E)'); }
+    if (F.phase === 'bite') { if (F.t > 1.4) { L2().bait = Math.max(0, L2().bait - 1); endFishing('🐟 Balık yemi kaptı kaçtı'); return; } if (!state.interact) state.interact = { label: '❗ ÇEK!', fn: hookFish }; }
+    else if (F.phase === 'wait' && !state.interact) state.interact = { label: '🎣 Bekle… (E: olta topla)', fn: () => endFishing('🎣 Olta toplandı') };
+    return;
+  }
+  if (state.interact || state.inCar || state.interior || state.dead || state.swim || MG.on) return;
+  if (M27.stall && Math.hypot(player.pos.x - M27.stall.x, player.pos.z - M27.stall.z) < 2) { state.interact = { label: '🎣 BALIKÇI · olta, yem, balık sat', fn: () => openShop('fish') }; return; }
+  if (!L2().rod || !player.onGround) return;
+  const w = waterAhead(); if (!w) return;
+  state.interact = L2().bait > 0 ? { label: `🎣 OLTA AT · 🪱 ${L2().bait}`, fn: () => castLine(w) } : { label: '🎣 Yem yok · balıkçıdan al', fn: null };
+}
+function castLine([x, z]) {
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.025, 2.4, 6).rotateX(Math.PI / 2).translate(0, 0, 1.1), new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.4 }));
+  rod.position.set(0, -0.3, 0.05); rod.rotation.x = -0.9; player.human.elbowR.add(rod);
+  const bob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0x400000 })); bob.position.set(x, WATER_Y, z); scene.add(bob);
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xe8e8e8, transparent: true, opacity: 0.7 })); line.frustumCulled = false; scene.add(line);
+  const night = state.time < 6 || state.time > 20;
+  FISHING.cur = { rod, bob, line, px: player.pos.x, pz: player.pos.z, t: 0, phase: 'wait', biteAt: MR(2.5, 8) * (night ? 0.8 : 1) };
+  AudioSys.tone(500, 0.3, 0.12, 'sine', 0.4);
+}
+function endFishing(msg) {
+  const F = FISHING.cur; if (!F) return; FISHING.cur = null;
+  F.rod.parent && F.rod.parent.remove(F.rod); scene.remove(F.bob, F.line); F.line.geometry.dispose();
+  if (MG.on && MG.on.fish) { MG.on.close = null; mgClose(); }
+  if (msg) floatText(msg);
+}
+function rollFish() {
+  const night = state.time < 6 || state.time > 20, pool = FISH_T.map(f => [f, f.w * (night && f.night ? f.night : 1)]), tot = pool.reduce((a, p) => a + p[1], 0);
+  let r = Math.random() * tot; for (const [f, w] of pool) { r -= w; if (r <= 0) return f; } return FISH_T[0];
+}
+function hookFish() {
+  const F = FISHING.cur; if (!F || F.phase !== 'bite') return;
+  F.phase = 'reel'; L2().bait = Math.max(0, L2().bait - 1);
+  const fish = rollFish(), kg = MR(fish.kg[0], fish.kg[1]) * (Math.random() < 0.1 ? 1.5 : 1), power = Math.min(1, 0.25 + Math.log10(1 + kg * 4) * 0.4);
+  let T = 0.5, prog = 0, hold = false, slack = 0;
+  mgOpen({
+    fish: true, title: '🎣 ÇEKİYORSUN!', sub: 'Basılı tut = makarayı sar · gerginliği <b>yeşilde</b> tut (kırmızı = misina kopar)', btn: 'SAR (basılı tut)',
+    press() { hold = true; }, release() { hold = false; },
+    tick(dt) {
+      const pull = (Math.sin(this.t * 3.1) * 0.5 + Math.sin(this.t * 7.3 + 1) * 0.5) * power * 0.9;
+      T = clamp(T + (hold ? 0.75 : -0.6) * dt + pull * dt, 0, 1);
+      if (T > 0.32 && T < 0.78) prog += dt * (0.3 - power * 0.13); else prog -= dt * 0.04;
+      prog = Math.max(0, prog); slack = T < 0.08 ? slack + dt : 0; this.T = T; this.prog = prog;
+      if (T >= 1) { this.res = 'snap'; mgClose(false); } else if (slack > 1.6) { this.res = 'lost'; mgClose(false); } else if (prog >= 1) { this.res = 'ok'; mgClose(false); }
+    },
+    draw(g, w) { barBg(g, w, 6, 20); g.fillStyle = '#3ad06a55'; g.fillRect(8 + 0.32 * (w - 16), 6, 0.46 * (w - 16), 20); g.fillStyle = '#ff3a2a55'; g.fillRect(8 + 0.9 * (w - 16), 6, 0.1 * (w - 16), 20); g.fillStyle = T > 0.78 ? '#ff5a3a' : '#fff'; g.fillRect(8 + T * (w - 16) - 3, 2, 6, 28); barBg(g, w, 36, 10); g.fillStyle = '#4ab0ff'; g.fillRect(8, 36, prog * (w - 16), 10); },
+    close(cancel) {
+      if (cancel) { endFishing('🎣 Balığı saldın'); return; }
+      if (this.res === 'snap') { endFishing('💥 Misina koptu!'); AudioSys.fail(); return; }
+      if (this.res === 'lost') { endFishing('🐟 Gevşek bıraktın, balık kaçtı'); return; }
+      endFishing(null); landFish(fish, kg);
+    }
+  });
+}
+function landFish(f, kg) {
+  const L = L2(); L.fishN = (L.fishN || 0) + 1;
+  if (f.treasure) { const a = Math.round(MR(800, 2500) / 10) * 10; earn(a, '🍾 Şişedeki hazine haritası'); showBig('🍾 MESAJLI ŞİŞE!', '#ffd23a', 4, `İçinden eski bir hazine haritası çıktı · +$${a}`); AudioSys.success(); saveGame(); return; }
+  if (!f.pkg) { showBig(`${f.e} ${f.n.toUpperCase()}`, '#c0c0c0', 2.5, 'Bugün şans senden yana değil…'); return; }
+  if (L.fish.length >= 20) { floatText('🧊 Soğutucu dolu · balıkçıya sat'); return; }
+  const v = Math.max(5, Math.round(kg * f.pkg)), rec = kg > (L.best || 0);
+  L.fish.push({ k: f.k, n: f.n, e: f.e, kg, v }); if (rec) L.best = kg;
+  showBig(`${f.e} ${f.n.toUpperCase()} · ${kg.toFixed(kg < 1 ? 2 : 1)} KG`, f.k === 'orkinos' ? '#ffd23a' : '#7dff9a', 3.5, `Değeri ~$${v}${rec ? ' · 🏆 YENİ REKOR!' : ''}`);
+  AudioSys.success(); haptic(60);
+  if (f.k === 'orkinos') breakingNews(`🎣 ${MP.on ? MP.name : 'Bir balıkçı'} iskelede ${kg.toFixed(0)} kg'lık dev bir orkinos yakaladı!`, true);
+  saveGame();
+}
+
+// ============================================================ 🎟 LOTTERY & SCRATCH CARDS
+const drawNow = () => Math.floor(Date.now() / 3600000);   // a draw every real hour, the same numbers for everyone
+function drawNumbers(id) { const r = seeded(id * 2654435761 + 1234567), s = new Set(); while (s.size < 6) s.add(1 + Math.floor(r() * 49)); return [...s].sort((a, b) => a - b); }
+const LOTO_PAY = { 3: 150, 4: 2500, 5: 75000, 6: 5000000 };
+function buildKiosk() {
+  const b = blocks.flat().filter(b => b.dist === 'downtown').sort((a, b) => a.i - b.i || a.j - b.j)[0]; if (!b) return;
+  let x = b.cx - 14, z = b.cz - BLOCK / 2 + 2.2;
+  for (const dx of [0, 6, -6, 12, -12, 18]) { const xx = b.cx - 14 + dx; if (!SHOPS.some(s => Math.hypot(s.x - xx, s.z - z) < 8) && !DOORS.some(d => Math.hypot(d.x - xx, d.z - z) < 4)) { x = xx; break; } }
+  const g = new THREE.Group(); g.position.set(x, 0.25, z);
+  const green = new THREE.MeshStandardMaterial({ color: 0x1a8a4a, roughness: 0.5 });
+  g.add(new THREE.Mesh(new RoundedBoxGeometry(2.2, 2.6, 1.8, 2, 0.1).translate(0, 1.3, 0), green));
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 0.05).translate(0, 1.5, -0.91), new THREE.MeshStandardMaterial({ color: 0x9ac0d8, roughness: 0.1, metalness: 0.4 })));
+  const sm = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.7, 0.12), new THREE.MeshBasicMaterial({ map: signTexM(256, 70, '#ffd23a', '#0a5a2a', '🍀 VISTA LOTO') })); sm.position.set(0, 2.95, 0); g.add(sm);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+  M27.kiosk = { x, z: z - 1.6 };
+}
+function lotoItems() {
+  const L = L2(), it = [], next = drawNow() + 1, last = drawNumbers(drawNow());
+  const mine = L.tickets.filter(t => t.d === next).length, mins = 60 - new Date().getMinutes();
+  it.push({ sec: `🎰 Son çekiliş: ${last.join(' · ')} · sonraki çekiliş ${mins} dk sonra` });
+  it.push({ name: '🍀 Kazı Kazan', desc: 'Aynı ödülden 3 tane bul, kazan! En büyük ödül $1.000', price: 20, close: true, buy: () => openScratch() });
+  it.push({ name: '🎟 Loto bileti (şans eseri 6 sayı)', desc: `Her saat başı çekiliş · 3 bilen $150, 4 → $2.500, 5 → $75.000, 6 → 💰 $5.000.000 · bu çekilişe ${mine}/5 bilet`, price: 50, dis: mine >= 5 ? 'MAKS' : null, buy: () => { const r = seeded(Date.now() ^ (Math.random() * 1e9)), s = new Set(); while (s.size < 6) s.add(1 + Math.floor(r() * 49)); L.tickets.push({ d: next, n: [...s].sort((a, b) => a - b) }); floatText('🎟 Bilet alındı · bol şans!'); } });
+  for (const t of L.tickets.filter(t => t.d === next)) it.push({ sec: `🎟 ${t.n.join(' · ')}` });
+  return it;
+}
+function settleLoto() {
+  const L = state.life2; if (!L || !L.tickets.length) return;
+  const now = drawNow(), keep = [];
+  for (const t of L.tickets) {
+    if (t.d > now) { keep.push(t); continue; }
+    const w = drawNumbers(t.d), m = t.n.filter(n => w.includes(n)).length, pay = LOTO_PAY[m] || 0;
+    if (pay) { earn(pay, `🎟 Loto ${m} bilen`); showBig(m >= 5 ? '💰 BÜYÜK İKRAMİYE!' : `🎟 LOTO: ${m} BİLDİN`, '#ffd23a', 5, `Çekiliş: ${w.join(' · ')} · +$${pay.toLocaleString('tr-TR')}`); AudioSys.success(); if (m >= 5) breakingNews(`🎟 ${MP.on ? MP.name : 'Şanslı bir oyuncu'} lotoda ${m} bildi: $${pay.toLocaleString('tr-TR')}!`, true); }
+    else floatText(`🎟 Loto çekilişi: ${w.join(' · ')} · ${m} bildin, olmadı`);
+  }
+  if (keep.length !== L.tickets.length) { L.tickets = keep; saveGame(); }
+}
+function openScratch() {
+  const r = Math.random(); let prize = r < 0.002 ? 1000 : r < 0.02 ? 200 : r < 0.07 ? 50 : r < 0.15 ? 20 : r < 0.3 ? 10 : 0;
+  const vals = [5, 10, 20, 50, 200, 1000], cells = [];
+  if (prize) cells.push(prize, prize, prize);
+  while (cells.length < 6) { const v = vals[Math.floor(Math.random() * vals.length)]; if (cells.filter(c => c === v).length < (prize && v === prize ? 3 : 2)) cells.push(v); }
+  cells.sort(() => Math.random() - 0.5);
+  let open = 0, paid = false;
+  mpModal(`<b>🍀 KAZI KAZAN</b><small>Kutulara dokunarak kazı · aynı tutardan 3 tane = o ödül</small><div id="scr" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0">${cells.map((v, i) => `<button data-i="${i}" style="height:64px;border-radius:12px;border:0;background:repeating-linear-gradient(45deg,#b8b8c0,#b8b8c0 6px,#a0a0a8 6px,#a0a0a8 12px);font:700 22px Rajdhani,sans-serif;color:#222">?</button>`).join('')}</div><div class="mmBtns"><button id="scrAll">HEPSİNİ KAZI</button><button id="scrX" class="grey">Kapat</button></div>`);
+  const finish = () => { if (paid) return; paid = true; if (prize) { earn(prize, '🍀 Kazı kazan'); AudioSys.success(); floatText(`🍀 KAZANDIN +$${prize}`); } else { AudioSys.fail(); floatText('🍀 Bu sefer olmadı'); } saveGame(); };
+  const reveal = b => { if (b.dataset.done) return; b.dataset.done = 1; const v = cells[+b.dataset.i]; b.textContent = '$' + v; b.style.background = v === prize ? '#ffd23a' : '#f2f2f2'; AudioSys.tone(900 + Math.random() * 300, 0.05, 0.08, 'square'); if (++open === 6) finish(); };
+  document.querySelectorAll('#scr button').forEach(b => { b.onclick = () => reveal(b); b.onpointermove = e => { if (e.buttons) reveal(b); }; });
+  $('scrAll').onclick = () => document.querySelectorAll('#scr button').forEach(reveal);
+  $('scrX').onclick = () => { if (open < 6) document.querySelectorAll('#scr button').forEach(reveal); closeModal(); };
+}
+
+// ============================================================ 🏀 BASKETBALL COURT
+function buildCourt() {
+  const b = blocks[2] && blocks[2][6]; if (!b || !b.park) return;
+  const cx = b.cx, cz = b.cz, W = 15, Lc = 26;
+  const tex = canvasTex(256, 444, g => {
+    g.fillStyle = '#2a5a8a'; g.fillRect(0, 0, 256, 444); g.fillStyle = '#c8603a'; g.fillRect(14, 14, 228, 416);
+    g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(14, 14, 228, 416); g.beginPath(); g.moveTo(14, 222); g.lineTo(242, 222); g.stroke(); g.beginPath(); g.arc(128, 222, 30, 0, 7); g.stroke();
+    for (const s of [1, -1]) { const y = s > 0 ? 14 : 430; g.strokeRect(98, s > 0 ? y : y - 96, 60, 96); g.beginPath(); g.arc(128, y + s * 96, 30, 0, 7); g.stroke(); g.beginPath(); g.arc(128, y + s * 20, 112, s > 0 ? 0 : Math.PI, s > 0 ? Math.PI : 2 * Math.PI); g.stroke(); }
+  });
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(W + 2, 0.06, Lc + 2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75 })); slab.position.set(cx, 0.34, cz); slab.receiveShadow = true; scene.add(slab);
+  const metal = new THREE.MeshStandardMaterial({ color: 0x3a3e46, metalness: 0.6, roughness: 0.4 }), orange = new THREE.MeshStandardMaterial({ color: 0xff5a10, roughness: 0.4 }), board = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.3, transparent: true, opacity: 0.9 });
+  const hoops = [];
+  for (const s of [1, -1]) {
+    const hz = cz + s * (Lc / 2 - 1.2), g = new THREE.Group(); g.position.set(cx, 0.37, hz); g.rotation.y = s > 0 ? Math.PI : 0;
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 3.3, 8).translate(0, 1.65, -0.6), metal), new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.9).translate(0, 3.25, -0.2), metal));
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.05, 0.05).translate(0, 3.4, 0.25), board));
+    g.add(new THREE.Mesh(merge([new THREE.BoxGeometry(0.59, 0.04, 0.02).translate(0, 3.42, 0.28), new THREE.BoxGeometry(0.59, 0.04, 0.02).translate(0, 2.98, 0.28), new THREE.BoxGeometry(0.04, 0.45, 0.02).translate(-0.275, 3.2, 0.28), new THREE.BoxGeometry(0.04, 0.45, 0.02).translate(0.275, 3.2, 0.28)]), new THREE.MeshBasicMaterial({ color: 0xd02020 })));
+    g.add(new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.018, 6, 20).rotateX(Math.PI / 2).translate(0, 3.05 - 0.37, 0.52), orange));
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.15, 0.42, 12, 1, true).translate(0, 2.47, 0.52), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.7 })));
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    hoops.push({ rim: new THREE.Vector3(cx, 3.05, hz - s * 0.52), spot: [cx, hz - s * 5.0], s });
+  }
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), new THREE.MeshStandardMaterial({ map: canvasTex(64, 32, g => { g.fillStyle = '#e8661a'; g.fillRect(0, 0, 64, 32); g.strokeStyle = '#2a1406'; g.lineWidth = 1.5; for (const x of [16, 32, 48]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 32); g.stroke(); } g.beginPath(); g.moveTo(0, 16); g.lineTo(64, 16); g.stroke(); }), roughness: 0.7 }));
+  ball.visible = false; ball.castShadow = true; scene.add(ball);
+  M27.court = { cx, cz, hoops, ball };
+}
+function updateCourt(dt) {
+  const C = M27.court; if (!C) return;
+  const H = C.game;
+  if (H && H.fly) {
+    const f = H.fly; f.t += dt / f.dur; const t = Math.min(1, f.t);
+    C.ball.position.lerpVectors(f.a, f.b, t); C.ball.position.y += 4 * f.h * t * (1 - t); C.ball.rotation.x += dt * 8;
+    if (t >= 1) { H.fly = null; if (f.made) { H.made++; AudioSys.tone(520, 0.12, 0.15, 'triangle'); floatText('🏀 SWISH!'); } else { AudioSys.tone(160, 0.1, 0.12, 'square'); floatText('🏀 Kaçtı'); } if (MG.on && MG.on.hoop) mgSub(`🏀 ${H.made}/${H.n} isabet · ${10 - H.n} atış kaldı`); if (H.n >= 10 && MG.on && MG.on.hoop) mgClose(false); }
+    return;
+  }
+  if (H || state.interact || state.inCar || state.interior || state.dead || MG.on) return;
+  for (const hp of C.hoops) if (Math.hypot(player.pos.x - hp.spot[0], player.pos.z - hp.spot[1]) < 1.6) { state.interact = { label: `🏀 SERBEST ATIŞ · 10 atış · rekor ${L2().hoopBest}`, fn: () => startHoop(hp) }; return; }
+}
+function startHoop(hp) {
+  const C = M27.court, H = C.game = { n: 0, made: 0, fly: null, hp };
+  player.pos.x = hp.spot[0]; player.pos.z = hp.spot[1]; player.yaw = hp.s > 0 ? 0 : Math.PI;
+  let sweet = 0.7, speed = 1.2;
+  mgOpen({
+    hoop: true, title: '🏀 SERBEST ATIŞ', sub: 'Güç çubuğu <b>sarı çizgideyken</b> AT (Space / E) · 0/10', btn: 'AT',
+    press() {
+      if (H.fly || H.n >= 10) return;
+      const p = (Math.sin(this.t * speed * Math.PI) + 1) / 2, err = Math.abs(p - sweet), made = err < 0.09 || (err < 0.16 && Math.random() < 0.45);
+      H.n++; const a = new THREE.Vector3(player.pos.x, player.pos.y + 2.1, player.pos.z), b = hp.rim.clone();
+      if (!made) { b.x += (Math.random() - 0.5) * 1.4; b.z += (p - sweet) * 2.5; b.y -= 0.3 + Math.random() * 0.4; }
+      H.fly = { a, b, h: 1.6 + p * 0.8, t: 0, dur: 0.95, made }; C.ball.visible = true; C.ball.position.copy(a);
+      sweet = 0.55 + Math.random() * 0.3; speed = 1.2 + H.n * 0.05;
+    },
+    tick() { this.pos = (Math.sin(this.t * speed * Math.PI) + 1) / 2; this.sweet = sweet; this.busy = !!H.fly; const h = player.human; if (h) { h.armL.rotation.x = h.armR.rotation.x = H.fly && H.fly.t < 0.3 ? -2.9 : -1.6; } if (Math.hypot(player.pos.x - hp.spot[0], player.pos.z - hp.spot[1]) > 2) mgClose(true); },
+    draw(g, w) { barBg(g, w, 14, 24); const p = (Math.sin(this.t * speed * Math.PI) + 1) / 2; g.fillStyle = '#ffd23a'; g.fillRect(8 + sweet * (w - 16) - 2, 8, 4, 36); const gr = g.createLinearGradient(8, 0, w - 8, 0); gr.addColorStop(0, '#3a8aff'); gr.addColorStop(1, '#ff3a2a'); g.fillStyle = gr; g.fillRect(8, 18, p * (w - 16), 16); },
+    close(cancel) {
+      C.game = null; C.ball.visible = false; const L = L2();
+      if (cancel && H.n < 10) { floatText('🏀 Atışlar yarıda kaldı'); return; }
+      const rec = H.made > L.hoopBest; if (rec) L.hoopBest = H.made;
+      let pay = 0; if (H.made >= 7 && L.hoopDay !== todayKey()) { L.hoopDay = todayKey(); pay = H.made >= 10 ? 500 : H.made >= 9 ? 300 : 150; earn(pay, '🏀 Serbest atış ödülü'); }
+      showBig(`🏀 ${H.made}/10 İSABET`, H.made >= 7 ? '#7dff9a' : '#ffb020', 4, `${rec ? '🏆 Yeni rekor! · ' : ''}${pay ? `Günlük ödül +$${pay}` : H.made >= 7 ? 'Günlük ödül bugün alındı' : '7+ isabetle günlük ödül kazanırsın'}`);
+      saveGame();
+    }
+  });
+}
+
+// ============================================================ wiring
+function buildM27() { $('fuelHud').onclick = useCan; buildFuelStations(); buildGym(); buildFishStall(); buildKiosk(); buildCourt(); }
+function m27DoorInteract(d) { if (!d.gym) return false; state.interact = { label: '💪 IRON GYM · antrenman, protein, duş', fn: () => openShop('gym') }; return true; }
+let m27T = 0;
+function updateM27(dt) {
+  updateMG(dt);
+  updateFuel(dt);
+  updateFishing(dt);
+  updateCourt(dt);
+  updateFuelRob();
+  if (!state.interact && !state.inCar && !state.interior && !state.dead && !MG.on && M27.kiosk && Math.hypot(player.pos.x - M27.kiosk.x, player.pos.z - M27.kiosk.z) < 1.8) state.interact = { label: '🍀 VISTA LOTO · kazı kazan & loto', fn: () => openShop('loto') };
+  m27T += dt; if (m27T > 5) { m27T = 0; settleLoto(); }
+}
+function m27MapDots(dot) {
+  if (state.interior) return;
+  if (M27.gym) dot(M27.gym.x, M27.gym.z, '#ff5a2a', 6, false);
+  if (M27.stall) dot(M27.stall.x, M27.stall.z, '#4ab0ff', 6, false);
+  if (M27.kiosk) dot(M27.kiosk.x, M27.kiosk.z, '#1aca5a', 6, false);
+  if (M27.court) dot(M27.court.cx, M27.court.cz, '#ff8a30', 6, false);
+}
+
+// park block (2,6) hosts the basketball court: clear its trees before they are planted
+function prepCourt() { const b = blocks[2] && blocks[2][6]; if (!b || !b.park) return; const out = p => Math.abs(p[0] - b.cx) > 10.5 || Math.abs(p[2] - b.cz) > 16; for (const A of [TREES, PALMS]) { const k = A.filter(out); A.length = 0; A.push(...k); } }
+
 // ============================================================ TREES / STREET FURNITURE / TRAFFIC LIGHTS
 function buildTreesAndStreet() {
   const sh = QUALITY !== 'low', m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -3332,7 +3742,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'fuel' ? '⛽ VISTA PETROL' : type === 'gym' ? '💪 IRON GYM' : type === 'fish' ? '🎣 BALIKÇI' : type === 'loto' ? '🍀 VISTA LOTO' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -3353,6 +3763,10 @@ function shopItems(type) {
   if (type === 'jobs') return jobItems();
   if (type === 'drag') return dragItems();
   if (type === 'pets') return petShopItems();
+  if (type === 'fuel') return fuelItems();
+  if (type === 'gym') return gymItems();
+  if (type === 'fish') return fishItems();
+  if (type === 'loto') return lotoItems();
   if (type === 'biz') return bizItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
@@ -3425,7 +3839,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100)
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null
     }));
     accountSaved();
   } catch (e) { }
@@ -3440,7 +3854,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -11179,7 +11593,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
-    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter || d.biz) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d) || bizDoorInteract(d))) return;
+    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter || d.biz || d.gym) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d) || m27DoorInteract(d) || bizDoorInteract(d))) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -11356,6 +11770,7 @@ function loop(now) {
   updateTuning(dt); updateDrift(dt); updateDrag(dt); updateCarShow(dt); remoteNitroFx();
   updatePets(dt);
   updateBiz(dt);
+  updateM27(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

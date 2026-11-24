@@ -147,6 +147,31 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
 - **Rakipler**: her sektörde bir NPC firma (Sarı Kaplan Taksi, Anadolu Lojistik, Lezzet Durağı) ve odadaki diğer oyuncuların aynı sektördeki şirketleri pazar payını paylaşır — puanı ve filosu güçlü olan daha çok müşteri alır. Başka oyuncuların restoranında $25'a yemek yiyebilirsin, para onun şirket kasasına gider; kendi restoranında bedava yersin
 - **Şirketi sat**: değerinin (araçlar, işyeri, büyütmeler, kasa) karşılığını alırsın
 
+## ⛽ Yakıt, 💪 spor, 🎣 balık, 🍀 loto, 🏀 basketbol
+- **⛽ Yakıt & VISTA PETROL**: arabalar ve motorlar benzin yakar. Hızlı sürüş ve nitro daha çok yakar. Hız göstergesinin altında yakıt çubuğu var.
+  - Benzin biterse araç neredeyse hiç gaz almaz.
+  - Şehirde 4 benzin istasyonu var (haritada turuncu ⛽). Araçla halkaya gir, depoyu doldur ($1,5/lt) ya da 25 litre al.
+  - İstasyonda 🛢 benzin bidonu satılır ($60). Yolda kalınca **B** tuşu ya da yakıt çubuğuna dokun → +30 litre.
+  - Ayrıca enerji içeceği ve sandviç satılır.
+  - Yaya olarak kasa camına git → **💰 benzinlik kasasını soy** ($300-900, 2★, 5 dk bekleme).
+- **💪 IRON GYM** (haritada turuncu nokta, kapıdan E):
+  - Bench press (Güç), koşu bandı (Kondisyon), kum torbası (ikisi birden).
+  - Ritim oyunu: gösterge yeşildeyken **BAS** (Space / E), 10 tekrar.
+  - **Güç** aldığın hasarı %20'ye kadar azaltır. **Kondisyon** koşu hızını %15'e kadar artırır.
+  - Antrenman acıktırır ve susatır. Günde en fazla 6 antrenman yapılabilir. Protein shake ve duş da var.
+- **🎣 Balıkçılık**: iskelenin başındaki **BALIKÇI** tezgâhından olta ($150) ve yem al.
+  - İskeleden, sahilden ya da kıyıdan denize bakarken **E → olta at**.
+  - Mantar batınca **❗ ÇEK!** Makara oyununda basılı tutarak gerginliği yeşilde tut. Kırmızıda misina kopar, gevşek bırakırsan balık kaçar.
+  - 10 tür var: hamsi, istavrit, çipura, levrek, lüfer (gece daha çok), kalkan, ahtapot, nadir 🐟 **orkinos** (tüm odaya haber olur), eski bot, 🍾 mesajlı şişe ($800-2.500).
+  - Balıkları tezgâhta sat ya da ızgara yapıp ye. Soğutucu 20 balık alır ve kilo rekoru tutulur.
+- **🍀 VISTA LOTO** (şehir merkezi kaldırımındaki yeşil kulübe):
+  - **Kazı kazan** ($20): dokunarak kazı, aynı tutardan 3 tane = ödül (en fazla $1.000).
+  - **Loto** ($50, 6 sayı): **her saat başı gerçek zamanlı çekiliş**, herkes için aynı sayılar. 3 bilen $150, 4 → $2.500, 5 → $75.000, 6 → $5.000.000. Ödül oyundaysan otomatik yatar; 5-6 bilen haber olur.
+- **🏀 Basketbol sahası** (2,6'daki park):
+  - İki pota var. Serbest atış çizgisinde E → 10 atış.
+  - Güç çubuğu sarı çizgideyken AT; topun uçuşu sahada görünür.
+  - 7+ isabette günlük ödül alınır ($150 / 9 isabet $300 / 10 isabet $500). Rekor saklanır.
+
 ## 🎨 Grafik kalitesi ve hazır 3D modeller
 - **Düşük**: tüm insanlar ve arabalar kodla üretilen (procedural) modellerdir; ek dosya indirilmez.
 - **Orta / Yüksek**: yakındaki karakterler **hazır, iskeletli insan modelleriyle** çizilir (erkek, kadın, iri yapılı; MakeHuman tabanlı, CC0). Kıyafet, saç, ayakkabı ve ten rengi her karaktere göre boyanır. Şapka, gözlük, sakal ve sırt çantası modelin başına ve sırtına oturur.
