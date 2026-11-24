@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -295,6 +296,7 @@ function init() {
     const rt = new THREE.WebGLRenderTarget(innerWidth * dpr, innerHeight * dpr, { type: THREE.HalfFloatType, samples: QUALITY === 'high' ? 4 : 0 });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
+    if (QUALITY === 'high') { try { aoPass = new GTAOPass(scene, camera, innerWidth * dpr, innerHeight * dpr); aoPass.output = GTAOPass.OUTPUT.Default; aoPass.blendIntensity = 0.9; aoPass.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 2.5, scale: 1.4, samples: 12, distanceFallOff: 1 }); aoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 }); composer.addPass(aoPass); } catch (e) { console.warn('AO', e); aoPass = null; } }
     bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.25, 0.45, 0.95);
     composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
@@ -423,13 +425,15 @@ function buildMaterials() {
   M.human = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 });
   M.trim = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.2 });
   M.wheel = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.35 });
-  M.carGlass = new THREE.MeshStandardMaterial({ color: 0x0c1218, roughness: 0.05, metalness: 0.95 });
+  M.carGlass = new THREE.MeshPhysicalMaterial({ color: 0x0a0f14, roughness: 0.03, metalness: 0.6, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.3 });
+  M.arch = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 1, side: THREE.DoubleSide });
+  M.beam = new THREE.MeshBasicMaterial({ color: 0xfff0c8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
   M.carLight = new THREE.MeshBasicMaterial({ vertexColors: true });
   M.sirenR = new THREE.MeshBasicMaterial({ color: 0xff1030 }); M.sirenB = new THREE.MeshBasicMaterial({ color: 0x1040ff });
   M.burnt = new THREE.MeshStandardMaterial({ color: 0x151312, roughness: 1 });
   M.paint = {};
 }
-const paintMat = hex => M.paint[hex] || (M.paint[hex] = new THREE.MeshPhysicalMaterial({ color: hex, metalness: 0.55, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06 }));
+const paintMat = hex => M.paint[hex] || (M.paint[hex] = new THREE.MeshPhysicalMaterial({ color: hex, metalness: 0.18, roughness: 0.42, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 0.9 }));
 
 // ============================================================ GROUND
 function buildGround() {
@@ -1054,29 +1058,67 @@ function makeHuman(look) {
   if (!M.gunSkin) M.gunSkin = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.85, roughness: 0.25, envMapIntensity: 1.2 });
   const g = new THREE.Group(); g.rotation.order = 'YXZ';
   const C = (geo, col) => colorize(geo, col);
-  const lathe = (pts, seg = 16) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
-  // torso: shaped chest/waist (lathe) squashed front-to-back
-  const top = look.jacket || look.shirt;
-  const torso = C(lathe([[0.001, 1.02], [0.16, 1.03], [0.15, 1.14], [0.175, 1.3], [0.205, 1.44], [0.2, 1.53], [0.13, 1.6], [0.001, 1.61]]).scale(1, 1, 0.62), top);
-  const pelvis = C(lathe([[0.001, 0.86], [0.15, 0.88], [0.17, 0.96], [0.162, 1.05], [0.001, 1.06]]).scale(1, 1, 0.66), look.pants);
-  const neck = C(new THREE.CylinderGeometry(0.052, 0.06, 0.14, 10).translate(0, 1.65, 0), look.skin);
-  const head = C(new THREE.SphereGeometry(0.115, 18, 14).scale(0.92, 1.08, 1).translate(0, 1.79, 0.005), look.skin);
-  const jaw = C(new THREE.SphereGeometry(0.085, 14, 10).scale(1, 0.75, 1).translate(0, 1.72, 0.025), look.skin);
-  const nose = C(new THREE.ConeGeometry(0.018, 0.05, 8).rotateX(Math.PI / 2).translate(0, 1.78, 0.115), look.skin);
-  const ears = [1, -1].map(s => C(new THREE.SphereGeometry(0.026, 8, 6).scale(0.5, 1, 0.8).translate(s * 0.104, 1.79, 0), look.skin));
-  const eyes = [1, -1].map(s => C(new THREE.SphereGeometry(0.014, 8, 6).translate(s * 0.04, 1.805, 0.1), '#1a1410'));
-  const hair = C(new THREE.SphereGeometry(0.122, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52).scale(0.96, 1.02, 1.04).translate(0, 1.805, -0.012), look.hair);
-  const parts = [torso, pelvis, neck, head, jaw, nose, ...ears, ...eyes, hair];
-  if (look.longHair) parts.push(C(new THREE.CapsuleGeometry(0.1, 0.22, 4, 10).scale(1.25, 1, 0.55).translate(0, 1.66, -0.085), look.hair));
-  if (look.jacket) parts.push(C(new THREE.BoxGeometry(0.1, 0.5, 0.02).translate(0, 1.3, 0.118), look.shirt), C(new THREE.BoxGeometry(0.11, 0.06, 0.02).rotateZ(0.5).translate(0.06, 1.55, 0.112), look.jacket), C(new THREE.BoxGeometry(0.11, 0.06, 0.02).rotateZ(-0.5).translate(-0.06, 1.55, 0.112), look.jacket));
+  const shade = (hex, f) => '#' + new THREE.Color(hex).multiplyScalar(f).getHexString();
+  const mix = (a, b, t) => '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+  const lathe = (pts, seg = 12) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+  const S = (r, ws = 8, hs = 6) => new THREE.SphereGeometry(r, ws, hs);
+  const skin = look.skin, top = look.jacket || look.shirt, dark = shade(skin, 0.78), lip = mix(skin, '#a0404a', 0.22), brow = shade(look.hair, 0.9);
+  const parts = [];
+  // ---- torso: chest, waist and shoulders shaped by a lathe + pectorals / shoulder caps / collar
+  parts.push(C(lathe([[0.001, 1.0], [0.155, 1.01], [0.152, 1.08], [0.148, 1.15], [0.162, 1.25], [0.188, 1.36], [0.205, 1.45], [0.2, 1.52], [0.17, 1.575], [0.1, 1.605], [0.001, 1.612]]).scale(1, 1, 0.6), top));
+  for (const s of [-1, 1]) {
+    parts.push(C(S(0.08, 8, 6).scale(1.05, 0.6, 0.32).translate(s * 0.072, 1.425, 0.078), top));       // chest
+    parts.push(C(S(0.088, 8, 6).scale(1.05, 0.95, 0.95).translate(s * 0.198, 1.5, 0), top));         // shoulder cap
+    parts.push(C(S(0.05, 6, 4).scale(1.6, 0.6, 0.9).translate(s * 0.08, 1.585, -0.02), top));       // trapezius
+  }
+  if (!look.jacket) {
+    parts.push(C(new THREE.TorusGeometry(0.068, 0.016, 4, 12).rotateX(Math.PI / 2).scale(1, 1, 0.8).translate(0, 1.6, 0.005), shade(look.shirt, 0.8)));   // collar
+    parts.push(C(lathe([[0.152, 1.0], [0.158, 1.04], [0.001, 1.04]]).scale(1, 1, 0.6), shade(look.shirt, 0.9)));     // hem
+  } else {
+    parts.push(C(new THREE.BoxGeometry(0.1, 0.5, 0.02).translate(0, 1.3, 0.118), look.shirt));
+    for (const s of [-1, 1]) { parts.push(C(new THREE.BoxGeometry(0.07, 0.24, 0.02).rotateZ(s * 0.35).translate(s * 0.07, 1.47, 0.118), shade(look.jacket, 0.85))); parts.push(C(new THREE.BoxGeometry(0.02, 0.36, 0.015).translate(s * 0.055, 1.2, 0.121), shade(look.jacket, 0.7))); }
+    parts.push(C(new THREE.TorusGeometry(0.075, 0.02, 6, 18, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI).scale(1, 1, 0.9).translate(0, 1.6, -0.01), look.jacket));
+  }
+  // ---- hips, belt
+  parts.push(C(lathe([[0.001, 0.84], [0.14, 0.855], [0.168, 0.92], [0.168, 0.99], [0.158, 1.03], [0.001, 1.035]]).scale(1, 1, 0.66), look.pants));
+  parts.push(C(lathe([[0.16, 0.985], [0.162, 1.025], [0.001, 1.025]], 18).scale(1, 1, 0.66), '#2a1e16'));
+  parts.push(C(new THREE.BoxGeometry(0.05, 0.035, 0.012).translate(0, 1.005, 0.108), '#c8c0a0'));
+  for (const s of [-1, 1]) parts.push(C(new THREE.BoxGeometry(0.004, 0.09, 0.05).rotateY(s * 0.6).translate(s * 0.13, 0.95, 0.07), shade(look.pants, 0.75)));   // pocket seams
+  // ---- neck & head
+  parts.push(C(lathe([[0.058, 1.6], [0.052, 1.65], [0.054, 1.7], [0.001, 1.7]], 12), skin));
+  parts.push(C(S(0.112, 14, 11).scale(0.9, 1.08, 1.0).translate(0, 1.795, 0), skin));                  // cranium
+  parts.push(C(S(0.086, 10, 7).scale(1, 0.72, 0.95).translate(0, 1.724, 0.024), skin));               // jaw
+  parts.push(C(S(0.038, 6, 5).scale(1.1, 0.8, 0.9).translate(0, 1.69, 0.075), skin));                 // chin
+  parts.push(C(new THREE.BoxGeometry(0.022, 0.05, 0.03).rotateX(-0.25).translate(0, 1.785, 0.103), skin));   // nose bridge
+  parts.push(C(S(0.019, 6, 5).scale(1.15, 0.9, 1).translate(0, 1.762, 0.118), skin));                  // nose tip
+  for (const s of [-1, 1]) parts.push(C(S(0.012, 4, 3).translate(s * 0.014, 1.757, 0.112), shade(skin, 0.92)));        // nostrils
+  parts.push(C(new THREE.CapsuleGeometry(0.0065, 0.03, 2, 5).rotateZ(Math.PI / 2).scale(1, 1, 0.6).translate(0, 1.734, 0.101), lip));      // upper lip
+  parts.push(C(new THREE.CapsuleGeometry(0.007, 0.026, 2, 5).rotateZ(Math.PI / 2).scale(1, 1, 0.6).translate(0, 1.724, 0.099), lip));       // lower lip
+  for (const s of [-1, 1]) {
+    parts.push(C(S(0.017, 6, 4).scale(1, 0.75, 0.6).translate(s * 0.04, 1.803, 0.093), '#f4f0ea'));   // eye white
+    parts.push(C(S(0.0095, 5, 3).translate(s * 0.04, 1.803, 0.102), look.eyes || '#3a2414'));            // iris
+    parts.push(C(S(0.004, 4, 2).translate(s * 0.04, 1.803, 0.1105), '#060606'));                          // pupil
+    parts.push(C(new THREE.BoxGeometry(0.038, 0.009, 0.012).rotateZ(s * -0.12).translate(s * 0.042, 1.828, 0.1), brow));   // eyebrow
+    parts.push(C(S(0.028, 6, 4).scale(0.45, 1, 0.75).translate(s * 0.1, 1.79, -0.005), skin));          // ear
+    parts.push(C(S(0.015, 4, 3).scale(0.4, 1, 0.7).translate(s * 0.108, 1.79, 0.0), dark));               // inner ear
+  }
+  // ---- hair
+  const H = look.hair;
+  parts.push(C(new THREE.SphereGeometry(0.119, 14, 7, 0, Math.PI * 2, 0, Math.PI * 0.5).scale(0.95, 1.05, 1.05).translate(0, 1.808, -0.01), H));
+  parts.push(C(S(0.06, 8, 5).scale(1.6, 0.55, 0.8).translate(0, 1.89, 0.045), H));                     // fringe volume
+  parts.push(C(S(0.1, 10, 7).scale(0.95, 0.9, 0.8).translate(0, 1.79, -0.045), H));                     // back of head
+  for (const s of [-1, 1]) parts.push(C(new THREE.BoxGeometry(0.012, 0.05, 0.03).translate(s * 0.1, 1.79, 0.035), H));   // sideburns
+  if (look.longHair) { parts.push(C(new THREE.CapsuleGeometry(0.1, 0.22, 4, 10).scale(1.25, 1, 0.55).translate(0, 1.66, -0.085), H)); for (const s of [-1, 1]) parts.push(C(new THREE.CapsuleGeometry(0.035, 0.16, 3, 8).translate(s * 0.105, 1.72, 0.0), H)); }
+  if (look.beard) parts.push(C(S(0.085, 10, 6).scale(1.02, 0.6, 1).translate(0, 1.705, 0.03), shade(H, 0.95)));
+  // ---- headwear / accessories
   if (look.hat === 'fedora') parts.push(C(new THREE.CylinderGeometry(0.1, 0.118, 0.12, 16).translate(0, 1.92, -0.005), look.hatColor), C(new THREE.CylinderGeometry(0.2, 0.2, 0.012, 20).translate(0, 1.865, -0.005), look.hatColor), C(new THREE.CylinderGeometry(0.119, 0.119, 0.025, 16).translate(0, 1.875, -0.005), '#0a0a0a'));
   else if (look.hat === 'beanie') parts.push(C(new THREE.SphereGeometry(0.132, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1, 1.15, 1.05).translate(0, 1.8, -0.01), look.hatColor), C(new THREE.CylinderGeometry(0.133, 0.133, 0.045, 16).translate(0, 1.8, -0.01), look.hatColor));
   else if (look.hat === 'crown') parts.push(C(new THREE.CylinderGeometry(0.11, 0.105, 0.07, 16, 1, true).translate(0, 1.89, -0.005), look.hatColor), ...[0, 1, 2, 3, 4, 5].map(k => C(new THREE.ConeGeometry(0.025, 0.07, 6).translate(Math.sin(k * 1.047) * 0.105, 1.955, Math.cos(k * 1.047) * 0.105 - 0.005), look.hatColor)), C(new THREE.SphereGeometry(0.02, 8, 6).translate(0, 1.89, 0.11), '#d01830'));
   if (look.cap && !look.hat) parts.push(C(new THREE.SphereGeometry(0.128, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, 1.83, -0.005), look.cap), C(new THREE.CylinderGeometry(0.11, 0.11, 0.015, 16, 1, false, -Math.PI / 2, Math.PI).scale(1, 1, 1.2).translate(0, 1.835, 0.09), look.cap));
   if (look.backpack) parts.push(C(new THREE.CapsuleGeometry(0.15, 0.2, 4, 10).scale(1.15, 1, 0.6).translate(0, 1.3, -0.2), look.backpack), ...[1, -1].map(sx => C(new THREE.BoxGeometry(0.04, 0.4, 0.2).translate(sx * 0.11, 1.38, -0.05), '#1a1a1a')));
-  if (look.glasses) parts.push(C(new THREE.BoxGeometry(0.2, 0.035, 0.02).translate(0, 1.808, 0.112), '#0a0a0a'), ...[1, -1].map(s => C(new THREE.CylinderGeometry(0.028, 0.028, 0.012, 12).rotateX(Math.PI / 2).translate(s * 0.042, 1.805, 0.118), '#101418')));
+  if (look.glasses) parts.push(C(new THREE.BoxGeometry(0.19, 0.012, 0.012).translate(0, 1.818, 0.112), '#0a0a0a'), ...[1, -1].map(s => C(new THREE.CylinderGeometry(0.03, 0.028, 0.01, 14).rotateX(Math.PI / 2).translate(s * 0.042, 1.805, 0.116), '#0c1016')), ...[1, -1].map(s => C(new THREE.BoxGeometry(0.008, 0.008, 0.11).translate(s * 0.092, 1.812, 0.06), '#0a0a0a')));
   const body = new THREE.Mesh(merge(parts), M.human);
-  // arms: upper arm + forearm/hand on an elbow pivot
+  // ---- limbs on pivots (same joints as before, so all animations keep working)
   const mkLimb = (px, py, upper, lower, lowerY) => {
     const p = new THREE.Group(); p.position.set(px, py, 0); g.add(p);
     const um = new THREE.Mesh(upper, M.human); um.castShadow = true; p.add(um);
@@ -1084,18 +1126,42 @@ function makeHuman(look) {
     const lm = new THREE.Mesh(lower, M.human); lm.castShadow = true; j.add(lm);
     return [p, j];
   };
-  const upperArm = merge([C(new THREE.SphereGeometry(0.075, 10, 8).translate(0, -0.02, 0), top), C(new THREE.CapsuleGeometry(0.058, 0.2, 4, 10).translate(0, -0.15, 0), top)]);
-  const foreArm = merge([C(new THREE.CapsuleGeometry(0.048, 0.2, 4, 10).translate(0, -0.14, 0), look.jacket || look.skin), C(new THREE.SphereGeometry(0.052, 10, 8).scale(0.85, 1.15, 0.7).translate(0, -0.3, 0.01), look.skin)]);
-  const shortsL = !!look.shorts;
-  const thigh = merge([C(new THREE.CapsuleGeometry(0.083, 0.3, 4, 10).translate(0, -0.21, 0), look.pants)]);
-  const shin = merge([C(new THREE.CapsuleGeometry(0.066, 0.32, 4, 10).translate(0, -0.2, 0), shortsL ? look.skin : look.pants),
-    C(new THREE.SphereGeometry(0.07, 12, 8).scale(0.9, 0.55, 1.75).translate(0, -0.42, 0.045), look.shoes || '#222')]);
-  const [armL, elbowL] = mkLimb(0.235, 1.52, upperArm, foreArm, -0.29);
-  const [armR, elbowR] = mkLimb(-0.235, 1.52, upperArm, foreArm, -0.29);
+  const sleeve = look.jacket ? top : look.shirt, longSleeve = !!look.jacket;
+  const upperArm = merge([
+    C(new THREE.CapsuleGeometry(0.058, 0.19, 3, 9).translate(0, -0.15, 0), longSleeve ? sleeve : skin),
+    C(S(0.042, 6, 5).scale(1, 1.3, 0.9).translate(0, -0.11, 0.026), longSleeve ? sleeve : skin),           // biceps
+    ...(longSleeve ? [] : [C(lathe([[0.072, -0.15], [0.07, -0.08], [0.076, 0.0], [0.001, 0.02]], 9), sleeve), C(lathe([[0.073, -0.155], [0.073, -0.14], [0.001, -0.14]], 9), shade(sleeve, 0.88))])
+  ]);
+  const mkForearm = side => {
+    const hp = [C(new THREE.CapsuleGeometry(0.049, 0.19, 3, 9).scale(1, 1, 0.92).translate(0, -0.13, 0), longSleeve ? sleeve : skin), C(S(0.032, 6, 4).scale(1.2, 1, 0.9).translate(0, -0.25, 0), skin)];
+    if (longSleeve) hp.push(C(lathe([[0.05, -0.25], [0.05, -0.22], [0.001, -0.22]], 12), shade(sleeve, 0.8)));
+    hp.push(C(new RoundedBoxGeometry(0.075, 0.085, 0.032, 1, 0.012).translate(0, -0.3, 0.004), skin));          // palm
+    for (let k = 0; k < 4; k++) hp.push(C(new THREE.CapsuleGeometry(0.008, 0.045 - Math.abs(k - 1.5) * 0.006, 1, 4).rotateX(0.35).translate(-0.027 + k * 0.018, -0.36, 0.012), skin));   // fingers
+    hp.push(C(new THREE.CapsuleGeometry(0.0095, 0.035, 1, 4).rotateZ(side * 0.6).rotateX(0.4).translate(side * 0.04, -0.31, 0.018), skin));                                               // thumb (inner side)
+    return merge(hp);
+  };
+  const foreArmL = mkForearm(-1), foreArmR = mkForearm(1);
+  const shorts = !!look.shorts;
+  const thigh = merge([C(new THREE.CapsuleGeometry(0.078, 0.3, 3, 10).translate(0, -0.2, 0), look.pants), C(S(0.07, 7, 5).scale(1, 1.4, 1).translate(0, -0.15, 0.025), look.pants), ...(shorts ? [C(lathe([[0.087, -0.36], [0.087, -0.33], [0.001, -0.33]], 9), shade(look.pants, 0.85))] : [])]);
+  const shoe = look.shoes || '#222';
+  const shin = merge([
+    C(new THREE.CapsuleGeometry(0.06, 0.3, 3, 10).translate(0, -0.19, 0), shorts ? skin : look.pants),
+    C(S(0.052, 7, 5).scale(0.9, 1.5, 1).translate(0, -0.12, -0.025), shorts ? skin : look.pants),          // calf
+    ...(shorts ? [] : [C(lathe([[0.066, -0.37], [0.066, -0.34], [0.001, -0.34]], 9), shade(look.pants, 0.82))]),
+    C(new RoundedBoxGeometry(0.1, 0.035, 0.27, 2, 0.015).translate(0, -0.455, 0.045), mix(shoe, '#f2f2f2', 0.6)),   // sole
+    C(new RoundedBoxGeometry(0.092, 0.075, 0.24, 2, 0.03).translate(0, -0.405, 0.045), shoe),                        // upper
+    C(S(0.047, 7, 5).scale(1, 0.75, 1.1).translate(0, -0.41, 0.135), shoe),                                           // toe cap
+    C(new THREE.BoxGeometry(0.06, 0.006, 0.08).translate(0, -0.366, 0.06), shade(shoe, 0.7))                           // laces
+  ]);
+  const [armL, elbowL] = mkLimb(0.235, 1.52, upperArm, foreArmL, -0.29);
+  const [armR, elbowR] = mkLimb(-0.235, 1.52, upperArm, foreArmR, -0.29);
   const [legL, kneeL] = mkLimb(0.095, 0.93, thigh, shin, -0.42);
   const [legR, kneeR] = mkLimb(-0.095, 0.93, thigh, shin, -0.42);
   body.castShadow = true; g.add(body); // keep body at children[4]
-  if (look.gun) { const gun = new THREE.Mesh(merge([C(new THREE.BoxGeometry(0.035, 0.07, 0.2).translate(0, -0.3, 0.09), look.gunSkin || '#111'), C(new THREE.BoxGeometry(0.03, 0.1, 0.045).translate(0, -0.36, 0.03), look.gunSkin ? '#1a1a1a' : '#1a1a1a')]), look.gunSkin ? M.gunSkin : M.human); elbowR.add(gun); }
+  if (look.gun) {
+    const gc = look.gunSkin || '#16171a', gp = [C(new THREE.BoxGeometry(0.034, 0.045, 0.19).translate(0, -0.295, 0.1), gc), C(new THREE.BoxGeometry(0.03, 0.095, 0.045).rotateX(-0.25).translate(0, -0.345, 0.035), shade(gc === '#16171a' ? '#2a2420' : gc, 0.85)), C(new THREE.CylinderGeometry(0.008, 0.008, 0.03, 8).rotateX(Math.PI / 2).translate(0, -0.29, 0.205), '#050505'), C(new THREE.TorusGeometry(0.018, 0.004, 4, 10, Math.PI).translate(0, -0.33, 0.08), gc)];
+    const gun = new THREE.Mesh(merge(gp), look.gunSkin ? M.gunSkin : M.trim); elbowR.add(gun);
+  }
   scene.add(g);
   return { g, armL, armR, legL, legR, elbowL, elbowR, kneeL, kneeR, phase: Math.random() * 6 };
 }
@@ -1149,7 +1215,12 @@ function carGeos(kind) {
     g.translate(0, 0, -depth / 2); g.computeVertexNormals(); return g;
   };
   const RB = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2) * 0.999);
-  const body = ext(s.body, W - 0.3, 0.15, 0.3), cab = ext(s.cab, s.cabW ? s.cabW - 0.2 : W - 0.52, 0.1, s.cabW ? 0.08 : 0.22);
+  // wheel arches: the bottom edge of the side profile gets two circular cut-outs over the wheels
+  const archR = s.wr * 1.13 + 0.05, archX = [-s.wx + 0.05, s.wx], y0b = s.body[0][1];
+  const archPts = x => { const a0 = Math.asin(clamp((y0b - s.wr) / archR, -0.9, 0.9)), out = []; for (let k = 0; k <= 12; k++) { const a = (Math.PI - a0) + (2 * a0 - Math.PI) * k / 12; out.push([x + archR * Math.cos(a), s.wr + archR * Math.sin(a)]); } return out; };
+  const bodyPts = [s.body[0], ...archPts(archX[0]), ...archPts(archX[1]), ...s.body.slice(1)];
+  const body = ext(bodyPts, W - 0.3, 0.15, 0.3), cab = ext(s.cab, s.cabW ? s.cabW - 0.2 : W - 0.52, 0.1, s.cabW ? 0.08 : 0.22);
+  const arch = merge(archX.map(x => new THREE.CylinderGeometry(archR - 0.015, archR - 0.015, W - 0.34, 18, 1, true, Math.PI / 2, Math.PI).rotateX(Math.PI / 2).translate(x, s.wr, 0)));
   const p1 = s.cab[1], p2 = s.cab[2];
   const roof = RB(Math.abs(p1[0] - p2[0]) + 0.3, 0.07, W - 0.5, 0.035).translate((p1[0] + p2[0]) / 2, Math.max(p1[1], p2[1]) + 0.085, 0);
   const paint = merge([body, roof]);
@@ -1170,14 +1241,35 @@ function carGeos(kind) {
   if (kind === 'pickup') trimL.push(colorize(RB(1.7, 0.05, W - 0.32, 0.02).translate(-1.65, 1.3, 0), '#141414'));
   if (kind === 'taxi') trimL.push(colorize(RB(0.5, 0.2, 0.25, 0.06).translate((p1[0] + p2[0]) / 2, Math.max(p1[1], p2[1]) + 0.22, 0), '#ffe36e'));
   if (kind === 'bus') { trimL.push(colorize(RB(11, 0.28, W + 0.03, 0.1).translate(-0.05, 1.3, 0), '#1e5ab4'), colorize(RB(0.9, 2.2, 0.05, 0.02).translate(4.7, 1.6, W / 2 + 0.01), '#2a3038')); lights = merge([lights, colorize(RB(0.06, 0.32, 1.7, 0.03).translate(5.47, 3.0, 0), '#ffb020')]); }
+  // realism details
+  if (!s.bus) {
+    const yb = s.body[0][1], beltY = Math.min(s.cab[0][1], s.cab[3][1]) - 0.06, mid = (c0[0] + s.cab[3][0]) / 2;
+    trimL.push(colorize(RB(0.05, 0.17, W * 0.46, 0.03).translate(fx - 0.01, ly - 0.07, 0), '#08080a'));                              // grille
+    for (let k = 0; k < 3; k++) trimL.push(colorize(RB(0.02, 0.012, W * 0.44, 0.005).translate(fx + 0.02, ly - 0.13 + k * 0.05, 0), '#c8ccd2'));
+    for (const sz of [1, -1]) {
+      trimL.push(colorize(RB(0.1, 0.17, 0.5, 0.05).translate(fx - 0.09, ly, sz * 0.6), '#d0d4da'));                                     // headlight bezel
+      trimL.push(colorize(RB(0.08, 0.16, 0.56, 0.04).translate(rx + 0.08, ly + 0.08, sz * 0.58), '#3a0606'));                            // tail light housing
+      for (const x of [c0[0] - 0.04, mid]) trimL.push(colorize(new THREE.BoxGeometry(0.008, Math.max(0.2, beltY - yb - 0.12), 0.006).translate(x, (beltY + yb) / 2 + 0.04, sz * (W / 2 + 0.003)), '#0a0a0c'));   // door seams
+      for (const x of [c0[0] - 0.36, mid - 0.36]) trimL.push(colorize(RB(0.16, 0.035, 0.03, 0.012).translate(x, beltY - 0.12, sz * (W / 2 + 0.012)), '#d0d4da'));   // handles
+      trimL.push(colorize(RB(Math.abs(c0[0] - s.cab[3][0]) + 0.1, 0.03, 0.02, 0.01).translate(mid + (c0[0] - mid) * 0.0, beltY + 0.03, sz * (W / 2 - 0.12)), '#c8ccd2'));   // window chrome strip
+    }
+    trimL.push(colorize(new THREE.CylinderGeometry(0.038, 0.042, 0.22, 10).rotateZ(Math.PI / 2).translate(rx - 0.04, yb + 0.06, 0.45), '#b8bcc2'));    // exhaust
+    if (kind === 'sport' || kind === 'super') trimL.push(colorize(new THREE.CylinderGeometry(0.038, 0.042, 0.22, 10).rotateZ(Math.PI / 2).translate(rx - 0.04, yb + 0.06, -0.45), '#b8bcc2'));
+    for (const sz of [0.32, -0.12]) trimL.push(colorize(RB(0.03, 0.018, 0.5, 0.008).rotateY(0.15).translate(c0[0] - 0.08, c0[1] + 0.02, sz), '#0c0c0e'));   // wipers
+  }
   const trim = merge(trimL);
+  // headlight beams (visible at night)
+  const beamGeo = merge([1, -1].map(sz => new THREE.ConeGeometry(1.5, 9, 14, 1, true).rotateZ(Math.PI / 2).translate(fx + 4.5, ly - 0.25, sz * 0.6)));
   // wheels: rounded tyre profile (lathe) + 5-spoke rim
   const r = s.wr, tw = 0.15;
   const tyre = new THREE.LatheGeometry([[r * 0.62, -tw], [r * 0.9, -tw - 0.005], [r * 0.99, -tw * 0.7], [r, 0], [r * 0.99, tw * 0.7], [r * 0.9, tw + 0.005], [r * 0.62, tw]].map(([a, b]) => new THREE.Vector2(a, b)), 22).rotateX(Math.PI / 2);
   const rim = [colorize(new THREE.CylinderGeometry(r * 0.63, r * 0.63, tw * 1.6, 20).rotateX(Math.PI / 2), '#2a2c30'), colorize(new THREE.CylinderGeometry(r * 0.16, r * 0.16, tw * 2.1, 12).rotateX(Math.PI / 2), '#d8dce2')];
-  for (let k = 0; k < 5; k++) rim.push(colorize(new THREE.BoxGeometry(r * 0.1, r * 0.55, tw * 1.9).translate(0, r * 0.3, 0).rotateZ(k / 5 * Math.PI * 2), '#c8ccd2'));
-  const wheel = merge([colorize(tyre, '#141414'), ...rim]);
-  return carGeoCache[kind] = { paint, cab, lights, trim, wheel };
+  for (let k = 0; k < 10; k++) rim.push(colorize(new THREE.BoxGeometry(r * 0.07, r * 0.52, tw * 1.7).translate(0, r * 0.32, tw * 0.12).rotateZ(k / 10 * Math.PI * 2 + (k % 2) * 0.12), '#c8ccd2'));
+  rim.push(colorize(new THREE.TorusGeometry(r * 0.62, r * 0.03, 6, 24).translate(0, 0, tw * 0.85), '#e0e4ea'));
+  rim.push(colorize(new THREE.CylinderGeometry(r * 0.5, r * 0.5, 0.02, 20).rotateX(Math.PI / 2).translate(0, 0, -tw * 0.2), '#5a5c60'));     // brake disc
+  rim.push(colorize(new RoundedBoxGeometry(r * 0.22, r * 0.35, 0.06, 2, 0.02).translate(0, r * 0.32, 0), kind === 'sport' || kind === 'super' ? '#c81e1e' : '#3a3a3e'));   // caliper
+  const wheel = merge([colorize(tyre, '#141414'), colorize(new THREE.TorusGeometry(r * 0.8, 0.012, 4, 24).translate(0, 0, tw + 0.004), '#2a2a2c'), ...rim]);
+  return carGeoCache[kind] = { paint, cab, lights, trim, wheel, arch, beamGeo };
 }
 const CAR_COLORS = ['#e8e8ea', '#101014', '#8a1018', '#1a3a7a', '#c8c8cc', '#2a4a3a', '#6a6a70', '#a8a090', '#3a5a7a', '#b04a1a', '#202a38', '#f0f0f0', '#d8b040', '#5a1a20'];
 let bikeGeo = null;
@@ -1222,7 +1314,8 @@ function createCar(kind, color, x, z, h, mode) {
   const paint = new THREE.Mesh(G.paint, paintM), cab = new THREE.Mesh(G.cab, M.carGlass), lights = new THREE.Mesh(G.lights, M.carLight), trim = new THREE.Mesh(G.trim, M.trim);
   const sh = QUALITY !== 'low';
   paint.castShadow = sh; cab.castShadow = sh;
-  inner.add(paint, cab, lights, trim);
+  inner.add(paint, cab, lights, trim, new THREE.Mesh(G.arch, M.arch));
+  if (QUALITY !== 'low' && !s.bus) inner.add(new THREE.Mesh(G.beamGeo, M.beam));
   const spinners = [], fronts = [];
   for (const [wx, wz] of [[s.wx, 1], [s.wx, -1], [-s.wx + 0.05, 1], [-s.wx + 0.05, -1]]) {
     const piv = new THREE.Group(); piv.position.set(wx, s.wr, wz * (s.W / 2 - 0.1));
@@ -2313,6 +2406,7 @@ function updateSky(dt) {
   M.lampHead.color.setRGB(1, 0.85, 0.55).multiplyScalar(0.3 + night * 3.2);
   M.pool.opacity = night * 0.6;
   M.carLight.color.setScalar(0.9 + night * 2.6);
+  if (M.beam) { M.beam.opacity = night * 0.075; M.beam.visible = night > 0.08; }
   const cu = clouds.material.uniforms;
   cu.uSunDir.value.copy(y > -0.05 ? sunDir : tmpV2); cu.uCover.value = Math.max(state.cloud, state.rain);
   cu.uLit.value.setRGB(1, 0.97, 0.92).lerp(tmpC2.setRGB(1, 0.62, 0.42), sunset * 0.8).multiplyScalar(0.06 + 0.94 * day).lerp(tmpC2.setRGB(0.42, 0.44, 0.47), state.rain * 0.75).addScalar(state.lightning);
@@ -2466,7 +2560,7 @@ function readInput() {
 }
 
 // ============================================================ HUD
-let floatEl = null;
+let floatEl = null, aoPass = null;
 function showBig(text, color, dur, sub) {
   const el = $('bigMsg'); el.innerHTML = text + (sub ? `<small>${sub}</small>` : ''); el.style.color = color; el.style.opacity = 1;
   clearTimeout(showBig.t); showBig.t = setTimeout(() => el.style.opacity = 0, dur * 1000);
