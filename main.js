@@ -335,7 +335,7 @@ function init() {
   buildMaterials();
   buildGround();
   buildCity();
-  prepCourt(); prepM28();
+  prepCourt(); prepM28(); prepM29();
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
   buildAirport();
   buildIslands();
@@ -400,6 +400,7 @@ function init() {
   buildBizPremises();
   buildM27();
   buildM28();
+  buildM29();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -1425,9 +1426,10 @@ function carGeos(kind) {
   for (let k = 0; k < 10; k++) rim.push(colorize(new THREE.BoxGeometry(r * 0.07, r * 0.52, tw * 1.7).translate(0, r * 0.32, tw * 0.12).rotateZ(k / 10 * Math.PI * 2 + (k % 2) * 0.12), '#c8ccd2'));
   rim.push(colorize(new THREE.TorusGeometry(r * 0.62, r * 0.03, 6, 24).translate(0, 0, tw * 0.85), '#e0e4ea'));
   rim.push(colorize(new THREE.CylinderGeometry(r * 0.5, r * 0.5, 0.02, 20).rotateX(Math.PI / 2).translate(0, 0, -tw * 0.2), '#5a5c60'));     // brake disc
-  rim.push(colorize(new RoundedBoxGeometry(r * 0.22, r * 0.35, 0.06, 2, 0.02).translate(0, r * 0.32, 0), kind === 'sport' || kind === 'super' ? '#c81e1e' : '#3a3a3e'));   // caliper
   const wheel = merge([colorize(tyre, '#141414'), colorize(new THREE.TorusGeometry(r * 0.8, 0.012, 4, 24).translate(0, 0, tw + 0.004), '#2a2a2c'), ...rim]);
-  return carGeoCache[kind] = { paint, cab, lights, trim, wheel, arch, beamGeo };
+  // brake caliper: does not turn with the wheel (it sits on the steering pivot)
+  const caliper = colorize(new RoundedBoxGeometry(r * 0.22, r * 0.34, 0.03, 2, 0.01).translate(r * 0.38, 0, tw * 0.86), kind === 'sport' || kind === 'super' ? '#c81e1e' : '#3a3a3e');
+  return carGeoCache[kind] = { paint, cab, lights, trim, wheel, arch, beamGeo, caliper };
 }
 const CAR_COLORS = ['#e8e8ea', '#101014', '#8a1018', '#1a3a7a', '#c8c8cc', '#2a4a3a', '#6a6a70', '#a8a090', '#3a5a7a', '#b04a1a', '#202a38', '#f0f0f0', '#d8b040', '#5a1a20'];
 let bikeGeo = null;
@@ -1477,7 +1479,10 @@ function createCar(kind, color, x, z, h, mode) {
   const spinners = [], fronts = [];
   for (const [wx, wz] of [[s.wx, 1], [s.wx, -1], [-s.wx + 0.05, 1], [-s.wx + 0.05, -1]]) {
     const piv = new THREE.Group(); piv.position.set(wx, s.wr, wz * (s.W / 2 - 0.1));
-    const sp = new THREE.Group(); piv.add(sp); sp.add(new THREE.Mesh(G.wheel, M.wheel)); inner.add(piv);
+    const sp = new THREE.Group(); piv.add(sp); inner.add(piv);
+    // the rim detail is modelled on +z: mirror the wheels on the other side so the rim always faces outwards
+    const wm = new THREE.Mesh(G.wheel, M.wheel); wm.scale.z = wz; sp.add(wm);
+    if (G.caliper && QUALITY !== 'low') { const cm = new THREE.Mesh(G.caliper, M.wheel); cm.scale.z = wz; piv.add(cm); }
     spinners.push(sp); if (wx > 0) fronts.push(piv);
   }
   let siren = null;
@@ -1547,7 +1552,7 @@ function buildGlbCar(c) {
     const w = T.wheel.clone(true); w.rotation.y = Math.PI / 2; w.scale.set(src.x > 0 ? sc : -sc, sc, sc);
     sp.add(w); wheels.push(w);
   });
-  c.glb = { wrap, paints, wheels, glbPiv, procPiv, proc: c.inner.children.filter(o => o.isMesh && o.material !== M.beam), procWheels: c.spinners.map(sp => sp.children[0]) };
+  c.glb = { wrap, paints, wheels, glbPiv, procPiv, proc: c.inner.children.filter(o => o.isMesh && o.material !== M.beam), procWheels: [...c.spinners.map(sp => sp.children[0]), ...c.spinners.map(sp => sp.parent.children.find(o => o.isMesh)).filter(Boolean)] };
   GC.built++;
   return c.glb;
 }
@@ -2873,7 +2878,7 @@ function drawMinimap() {
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
   if (!state.interior) for (const Pm of BIZ.prem) { const o = premOwner(Pm); dot(Pm.d.x, Pm.d.z, o ? (o.me ? '#7dff9a' : o.color) : '#40a0ff', o && o.me ? 8 : 6, !!(o && o.me)); }
   if (!state.interior && PET.shelter) dot(PET.shelter.x, PET.shelter.z, '#40c060', 7, false);
-  m27MapDots(dot); m28MapDots(dot);
+  m27MapDots(dot); m28MapDots(dot); m29MapDots(dot);
   if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
@@ -3208,6 +3213,7 @@ function fuelItems() {
   it.push({ name: '⛽ 25 litre', desc: 'Yarım depo bile değil ama idare eder', price: 38, dis: need < 25 ? 'YER YOK' : null, buy: () => { c.fuel = Math.min(100, c.fuel + 25); } });
   it.push({ name: '🛢 Benzin bidonu', desc: 'Yolda kalırsan B tuşu / ⛽ göstergesine dokun → +30 litre', price: 60, buy: () => { L2().can++; } });
   it.push({ name: '🥤 Enerji içeceği', desc: 'Susuzluk +35', price: 8, buy: () => { state.water = Math.min(100, (state.water ?? 100) + 35); floatText('🥤 Ferahladın'); } });
+  it.push({ name: '🎆 Havai fişek ×3', desc: 'J tuşu / 🎆 butonu ile fırlat · odadaki herkes görür', price: 45, buy: () => { L4().fw += 3; fwBtn(); } });
   it.push({ name: '🥪 Sandviç', desc: 'Açlık +30', price: 10, buy: () => { state.food = Math.min(100, (state.food ?? 100) + 30); floatText('🥪 Afiyet olsun'); } });
   return it;
 }
@@ -3282,7 +3288,7 @@ function startRepGame(kind) {
       const gain = good * 0.7, f = s => gain * (1 - s / 130);
       if (kind === 'str') L.str = Math.min(100, L.str + f(L.str)); else if (kind === 'sta') L.sta = Math.min(100, L.sta + f(L.sta)); else { L.str = Math.min(100, L.str + f(L.str) * 0.6); L.sta = Math.min(100, L.sta + f(L.sta) * 0.6); }
       showBig(good >= 8 ? '💪 HARİKA ANTRENMAN' : good >= 5 ? '💪 İYİ ANTRENMAN' : '😮‍💨 ZOR GÜN', good >= 5 ? '#7dff9a' : '#ffb020', 3, `${good}/10 iyi tekrar · 💪 Güç ${Math.round(L.str)} · 🏃 Kondisyon ${Math.round(L.sta)}`);
-      if (good >= 5) addRep(2, 'antrenman'); saveGame();
+      L.gymTot = (L.gymTot || 0) + 1; if (good >= 5) addRep(2, 'antrenman'); saveGame();
     }
   });
 }
@@ -3656,7 +3662,7 @@ function updateMetroPlayer(dt) {
   if (M.phase === 'wait') {
     const S = MET.stations[M.i]; player.pos.set(S.wx, MET.y + 0.3, S.wz); player.human.g.visible = true; animHuman(player.human, 0, dt, false);
     player.human.g.position.copy(player.pos); player.human.g.rotation.set(0, player.yaw, 0);
-    for (let k = 0; k < MET.nTrain; k++) { const T = trainS(k); if (T.at === M.i && T.left > 1.5) { M.phase = 'ride'; M.k = k; AudioSys.tone(660, 0.2, 0.15, 'sine'); AudioSys.tone(520, 0.25, 0.15, 'sine', 1, 0.22); floatText(`🚇 Trene bindin · ${MET.names[M.j]} yönü`); break; } }
+    for (let k = 0; k < MET.nTrain; k++) { const T = trainS(k); if (T.at === M.i && T.left > 1.5) { M.phase = 'ride'; M.k = k; L3().rides = (L3().rides || 0) + 1; AudioSys.tone(660, 0.2, 0.15, 'sine'); AudioSys.tone(520, 0.25, 0.15, 'sine', 1, 0.22); floatText(`🚇 Trene bindin · ${MET.names[M.j]} yönü`); break; } }
     M.ui = { label: `🚇 Tren ${Math.ceil(nextTrainAt(M.i))} sn · E: perondan in`, fn: () => endMetro(M.i) };
     return;
   }
@@ -3832,7 +3838,7 @@ function startPenalties() {
     close(cancel) {
       P.game = null; P.keeper.g.rotation.set(0, -Math.PI / 2, 0); P.keeper.g.position.set(P.gx, 0.37, P.cz); P.ball.position.set(P.spot[0] + 0.6, 0.48, P.spot[1]);
       if (cancel && G.n < 5) { floatText('⚽ Penaltılar yarıda kaldı'); return; }
-      const L = L3(), rec = G.goals > L.goalBest; if (rec) L.goalBest = G.goals;
+      const L = L3(), rec = G.goals > L.goalBest; if (rec) L.goalBest = G.goals; L.goalsTot = (L.goalsTot || 0) + G.goals;
       let pay = 0; if (G.goals >= 4 && L.goalDay !== todayKey()) { L.goalDay = todayKey(); pay = G.goals === 5 ? 400 : 250; earn(pay, '⚽ Penaltı ödülü'); }
       showBig(`⚽ ${G.goals}/5 GOL`, G.goals >= 4 ? '#7dff9a' : '#ffb020', 4, `${G.res.join(' ')}${rec ? ' · 🏆 rekor' : ''}${pay ? ` · günlük ödül +$${pay}` : G.goals >= 4 ? ' · ödül bugün alındı' : ' · 4+ golle günlük ödül'}`);
       saveGame();
@@ -3965,6 +3971,7 @@ function concertItems() {
     { sec: concertOn() ? '🎤 MAVİ DALGA şu an sahnede! · önde 40 sn dans et → can +30, itibar +4' : 'Konser bitti · her gece 20:00–23:30' },
     { name: '🎟 Konser bileti', desc: 'Bu geceki konser için', price: 40, dis: state.concertTicket ? 'VAR' : concertOn() ? null : 'KAPALI', buy: () => { state.concertTicket = true; floatText('🎟 Bilet alındı · sahnenin önüne geç!'); } },
     { name: '🥤 Enerji içeceği', desc: 'Susuzluk +30', price: 6, buy: () => { state.water = Math.min(100, (state.water ?? 100) + 30); } },
+    { name: '🎆 Havai fişek ×3', desc: 'J tuşu / 🎆 butonu ile fırlat', price: 45, buy: () => { L4().fw += 3; fwBtn(); } },
     { name: '🌭 Sosisli', desc: 'Açlık +25', price: 8, buy: () => { state.food = Math.min(100, (state.food ?? 100) + 25); } },
   ];
 }
@@ -3991,6 +3998,325 @@ function m28MapDots(dot) {
   if (M28.pitch) dot(M28.pitch.cx, M28.pitch.cz, '#40d040', 6, false);
   if (M28.cine) dot(M28.cine.cx, M28.cine.sz + 10, '#ff4a6a', 6, false);
   if (M28.stage) dot(M28.stage.x, M28.stage.z, concertOn() ? '#ff7ae0' : '#a06090', concertOn() ? 9 : 6, concertOn());
+}
+
+// ============================================================ SHOOTING RANGE · DAILY TASKS · COMMUNITY GARDEN · ARCADE · FIREWORKS
+const L4 = () => state.life4 || (state.life4 = { day: '', base: {}, done: [], plots: {}, produce: {}, fw: 0, rangeBest: 0, rangeDay: '', snake: 0, flap: 0, arcadeN: 0, harvests: 0, rangeN: 0 });
+const M29 = { range: null, garden: null, arcade: null, plotMeshes: {} };
+function freeBeachZ(x, list) { return list.find(z => !ramps.some(r => Math.hypot(r.x - x, r.z - z) < 40) && !HELIPADS.some(h => Math.hypot(h[0] - x, h[2] - z) < 30) && !(M28.stage && Math.hypot(M28.stage.x - x, M28.stage.z - z) < 50) && Math.abs(z - DOCK.z) > 25) ?? list[0]; }
+
+// ============================================================ 🎯 SHOOTING RANGE (beach, shoot the pop-up targets with your own weapon)
+function buildRange() {
+  const x = BEACH_X0 + 30, z = freeBeachZ(x, [300, 330, 260, -320, -290]), y = groundY(x, z);
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.9 }), sand = new THREE.MeshStandardMaterial({ color: 0xb89a68, roughness: 1 });
+  const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
+  g.add(new THREE.Mesh(merge([new THREE.BoxGeometry(1.2, 1.1, 10).translate(0, 0.55, 0), new THREE.BoxGeometry(0.12, 3.9, 0.12).translate(0.1, 1.95, -2.2), new THREE.BoxGeometry(0.12, 3.9, 0.12).translate(0.1, 1.95, 2.2)]), wood));          // firing line counter + sign posts
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(4, 5, 14).translate(36, 2.5, 0), sand));                                                                                   // backstop berm
+  for (const s of [-1, 1]) g.add(new THREE.Mesh(new THREE.BoxGeometry(34, 1.6, 0.4).translate(18, 0.8, s * 7), wood));
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.9), new THREE.MeshBasicMaterial({ map: signTexM(256, 58, '#3a1a0a', '#ffb020', '🎯 ATIŞ POLİGONU') })); sm.position.set(0.1, 3.5, 0); sm.rotation.y = -Math.PI / 2; g.add(sm);
+  const ttex = canvasTex(64, 64, c => { for (let i = 5; i > 0; i--) { c.fillStyle = i % 2 ? '#f2f2f2' : '#d02020'; c.beginPath(); c.arc(32, 32, i * 6, 0, 7); c.fill(); } });
+  const targets = [];
+  for (let i = 0; i < 6; i++) {
+    const tx = 10 + (i % 3) * 8 + (i > 2 ? 4 : 0), tz = -4.5 + (i % 3) * 4.5 + (i > 2 ? -2 : 0) * 0;
+    const piv = new THREE.Group(); piv.position.set(tx, 0, tz + (i > 2 ? 1.6 : -1.6)); g.add(piv);
+    piv.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1).translate(0, 0.6, 0), wood));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), new THREE.MeshStandardMaterial({ map: ttex, side: THREE.DoubleSide })); disc.position.set(0, 1.6, 0); disc.rotation.y = -Math.PI / 2; piv.add(disc);
+    piv.rotation.z = -Math.PI / 2 + 0.05; targets.push({ piv, up: 0, t: 0, i });
+  }
+  M29.range = { x, z, y, g, targets, spot: [x - 1.4, z], game: null };
+}
+function rangeRayHit(t0, t1) {
+  const R = M29.range; if (!R || !R.game) return null;
+  let best = null; const v = new THREE.Vector3();
+  for (const T of R.targets) { if (T.up < 0.9) continue; T.piv.children[1].getWorldPosition(v); const t = raySphere(v.x, v.y, v.z, 0.42, t0, best ? best.t : t1); if (t > 0) best = { t, kind: 'target', obj: T, head: false }; }
+  return best;
+}
+function hitTarget(T, res) {
+  const R = M29.range, G = R && R.game; if (!G || T.up < 0.9) return;
+  const v = new THREE.Vector3(); T.piv.children[1].getWorldPosition(v);
+  const off = res ? Math.hypot(res.y - v.y, res.z - v.z) : 0.3, bull = off < 0.12, dist = v.x - R.x, pts = Math.round((bull ? 25 : 10) + dist * 0.6);
+  G.score += pts; G.hits++; T.up = 0.89; T.t = -0.01; floatText(bull ? `🎯 ON İKİ! +${pts}` : `🎯 +${pts}`); AudioSys.tone(bull ? 1400 : 1000, 0.06, 0.15, 'square');
+  mgSub(`⏱ ${Math.ceil(G.left)} sn · 🎯 ${G.score} puan · ${G.hits} isabet`);
+}
+function startRange() {
+  const R = M29.range; if (!state.weapon && !state.ownedW[1]) { floatText('🔫 Bir silahın olmalı'); return; }
+  R.game = { left: 45, score: 0, hits: 0, next: 0.5 }; state.rangeOn = true;
+  player.pos.set(R.spot[0], R.y + 0.05, R.spot[1]); player.yaw = Math.PI / 2; camYaw = -Math.PI / 2; camPitch = 0.05;
+  mgOpen({
+    range: true, title: '🎯 ATIŞ POLİGONU · 45 sn', sub: 'Kalkan hedefleri kendi silahınla vur · uzak hedef ve on iki = daha çok puan', btn: 'BİTİR',
+    press() { mgClose(false); },
+    draw(g, w) { const G = R.game; if (!G) return; barBg(g, w, 18, 16); g.fillStyle = '#ffb020'; g.fillRect(8, 18, (G.left / 45) * (w - 16), 16); },
+    close() {
+      const G = R.game; R.game = null; state.rangeOn = false; for (const T of R.targets) { T.up = 0; T.piv.rotation.z = -Math.PI / 2 + 0.05; }
+      if (!G) return; const L = L4(); L.rangeN++; const rec = G.score > L.rangeBest; if (rec) L.rangeBest = G.score;
+      let pay = 0; if (G.score >= 250 && L.rangeDay !== todayKey()) { L.rangeDay = todayKey(); pay = G.score >= 400 ? 400 : 200; earn(pay, '🎯 Poligon ödülü'); }
+      showBig(`🎯 ${G.score} PUAN`, G.score >= 250 ? '#7dff9a' : '#ffb020', 4, `${G.hits} isabet${rec ? ' · 🏆 rekor' : ''}${pay ? ` · günlük ödül +$${pay}` : G.score >= 250 ? ' · ödül bugün alındı' : ' · 250+ puanla günlük ödül'}`);
+      saveGame();
+    }
+  });
+}
+function updateRange(dt) {
+  const R = M29.range; if (!R) return;
+  const G = R.game;
+  if (G) {
+    G.left -= dt; G.next -= dt;
+    if (G.next <= 0) { const free = R.targets.filter(T => T.up === 0); if (free.length) { const T = free[Math.floor(Math.random() * free.length)]; T.up = 0.01; T.t = 2.2 - Math.min(1, (45 - G.left) / 45) * 0.9; } G.next = 0.7 + Math.random() * 0.6; }
+    for (const T of R.targets) {
+      if (T.up > 0 && T.up < 0.9 && T.t > 0) T.up = Math.min(0.9, T.up + dt * 6);
+      else if (T.up >= 0.9) { T.t -= dt; if (T.t <= 0) T.up = 0.89; }
+      if (T.up > 0 && T.t <= 0) { T.up = Math.max(0, T.up - dt * 5); }
+      T.piv.rotation.z = (-Math.PI / 2 + 0.05) * (1 - Math.min(1, T.up / 0.9));
+    }
+    if (Math.floor(G.left * 4) !== G.lq) { G.lq = Math.floor(G.left * 4); mgSub(`⏱ ${Math.ceil(G.left)} sn · 🎯 ${G.score} puan · ${G.hits} isabet`); }
+    if (G.left <= 0 || Math.hypot(player.pos.x - R.spot[0], player.pos.z - R.spot[1]) > 4) mgClose(false);
+    return;
+  }
+  if (state.interact || state.inCar || state.interior || state.dead || MG.on) return;
+  if (Math.hypot(player.pos.x - R.spot[0], player.pos.z - R.spot[1]) < 2) state.interact = { label: `🎯 ATIŞ POLİGONU · 45 sn · rekor ${L4().rangeBest}`, fn: startRange };
+}
+
+// ============================================================ 📋 DAILY TASKS (same three tasks for everyone each day)
+const TASKS = [
+  { k: 'dist', n: '🚗 15 km araç kullan', goal: 15000, fmt: v => (v / 1000).toFixed(1) + ' km', get: () => S().dist },
+  { k: 'fish', n: '🎣 3 balık tut', goal: 3, get: () => L2().fishN || 0 },
+  { k: 'gym', n: '💪 2 antrenman yap', goal: 2, get: () => L2().gymTot || 0 },
+  { k: 'metro', n: '🚇 Metroyla 2 yolculuk yap', goal: 2, get: () => L3().rides || 0 },
+  { k: 'goal', n: '⚽ 5 penaltı golü at', goal: 5, get: () => L3().goalsTot || 0 },
+  { k: 'film', n: '🎬 Sinemada bir film izle', goal: 1, get: () => L3().films || 0 },
+  { k: 'harvest', n: '🌱 Bahçede 2 hasat yap', goal: 2, get: () => L4().harvests || 0 },
+  { k: 'range', n: '🎯 Atış poligonunda 2 seans', goal: 2, get: () => L4().rangeN || 0 },
+  { k: 'arcade', n: '🕹 Atari salonunda 3 oyun', goal: 3, get: () => L4().arcadeN || 0 },
+  { k: 'stunt', n: '🏁 2 rampa atlayışı', goal: 2, get: () => S().stunts || 0 },
+  { k: 'earn', n: '💵 $5.000 kazan', goal: 5000, fmt: v => '$' + Math.round(v), get: () => S().earned },
+  { k: 'kill', n: '💀 10 çete üyesi/düşman etkisiz', goal: 10, get: () => S().kills },
+];
+const dayIdx = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
+function todayTasks() { const r = seeded(dayIdx() * 7919 + 17), pool = TASKS.slice(), out = []; while (out.length < 3) out.push(pool.splice(Math.floor(r() * pool.length), 1)[0]); return out; }
+function tasksTick() {
+  const L = L4(), d = String(dayIdx());
+  if (L.day !== d) { L.day = d; L.done = []; L.base = {}; for (const t of TASKS) L.base[t.k] = t.get(); }
+  for (const t of todayTasks()) {
+    if (L.done.includes(t.k)) continue;
+    if (t.get() - (L.base[t.k] ?? t.get()) >= t.goal) {
+      L.done.push(t.k); const pay = 750 + 250 * L.done.length; earn(pay, '📋 Günlük görev'); addRep(5, 'görev');
+      showBig('📋 GÜNLÜK GÖREV TAMAM', '#7dff9a', 4, `${t.n} · +$${pay} · itibar +5${L.done.length === 3 ? ' · 🎉 bugünün hepsi bitti!' : ''}`); AudioSys.success(); saveGame();
+    }
+  }
+  const b = $('bTasks'); const n = 3 - L.done.length; b.dataset.n = n || '✓';
+}
+function openTasks() {
+  const L = L4(), tt = todayTasks();
+  const rows = tt.map(t => { const v = Math.max(0, t.get() - (L.base[t.k] ?? t.get())), done = L.done.includes(t.k), f = t.fmt || (x => Math.floor(x)); return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;background:${done ? '#1e5a2e' : '#ffffff10'}"><span>${done ? '✅' : '⬜'} ${t.n}</span><small>${done ? 'tamam' : `${f(Math.min(v, t.goal))} / ${f(t.goal)}`}</small></div>`; }).join('');
+  const h = 24 - new Date().getHours();
+  mpModal(`<b>📋 GÜNLÜK GÖREVLER</b><small>Her gün herkes için aynı 3 görev · ödül $1.000 / $1.250 / $1.500 + itibar · yenilenmesine ~${h} saat</small>${rows}<div class="mmBtns"><button id="tkX">Kapat</button></div>`);
+  $('tkX').onclick = closeModal;
+}
+
+// ============================================================ 🌱 COMMUNITY GARDEN (real-time growth, keeps growing while you're away)
+const CROPS = {
+  domates: { n: '🍅 Domates', seed: 10, min: 4, yield: 3, val: 15, food: 12, col: '#e02a20' },
+  biber: { n: '🌶 Biber', seed: 8, min: 3, yield: 3, val: 12, food: 8, col: '#2a9a2a' },
+  havuc: { n: '🥕 Havuç', seed: 6, min: 2.5, yield: 4, val: 8, food: 8, col: '#f0801a' },
+  misir: { n: '🌽 Mısır', seed: 12, min: 5, yield: 2, val: 28, food: 18, col: '#f2d23a' },
+  karpuz: { n: '🍉 Karpuz', seed: 25, min: 8, yield: 1, val: 95, food: 40, col: '#2a7a2a' },
+};
+function gardenRect() { const b = blocks[5] && blocks[5][1]; return b && b.park ? { b, cx: b.cx - 14, cz: b.cz - 16 } : null; }
+function buildGarden() {
+  const G = gardenRect(); if (!G) return;
+  const soil = new THREE.MeshStandardMaterial({ color: 0x4a3222, roughness: 1 }), wood = new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.9 });
+  const plots = [];
+  for (let i = 0; i < 6; i++) {
+    const x = G.cx - 6 + (i % 3) * 6, z = G.cz - 2.6 + Math.floor(i / 3) * 5.2;
+    scene.add(Object.assign(new THREE.Mesh(merge([new THREE.BoxGeometry(4.2, 0.3, 3.4).translate(x, 0.4, z)]), soil), { receiveShadow: true }));
+    scene.add(new THREE.Mesh(merge([new THREE.BoxGeometry(4.4, 0.35, 0.12).translate(x, 0.45, z - 1.75), new THREE.BoxGeometry(4.4, 0.35, 0.12).translate(x, 0.45, z + 1.75), new THREE.BoxGeometry(0.12, 0.35, 3.6).translate(x - 2.15, 0.45, z), new THREE.BoxGeometry(0.12, 0.35, 3.6).translate(x + 2.15, 0.45, z)]), wood));
+    plots.push({ i, x, z });
+  }
+  const stand = new THREE.Group(); stand.position.set(G.cx + 12, 0.31, G.cz);
+  stand.add(new THREE.Mesh(new THREE.BoxGeometry(2.4, 1, 1.2).translate(0, 0.5, 0), wood));
+  stand.add(new THREE.Mesh(new THREE.ConeGeometry(2, 1, 4).rotateY(Math.PI / 4).translate(0, 2.8, 0), new THREE.MeshStandardMaterial({ color: 0x2a8a3a })));
+  stand.add(new THREE.Mesh(merge([[-1.1, -0.5], [1.1, -0.5], [-1.1, 0.5], [1.1, 0.5]].map(([a, b]) => new THREE.CylinderGeometry(0.05, 0.05, 2.3, 5).translate(a, 1.15, b))), wood));
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: signTexM(256, 64, '#2a6a2a', '#fff', '🌱 HOBİ BAHÇESİ') })); sm.position.set(0, 1.6, -0.62); sm.rotation.y = Math.PI; stand.add(sm);
+  stand.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(stand);
+  M29.garden = { ...G, plots, stand: [G.cx + 12, G.cz - 1.2] };
+}
+function plotState(i) { return L4().plots[i]; }
+function growPlots() {
+  const L = L4(), now = Date.now();
+  for (const k in L.plots) {
+    const P = L.plots[k]; if (!P.crop || P.prog >= 1) { P.last = now; continue; }
+    const el = Math.min(now - (P.last || now), 8 * 3600000) / 1000, wet = (P.wet || 0) > now;
+    P.prog = Math.min(1, P.prog + el / (CROPS[P.crop].min * 60) * (wet ? 1 : 0.55)); P.last = now;
+  }
+}
+function plotMesh(i) {
+  const G = M29.garden, P = plotState(i), pl = G.plots[i], key = P && P.crop ? P.crop + Math.floor(P.prog * 8) + (P.wet > Date.now() ? 'w' : '') : 'none';
+  const old = M29.plotMeshes[i]; if (old && old.key === key) return;
+  if (old) { scene.remove(old.m); old.m.traverse(o => o.geometry && o.geometry.dispose()); }
+  const g = new THREE.Group(); M29.plotMeshes[i] = { m: g, key }; scene.add(g);
+  if (!P || !P.crop) return;
+  const C = CROPS[P.crop], s = 0.15 + P.prog * 0.85, parts = [];
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) {
+    const x = pl.x - 1.5 + c, z = pl.z - 1 + r;
+    if (P.crop === 'misir') parts.push(colorize(new THREE.CylinderGeometry(0.03, 0.05, 1.8 * s, 5).translate(x, 0.55 + 0.9 * s, z), '#4a8a2a'));
+    else if (P.crop === 'karpuz') parts.push(colorize(new THREE.IcosahedronGeometry(0.25 * s, 0).scale(1.6, 0.4, 1.6).translate(x, 0.6, z), '#3a8a2a'));
+    else parts.push(colorize(new THREE.IcosahedronGeometry(0.28 * s, 0).scale(1, 1.3, 1).translate(x, 0.55 + 0.3 * s, z), P.crop === 'havuc' ? '#5aa83a' : '#3a8a2a'));
+    if (P.prog > 0.7) {
+      if (P.crop === 'karpuz') { if ((r + c) % 3 === 0) parts.push(colorize(new THREE.SphereGeometry(0.22 + P.prog * 0.1, 8, 6).scale(1.3, 1, 1).translate(x + 0.2, 0.75, z), C.col)); }
+      else if (P.crop === 'havuc') parts.push(colorize(new THREE.ConeGeometry(0.06, 0.18, 6).rotateX(Math.PI).translate(x, 0.6, z), C.col));
+      else if (P.crop === 'misir') parts.push(colorize(new THREE.CapsuleGeometry(0.06, 0.2, 2, 6).translate(x + 0.08, 0.55 + 1.1 * s, z), C.col));
+      else for (let f = 0; f < 3; f++) parts.push(colorize(new THREE.SphereGeometry(0.06, 6, 5).translate(x + Math.cos(f * 2.1) * 0.16, 0.6 + 0.3 * s, z + Math.sin(f * 2.1) * 0.16), C.col));
+    }
+  }
+  if (P.wet > Date.now()) parts.push(colorize(new THREE.BoxGeometry(4.15, 0.02, 3.35).translate(pl.x, 0.56, pl.z), '#2a1a10'));
+  g.add(Object.assign(new THREE.Mesh(merge(parts), M.human), { castShadow: true }));
+}
+function updateGarden(dt) {
+  const G = M29.garden; if (!G) return;
+  M29.gT = (M29.gT || 0) - dt;
+  if (M29.gT <= 0) { M29.gT = 1; growPlots(); if (Math.hypot(camera.position.x - G.cx, camera.position.z - G.cz) < 200) for (const p of G.plots) plotMesh(p.i); }
+  if (state.interact || state.inCar || state.interior || state.dead || MG.on) return;
+  if (Math.hypot(player.pos.x - G.stand[0], player.pos.z - G.stand[1]) < 1.8) { state.interact = { label: '🌱 BAHÇE TEZGÂHI · ürün sat', fn: () => openShop('farm') }; return; }
+  for (const pl of G.plots) {
+    if (Math.abs(player.pos.x - pl.x) > 2.6 || Math.abs(player.pos.z - pl.z) > 2.2) continue;
+    const L = L4(), P = L.plots[pl.i];
+    if (!P) { const own = Object.keys(L.plots).length; state.interact = own >= 3 ? { label: '🌱 En fazla 3 parselin olabilir', fn: null } : { label: `🌱 PARSELİ KİRALA · $150 (kalıcı) · ${own}/3`, fn: () => { if (state.money < 150) { floatText('💸 Paran yetmiyor'); return; } state.money -= 150; state.shownMoney = state.money; ledger('🌱 Bahçe parseli', -150); L.plots[pl.i] = { crop: null, prog: 0 }; floatText('🌱 Parsel senin! Tohum ek'); saveGame(); } }; return; }
+    if (!P.crop) { state.interact = { label: '🌱 TOHUM EK', fn: () => { M29.curPlot = pl.i; openShop('seeds'); } }; return; }
+    if (P.prog >= 1) { state.interact = { label: `🧺 HASAT ET · ${CROPS[P.crop].n}`, fn: () => { const C = CROPS[P.crop]; L.produce[P.crop] = (L.produce[P.crop] || 0) + C.yield; L.harvests++; floatText(`🧺 +${C.yield} ${C.n}`); AudioSys.pickup(); P.crop = null; P.prog = 0; saveGame(); } }; return; }
+    const wet = (P.wet || 0) > Date.now();
+    state.interact = { label: `${CROPS[P.crop].n} · %${Math.floor(P.prog * 100)}${wet ? ' · 💧 sulandı' : ' · E: 💧 SULA (2× hızlı büyür)'}`, fn: wet ? null : () => { P.wet = Date.now() + 180000; floatText('💧 Sulandı · 3 dk hızlı büyüme'); AudioSys.tone(400, 0.4, 0.08, 'sine', 0.5); saveGame(); } };
+    return;
+  }
+}
+function seedItems() {
+  const i = M29.curPlot, L = L4(), P = L.plots[i]; if (!P) return [];
+  return [{ sec: 'Tohumlar · gerçek zamanlı büyür (sen oyunda yokken de, yavaşça) · sulamak hızlandırır' }, ...Object.entries(CROPS).map(([k, C]) => ({ name: `${C.n}`, desc: `${C.min} dk · ${C.yield} ürün · tanesi $${C.val}`, price: C.seed, close: true, buy: () => { P.crop = k; P.prog = 0; P.last = Date.now(); P.wet = 0; floatText(`🌱 ${C.n} ekildi · sulamayı unutma`); } }))];
+}
+function farmItems() {
+  const L = L4(), it = [], tot = Object.entries(L.produce).reduce((a, [k, n]) => a + n * CROPS[k].val, 0);
+  it.push({ sec: `🧺 Ürünlerin: ${Object.entries(L.produce).filter(([, n]) => n).map(([k, n]) => `${CROPS[k].n} ×${n}`).join(' · ') || 'yok'}` });
+  it.push({ name: '💰 Hepsini sat', desc: 'Bahçe tezgâhına sat', price: 0, btn: tot ? `+$${tot}` : 'BOŞ', dis: tot ? null : 'BOŞ', buy: () => { earn(tot, '🌱 Bahçe ürünleri'); L.produce = {}; } });
+  for (const [k, n] of Object.entries(L.produce)) if (n) it.push({ name: `😋 ${CROPS[k].n} ye`, desc: `Açlık +${CROPS[k].food}`, price: 0, btn: 'YE', buy: () => { L.produce[k]--; state.food = Math.min(100, (state.food ?? 100) + CROPS[k].food); } });
+  return it;
+}
+
+// ============================================================ 🕹 ARCADE (canvas mini games)
+function buildArcade() {
+  const b = blocks.flat().filter(b => b.dist === 'midtown').sort((a, b) => a.j - b.j || a.i - b.i)[1]; if (!b) return;
+  let x = b.cx + 10, z = b.cz + BLOCK / 2 - 2.2;
+  for (const dx of [0, 8, -8, 16, -16, 22]) { const xx = b.cx + 10 + dx; if (!SHOPS.some(s => Math.hypot(s.x - xx, s.z - z) < 8) && !DOORS.some(d => Math.hypot(d.x - xx, d.z - z) < 4)) { x = xx; break; } }
+  const g = new THREE.Group(); g.position.set(x, 0.25, z);
+  const scr = canvasTex(128, 96, c => { c.fillStyle = '#000'; c.fillRect(0, 0, 128, 96); c.fillStyle = '#3aff6a'; for (let i = 0; i < 6; i++) c.fillRect(20 + i * 8, 50, 7, 7); c.fillStyle = '#ff3a6a'; c.fillRect(100, 30, 7, 7); c.fillStyle = '#fff'; c.font = 'bold 12px monospace'; c.fillText('INSERT COIN', 22, 86); });
+  for (const s of [-1, 1]) {
+    const cab = new THREE.Group(); cab.position.set(s * 0.9, 0, 0);
+    cab.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.9, 0.8).translate(0, 0.95, 0), new THREE.MeshStandardMaterial({ color: s > 0 ? 0x2a2aa0 : 0xa02a8a, roughness: 0.4 })));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.45), new THREE.MeshBasicMaterial({ map: scr, toneMapped: false })); m.position.set(0, 1.45, 0.41); m.rotation.x = -0.15; cab.add(m);
+    g.add(cab);
+  }
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.5), new THREE.MeshBasicMaterial({ map: signTexM(256, 58, '#120024', '#ff4ae0', '🕹 ATARİ') })); sm.position.set(0, 2.2, 0.41); g.add(sm);
+  g.rotation.y = Math.PI; g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+  M29.arcade = { x, z: z - 1.1 };
+}
+const ARC = { on: null };
+addEventListener('keydown', e => { if (!ARC.on) return; const k = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', Space: 'a', KeyE: 'a' }[e.code]; if (!k) return; e.preventDefault(); e.stopImmediatePropagation(); ARC.on.key(k); }, true);
+function arcadeItems() {
+  const L = L4();
+  return [{ sec: `🏆 Rekorların · 🐍 Yılan ${L.snake} · 🐦 Martı ${L.flap}` },
+    { name: '🐍 Yılan', desc: 'Ok tuşları / WASD / ekran tuşları · elmaları ye, kendine çarpma', price: 2, close: true, buy: () => playArcade('snake') },
+    { name: '🐦 Martı Uçuşu', desc: 'Space / dokun = kanat çırp · direklerin arasından geç', price: 2, close: true, buy: () => playArcade('flap') }];
+}
+function playArcade(kind) {
+  const L = L4(); L.arcadeN++;
+  mpModal(`<b>${kind === 'snake' ? '🐍 YILAN' : '🐦 MARTI UÇUŞU'}</b><small id="arcS">Puan 0 · rekor ${kind === 'snake' ? L.snake : L.flap}</small><canvas id="arcC" width="288" height="288" style="width:100%;max-width:288px;align-self:center;border-radius:10px;background:#000;touch-action:none"></canvas>${kind === 'snake' ? '<div class="mmBtns"><button data-k="l">◀</button><button data-k="u">▲</button><button data-k="d">▼</button><button data-k="r">▶</button></div>' : ''}<div class="mmBtns"><button id="arcX" class="grey">Çık</button></div>`);
+  const cv = $('arcC'), g = cv.getContext('2d'), W = 288;
+  let score = 0, over = false, raf = 0, last = performance.now(), acc = 0;
+  const finish = () => { if (over) return; over = true; const key = kind === 'snake' ? 'snake' : 'flap', rec = score > L[key]; if (rec) { L[key] = score; if (score >= (kind === 'snake' ? 25 : 15)) breakingNews(`🕹 ${MP.on ? MP.name : 'Bir oyuncu'} atari salonunda ${kind === 'snake' ? 'Yılan' : 'Martı Uçuşu'} rekoru kırdı: ${score}!`, true); } const pay = Math.floor(score / (kind === 'snake' ? 5 : 3)) * 10; if (pay) earn(pay, '🕹 Atari bileti'); $('arcS').textContent = `OYUN BİTTİ · ${score} puan${rec ? ' · 🏆 REKOR' : ''}${pay ? ` · +$${pay}` : ''}`; saveGame(); };
+  let st;
+  if (kind === 'snake') {
+    const N = 18, C = W / N; st = { s: [[9, 9], [8, 9], [7, 9]], d: [1, 0], nd: [1, 0], food: [13, 9] };
+    const place = () => { do st.food = [Math.floor(Math.random() * N), Math.floor(Math.random() * N)]; while (st.s.some(p => p[0] === st.food[0] && p[1] === st.food[1])); };
+    ARC.on = { key: k => { const m = { u: [0, -1], d: [0, 1], l: [-1, 0], r: [1, 0] }[k]; if (m && (m[0] !== -st.d[0] || m[1] !== -st.d[1])) st.nd = m; } };
+    const step = () => { st.d = st.nd; const h = [st.s[0][0] + st.d[0], st.s[0][1] + st.d[1]]; if (h[0] < 0 || h[1] < 0 || h[0] >= N || h[1] >= N || st.s.some(p => p[0] === h[0] && p[1] === h[1])) { finish(); return; } st.s.unshift(h); if (h[0] === st.food[0] && h[1] === st.food[1]) { score++; AudioSys.tone(880, 0.05, 0.1, 'square'); $('arcS').textContent = `Puan ${score} · rekor ${L.snake}`; place(); } else st.s.pop(); };
+    const draw = () => { g.fillStyle = '#050a05'; g.fillRect(0, 0, W, W); g.fillStyle = '#ff3a5a'; g.fillRect(st.food[0] * C + 2, st.food[1] * C + 2, C - 4, C - 4); st.s.forEach((p, i) => { g.fillStyle = i ? '#3ad06a' : '#aaff7a'; g.fillRect(p[0] * C + 1, p[1] * C + 1, C - 2, C - 2); }); if (over) { g.fillStyle = '#000a'; g.fillRect(0, 0, W, W); g.fillStyle = '#fff'; g.font = 'bold 26px monospace'; g.textAlign = 'center'; g.fillText('OYUN BİTTİ', W / 2, W / 2); } };
+    const loop = t => { if ($('mpModal').style.display === 'none') { ARC.on = null; return; } const dt = Math.min(0.1, (t - last) / 1000); last = t; acc += dt; const sp = Math.max(0.06, 0.13 - score * 0.002); while (!over && acc > sp) { acc -= sp; step(); } draw(); if (ARC.on && !over) raf = requestAnimationFrame(loop); else draw(); };
+    raf = requestAnimationFrame(loop);
+    document.querySelectorAll('#mpModal [data-k]').forEach(b => b.onpointerdown = e => { e.preventDefault(); ARC.on && ARC.on.key(b.dataset.k); });
+    let sx = 0, sy = 0; cv.onpointerdown = e => { sx = e.clientX; sy = e.clientY; }; cv.onpointerup = e => { const dx = e.clientX - sx, dy = e.clientY - sy; if (Math.max(Math.abs(dx), Math.abs(dy)) > 20) ARC.on && ARC.on.key(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u')); };
+  } else {
+    st = { y: 140, v: 0, pipes: [], t: 0, started: false };
+    const flap = () => { if (over) return; st.started = true; st.v = -210; AudioSys.tone(700, 0.05, 0.08, 'triangle'); };
+    ARC.on = { key: k => { if (k === 'a' || k === 'u') flap(); } };
+    cv.onpointerdown = e => { e.preventDefault(); flap(); };
+    const loop = t => {
+      if ($('mpModal').style.display === 'none') { ARC.on = null; return; }
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      if (st.started && !over) {
+        st.v += 620 * dt; st.y += st.v * dt; st.t -= dt;
+        if (st.t <= 0) { st.t = 1.5; st.pipes.push({ x: W + 20, gap: 70 + Math.random() * 130, ok: false }); }
+        for (const p of st.pipes) { p.x -= 110 * dt; if (!p.ok && p.x < 60) { p.ok = true; score++; AudioSys.tone(990, 0.05, 0.1, 'square'); $('arcS').textContent = `Puan ${score} · rekor ${L.flap}`; } if (p.x < 84 && p.x > 36 && (st.y - 10 < p.gap - 42 || st.y + 10 > p.gap + 42)) finish(); }
+        st.pipes = st.pipes.filter(p => p.x > -40); if (st.y > W - 10 || st.y < 0) finish();
+      }
+      const gr = g.createLinearGradient(0, 0, 0, W); gr.addColorStop(0, '#5ab0f0'); gr.addColorStop(1, '#f0d0a0'); g.fillStyle = gr; g.fillRect(0, 0, W, W);
+      g.fillStyle = '#2a8a3a'; for (const p of st.pipes) { g.fillRect(p.x - 18, 0, 36, p.gap - 42); g.fillRect(p.x - 18, p.gap + 42, 36, W); }
+      g.fillStyle = '#fff'; g.beginPath(); g.ellipse(60, st.y, 13, 9, Math.max(-0.5, Math.min(0.8, st.v / 400)), 0, 7); g.fill(); g.fillStyle = '#ffa020'; g.fillRect(70, st.y - 2, 7, 4); g.fillStyle = '#000'; g.fillRect(64, st.y - 5, 3, 3);
+      if (!st.started) { g.fillStyle = '#000a'; g.font = 'bold 18px monospace'; g.textAlign = 'center'; g.fillText('DOKUN / SPACE', W / 2, W / 2); }
+      if (over) { g.fillStyle = '#000a'; g.fillRect(0, 0, W, W); g.fillStyle = '#fff'; g.font = 'bold 26px monospace'; g.textAlign = 'center'; g.fillText('OYUN BİTTİ', W / 2, W / 2); }
+      if (ARC.on && !over) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }
+  $('arcX').onclick = () => { cancelAnimationFrame(raf); if (!over && score) finish(); ARC.on = null; closeModal(); };
+}
+function updateArcade() {
+  const A = M29.arcade; if (!A || state.interact || state.inCar || state.interior || state.dead || MG.on) return;
+  if (Math.hypot(player.pos.x - A.x, player.pos.z - A.z) < 1.8) state.interact = { label: '🕹 ATARİ · Yılan, Martı Uçuşu · $2', fn: () => openShop('arcade') };
+}
+
+// ============================================================ 🎆 FIREWORKS (yours are seen by the whole room; show at 23:00 at the beach stage)
+const FW = { rockets: [] };
+function launchFirework(x, z, hue, mine, y0) {
+  FW.rockets.push({ x, y: y0 ?? groundY(x, z) + 0.5, z, vy: 32 + Math.random() * 8, vx: (Math.random() - 0.5) * 3, vz: (Math.random() - 0.5) * 3, t: 1.1 + Math.random() * 0.5, hue: hue ?? Math.random() });
+  if (mine && MP.on) mpSend({ t: 'fw', x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, h: Math.round((FW.rockets[FW.rockets.length - 1].hue) * 100) / 100 });
+  AudioSys.tone(300, 0.9, 0.05, 'sawtooth', 3);
+}
+function updateFireworks(dt) {
+  for (let i = FW.rockets.length - 1; i >= 0; i--) {
+    const r = FW.rockets[i]; r.t -= dt; r.vy -= 9 * dt; r.x += r.vx * dt; r.y += r.vy * dt; r.z += r.vz * dt;
+    FX.add.spawn(r.x, r.y, r.z, 0, -2, 0, 0.35, 0.35, 0, 1.6, 1.1, 0.5, 1, 0);
+    if (r.t <= 0) {
+      FW.rockets.splice(i, 1);
+      const c = new THREE.Color().setHSL(r.hue, 1, 0.6), c2 = new THREE.Color().setHSL((r.hue + 0.15) % 1, 1, 0.65), n = 90;
+      for (let k = 0; k < n; k++) { const a = Math.random() * Math.PI * 2, b = Math.acos(Math.random() * 2 - 1), sp = 14 + Math.random() * 4, cc = k % 3 ? c : c2; FX.add.spawn(r.x, r.y, r.z, Math.sin(b) * Math.cos(a) * sp, Math.cos(b) * sp, Math.sin(b) * Math.sin(a) * sp, 1.4 + Math.random() * 0.8, 1.4, -0.4, cc.r * 3, cc.g * 3, cc.b * 3, 1, 5); }
+      const d = Math.hypot(r.x - camera.position.x, r.z - camera.position.z); if (d < 400) { AudioSys.tone(90, 0.6, Math.max(0.02, 0.25 - d / 2000), 'sawtooth', 0.3, d / 340); }
+    }
+  }
+  // stage show at 23:00–23:10 every game night
+  const S = M28.stage;
+  if (S && state.time >= 23 && state.time < 23.17 && Math.hypot(camera.position.x - S.x, camera.position.z - S.z) < 700) { FW.showT = (FW.showT || 0) - dt; if (FW.showT <= 0) { FW.showT = 0.5 + Math.random() * 0.6; launchFirework(S.x + 15 + Math.random() * 20, S.z - 15 + Math.random() * 30, Math.random(), false); } }
+}
+function useFirework() {
+  const L = L4(); if (!L.fw) { floatText('🎆 Havai fişeğin yok · benzinlik ya da konser gişesinden al'); return; }
+  if (state.interior) { floatText('🎆 İçeride olmaz!'); return; }
+  L.fw--; const fx = player.pos.x + Math.sin(player.yaw) * 3, fz = player.pos.z + Math.cos(player.yaw) * 3; launchFirework(fx, fz, Math.random(), true, Math.max(groundY(fx, fz), player.pos.y) + 0.5); floatText(`🎆 Fırlatıldı! · kalan ${L.fw}`); fwBtn(); saveGame();
+}
+function fwBtn() { const b = $('bFw'); if (b) b.style.display = L4().fw > 0 ? 'flex' : 'none'; }
+addEventListener('keydown', e => { if (e.code === 'KeyJ' && document.body.classList.contains('playing') && !state.shopOpen && !state.phoneOpen && !ARC.on) useFirework(); });
+
+// ============================================================ wiring
+function prepM29() {
+  const G = gardenRect(); if (!G) return;
+  for (const A of [TREES, PALMS]) { const k = A.filter(p => !(Math.abs(p[0] - (G.cx + 3)) < 16 && Math.abs(p[2] - G.cz) < 9)); A.length = 0; A.push(...k); }
+}
+function buildM29() { buildRange(); buildGarden(); buildArcade(); $('bTasks').onclick = openTasks; $('bFw').onclick = useFirework; fwBtn(); }
+let m29T = 0;
+function updateM29(dt) {
+  updateRange(dt); updateGarden(dt); updateArcade(); updateFireworks(dt);
+  m29T -= dt; if (m29T <= 0) { m29T = 2; tasksTick(); fwBtn(); }
+}
+function m29MapDots(dot) {
+  if (state.interior) return;
+  if (M29.range) dot(M29.range.x, M29.range.z, '#ffb020', 6, false);
+  if (M29.garden) dot(M29.garden.cx, M29.garden.cz, '#5ad05a', 6, false);
+  if (M29.arcade) dot(M29.arcade.x, M29.arcade.z, '#ff4ae0', 6, false);
 }
 
 // ============================================================ TREES / STREET FURNITURE / TRAFFIC LIGHTS
@@ -4192,7 +4518,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'fuel' ? '⛽ VISTA PETROL' : type === 'gym' ? '💪 IRON GYM' : type === 'fish' ? '🎣 BALIKÇI' : type === 'loto' ? '🍀 VISTA LOTO' : type === 'metro' ? '🚇 VISTA METRO' : type === 'bank' ? '🏦 VISTA BANK' : type === 'rent' ? '🔑 VISTA RENT A CAR' : type === 'cinema' ? '🎬 AÇIK HAVA SİNEMASI' : type === 'concert' ? '🎤 SAHİL SAHNESİ' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'fuel' ? '⛽ VISTA PETROL' : type === 'gym' ? '💪 IRON GYM' : type === 'fish' ? '🎣 BALIKÇI' : type === 'loto' ? '🍀 VISTA LOTO' : type === 'metro' ? '🚇 VISTA METRO' : type === 'bank' ? '🏦 VISTA BANK' : type === 'rent' ? '🔑 VISTA RENT A CAR' : type === 'cinema' ? '🎬 AÇIK HAVA SİNEMASI' : type === 'concert' ? '🎤 SAHİL SAHNESİ' : type === 'seeds' ? '🌱 TOHUMLAR' : type === 'farm' ? '🌱 HOBİ BAHÇESİ' : type === 'arcade' ? '🕹 ATARİ SALONU' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -4222,6 +4548,9 @@ function shopItems(type) {
   if (type === 'rent') return rentItems();
   if (type === 'cinema') return cinemaItems();
   if (type === 'concert') return concertItems();
+  if (type === 'seeds') return seedItems();
+  if (type === 'farm') return farmItems();
+  if (type === 'arcade') return arcadeItems();
   if (type === 'biz') return bizItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
@@ -4294,7 +4623,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null, life3: state.life3 || null
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null, life3: state.life3 || null, life4: state.life4 || null
     }));
     accountSaved();
   } catch (e) { }
@@ -4309,7 +4638,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null; state.life3 = d.life3 || null;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null; state.life3 = d.life3 || null; state.life4 = d.life4 || null;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -6900,6 +7229,7 @@ function handleAnom(d) {
       return true;
     }
     case 'news': breakingNews(String(d.m || '').slice(0, 220), false); return true;
+    case 'fw': if (isFinite(d.x) && isFinite(d.z)) launchFirework(+d.x, +d.z, +d.h || 0, false); return true;
   }
   return false;
 }
@@ -10296,6 +10626,7 @@ function castShot(range, ignoreCar) {
     if (th > 0) best = { t: th, kind: 'remote', obj: r, head: true }; else if (t > 0 && t < best.t) best = { t, kind: 'remote', obj: r, head: false };
   }
   { const tu = ufoRayHit(tStart, best.t); if (tu > 0) best = { t: tu, kind: 'ufo', obj: null, head: false }; }
+  { const rh = rangeRayHit(tStart, best.t); if (rh) best = rh; }
   const tw = worldHitT(tStart, best.t);
   if (tw > 0) best = { t: tw, kind: 'world', obj: null, head: false };
   // mobile aim assist: nothing hit directly -> nearest target within a small cone (with line of sight)
@@ -10313,6 +10644,7 @@ function applyHit(res, w, pellet) {
   if (res.kind === 'ped') { hitPed(res.obj); if (res.head && res.obj.npc) hitPed(res.obj); }
   else if (res.kind === 'car') { damageCar(res.obj, w.carDmg / (pellet ? 2 : 1)); if (res.obj.ai) res.obj.ai.panic = 6; if (res.obj.police || res.obj.polMirror !== undefined || res.obj.rb) markAggro(myNetId()); }
   else if (res.kind === 'remote') pvpHit(res.obj, (PVP_DMG[state.weapon] || 12) * (res.head ? 2.2 : 1), res.head);
+  else if (res.kind === 'target') hitTarget(res.obj, res);
   else if (res.kind === 'ufo') { ufoDamage((PVP_DMG[state.weapon] || 12) * 1.5); hitSound(); }
   if (res.kind !== 'none') FX.add.spawn(res.x, res.y, res.z, MR(-1, 1), MR(0.5, 2), MR(-1, 1), 0.2, res.kind === 'world' ? 0.3 : 0.5, 1, 3, 1.6, 0.5, 1, 6);
   if (res.kind === 'ped' || res.kind === 'remote') for (let k = 0; k < 5; k++) FX.norm.spawn(res.x, res.y, res.z, MR(-1.5, 1.5), MR(0.5, 2.5), MR(-1.5, 1.5), 0.4, 0.28, 0.2, 0.55, 0.02, 0.02, 0.9, 10);
@@ -10349,7 +10681,7 @@ function fire() {
   }
   if (MP.on) { const q = v => Math.round(v * 100) / 100; mpSend({ t: 'shot', a: [q(mx), q(my), q(mz)], b: [q(tx), q(ty), q(tz)], w: state.weapon, n: w.pellets || 1 }); }
   // shots fired near people -> heat
-  if (state.wanted < 1) for (const p of peds) if (!p.dead && !p.npc && dist2(p) < 900) { addHeat(1); break; }
+  if (state.wanted < 1 && !state.rangeOn) for (const p of peds) if (!p.dead && !p.npc && dist2(p) < 900) { addHeat(1); break; }
   for (const c of cars) if (c.mode === 'ai' && c.ai && Math.hypot(c.group.position.x - ox, c.group.position.z - oz) < 60) c.ai.panic = 6;
   for (const p of peds) if (!p.dead && dist2(p) < 1600) { p.panic = 8; p.fleeX = p.x - ox; p.fleeZ = p.z - oz; if (p.npc && state.mission && state.mission.guards) state.mission.alert = true; if (p.npc === 'gang') gangAggro(); }
 }
@@ -12227,6 +12559,7 @@ function loop(now) {
   updateBiz(dt);
   updateM27(dt);
   updateM28(dt);
+  updateM29(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

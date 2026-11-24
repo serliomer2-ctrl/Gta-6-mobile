@@ -197,6 +197,24 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
   - Sahnede LED ekran, dönen renkli ışıklar, dans eden şarkıcı ve kalabalık var. Yakındayken radyo müziği çalar.
   - Bilet ($40) ile sahnenin önünde 40 sn kalırsan can +30, itibar +4.
 
+## 🎯 Poligon, 📋 günlük görevler, 🌱 bahçe, 🕹 atari, 🎆 havai fişek
+- **🎯 Atış poligonu** (sahilin güney ucu): 45 saniyelik seans.
+  - Hedefler rastgele kalkar; **kendi silahınla** gerçekten vurursun. Uzak hedef ve on iki daha çok puan verir.
+  - Poligonda ateş etmek aranma yıldızı vermez.
+  - 250+ puanda günlük ödül var ($200, 400+ → $400) ve rekor saklanır.
+- **📋 Günlük görevler** (sol alttaki 📋 butonu): her gün 3 görev. Örnekler: 15 km sür, 3 balık tut, metroyla 2 yolculuk, 5 penaltı golü, hasat, poligon, atari, rampa atlayışı, para kazanma.
+  - Tamamlayınca $1.000 / $1.250 / $1.500 ve itibar +5 verilir.
+- **🌱 Hobi bahçesi** (5,1'deki park): 6 parsel var. En fazla 3 parsel kiralayabilirsin ($150, kalıcı).
+  - Ekilebilenler: 🍅 domates, 🌶 biber, 🥕 havuç, 🌽 mısır, 🍉 karpuz.
+  - Bitkiler **gerçek zamanlı** büyür: sen oyunda yokken de yavaşça büyürler. 💧 Sulamak 3 dakika boyunca hızlı büyütür. Bitkiler büyüdükçe görünür, meyveleri olgunlaşır.
+  - Hasat edilen ürünleri tezgâha sat ya da ye.
+- **🕹 Atari** (midtown kaldırımındaki iki kabin): her oyun $2.
+  - 🐍 **Yılan**: ok tuşları, WASD, ekran tuşları ya da kaydırma.
+  - 🐦 **Martı Uçuşu**: Space ya da dokun.
+  - Puana göre bilet parası kazanırsın. Büyük rekor kırarsan tüm oda haberini alır.
+- **🎆 Havai fişek**: benzinlikten ya da konser gişesinden al (3'lü $45). **J** tuşu ya da 🎆 butonuyla fırlat; online'da odadaki herkes görür.
+  - Her oyun gecesi 23:00'te Sahil Sahnesi'nde havai fişek gösterisi olur.
+
 ## 🎨 Grafik kalitesi ve hazır 3D modeller
 - **Düşük**: tüm insanlar ve arabalar kodla üretilen (procedural) modellerdir; ek dosya indirilmez.
 - **Orta / Yüksek**: yakındaki karakterler **hazır, iskeletli insan modelleriyle** çizilir (erkek, kadın, iri yapılı; MakeHuman tabanlı, CC0). Kıyafet, saç, ayakkabı ve ten rengi her karaktere göre boyanır. Şapka, gözlük, sakal ve sırt çantası modelin başına ve sırtına oturur.

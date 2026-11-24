@@ -408,3 +408,10 @@ body.incar.hasNitro .btn.nos{display:flex}
 #mgBtn{flex:3!important;font-size:18px!important;padding:14px!important}
 #rentHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(282px + env(safe-area-inset-top,0px));z-index:12;background:#2a220ae6;border:1px solid #ffd23a;color:#fff4c0;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap}
 #rentHud:empty{display:none}
+#bTasks,#bFw{position:fixed;z-index:22;left:calc(16px + env(safe-area-inset-left,0px));width:44px;height:44px;border-radius:13px;display:none;align-items:center;justify-content:center;font-size:22px;background:rgba(14,16,22,.75);border:1px solid #ffffff30;cursor:pointer;user-select:none}
+#bTasks{bottom:210px}#bFw{bottom:262px}
+body.playing #bTasks{display:flex}
+#bTasks::after{content:attr(data-n);position:absolute;right:-5px;top:-5px;min-width:18px;height:18px;border-radius:9px;background:#e83a3a;color:#fff;font:700 11px Rajdhani,sans-serif;display:flex;align-items:center;justify-content:center;padding:0 3px}
+body:not(.playing) #bFw{display:none!important}
+body.photo #bTasks,body.photo #bFw,body.talking #bTasks,body.talking #bFw{display:none!important}
+@media (max-height:500px){#bTasks{bottom:auto;top:calc(252px + env(safe-area-inset-top,0px))}#bFw{bottom:auto;top:calc(300px + env(safe-area-inset-top,0px))}}
