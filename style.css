@@ -403,6 +403,8 @@ body.incar.hasNitro .btn.nos{display:flex}
 #fuelHud i{display:block;height:100%;width:100%;background:#5ad06a;transition:width .3s}
 #mgPanel{display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:calc(120px + env(safe-area-inset-bottom,0px));z-index:40;background:rgba(14,16,22,.93);border:1px solid #ffffff2a;border-radius:16px;padding:12px 14px;width:min(350px,92vw);color:#fff;font-family:Rajdhani,sans-serif;flex-direction:column;gap:6px}
 #mgPanel b{font-size:19px}#mgPanel small{color:#ffffffbb;font-size:14px}
-#mgPanel canvas{width:100%;height:54px}
+#mgPanel canvas{width:100%;height:54px;flex-shrink:0}
 #mgPanel .mmBtns button{touch-action:none;user-select:none;-webkit-user-select:none}
 #mgBtn{flex:3!important;font-size:18px!important;padding:14px!important}
+#rentHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(282px + env(safe-area-inset-top,0px));z-index:12;background:#2a220ae6;border:1px solid #ffd23a;color:#fff4c0;font:700 13px Rajdhani,sans-serif;padding:4px 10px;border-radius:9px;pointer-events:none;white-space:nowrap}
+#rentHud:empty{display:none}

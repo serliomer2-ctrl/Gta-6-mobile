@@ -172,6 +172,31 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
   - Güç çubuğu sarı çizgideyken AT; topun uçuşu sahada görünür.
   - 7+ isabette günlük ödül alınır ($150 / 9 isabet $300 / 10 isabet $500). Rekor saklanır.
 
+## 🚇 Metro, 🏦 kredi, 🔑 kiralık araç, ⚽ futbol, 🎬 sinema, 🎤 konser
+- **🚇 VISTA METRO**: şehrin çevresini dolaşan, yolların üstünden geçen yükseltilmiş halka hat. 3 tren, her biri 3 vagonlu.
+  - 4 istasyon: Batı Kapı, Güney Liman, Doğu Sahil, Kuzey Park. Haritada mavi noktalar; kaldırımdaki mavi halkadan E.
+  - Bilet $8. Perona çıkarsın, tren gelince otomatik binersin, gideceğin istasyonda inersin. Ara duraklarda E ile inebilirsin.
+  - Sefer saatleri gerçek saate göre hesaplanır, yani online'da herkes aynı trenleri aynı yerde görür.
+- **🏦 VISTA BANK** (şehir merkezi, sarı halka):
+  - **Kredi notu** 0-1000 arası, başlangıç 600. Kredi limiti rütbene ve notuna göre belirlenir. Faiz %15, 12 taksit; her 2 oyun saatinde taksit otomatik çekilir.
+  - Ödenmeyen taksit gecikme faizi ekler ve notu düşürür. 3 gecikmede **icra takibi** başlar: borç bitene kadar kazancının yarısı bankaya gider.
+  - Erken ödeme ve krediyi kapatma notu yükseltir.
+  - **Vadeli hesap**: her oyun saati %0,25 faiz (200.000$'a kadar).
+- **🔑 VISTA RENT A CAR**: sedan, SUV, minibüs, motosiklet, spor ve süper araba 10 dakikalığına kiralanır, depo dolu gelir.
+  - **🛡 Sigorta** (+%30) alırsan hasar ücreti ödemezsin. Sigortasızsan hasar oranında, pert olursa $2.000 ödersin.
+  - Kalan süre ekranda görünür. Süre bitince araçtan inersen araç teslim alınır; içindeysen dakikası $40 gecikme ücreti işler. Ofise dönüp erken iade edebilir ya da süreyi uzatabilirsin.
+- **⚽ Futbol sahası** (6,5'teki park): kaleler, file ve çizgili çim saha var; kaleci kalede ısınır.
+  - Penaltı noktasında E → 5 penaltı. Nişangâh kaleyi gezer, VUR'a bas. Kaleci rastgele bir yöne atlar; üst köşeler kurtarılamaz ama auta gidebilir.
+  - 4+ golde günlük ödül var ($250, 5/5 → $400) ve rekorun saklanır.
+- **🎬 Açık hava sineması** (1,2'deki park): dev perdede 3 kısa film dönüşümlü oynar: *Gece Yarısı Kaçışı*, *Yıldız Yolcusu*, *Mavi Derinlik*.
+  - Gösterimler her 2,5 dakikada bir, gerçek saate göre; herkes aynı filmi aynı anda görür.
+  - Gişede bilet ($12), patlamış mısır ve kola satılır.
+  - Koltuklarda (ya da arabayla arka sırada) 60 sn izlersen can +25, itibar +3.
+- **🎤 Sahil konseri**: her oyun gecesi 20:00–23:30 arası Sahil Sahnesi'nde MAVİ DALGA çalar.
+  - 19:00'da haber bülteni duyurur.
+  - Sahnede LED ekran, dönen renkli ışıklar, dans eden şarkıcı ve kalabalık var. Yakındayken radyo müziği çalar.
+  - Bilet ($40) ile sahnenin önünde 40 sn kalırsan can +30, itibar +4.
+
 ## 🎨 Grafik kalitesi ve hazır 3D modeller
 - **Düşük**: tüm insanlar ve arabalar kodla üretilen (procedural) modellerdir; ek dosya indirilmez.
 - **Orta / Yüksek**: yakındaki karakterler **hazır, iskeletli insan modelleriyle** çizilir (erkek, kadın, iri yapılı; MakeHuman tabanlı, CC0). Kıyafet, saç, ayakkabı ve ten rengi her karaktere göre boyanır. Şapka, gözlük, sakal ve sırt çantası modelin başına ve sırtına oturur.

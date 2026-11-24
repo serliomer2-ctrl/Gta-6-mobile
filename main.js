@@ -335,7 +335,7 @@ function init() {
   buildMaterials();
   buildGround();
   buildCity();
-  prepCourt();
+  prepCourt(); prepM28();
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
   buildAirport();
   buildIslands();
@@ -399,6 +399,7 @@ function init() {
   buildShelter();
   buildBizPremises();
   buildM27();
+  buildM28();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -1683,7 +1684,7 @@ function spawnPlayer() {
   createCar('bike', '#00c8e0', nodeP(4) + 10, nodeP(4) + 4, Math.PI * 0.5, 'free');
 }
 function enterCar() {
-  if (state.cabin || state.sky) return;
+  if (state.cabin || state.sky || state.metro) return;
   if (state.passenger) { exitPassenger(); return; }
   if (state.inCar) { exitCar(false); return; }
   if (MP.on && !state.interior) { const rv = nearRemoteVehicle(4.5); if (rv) { let nl = 1e9; for (const c of cars) if (c.active && !c.dead) nl = Math.min(nl, Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z)); if (Math.hypot(rv.x - player.pos.x, rv.z - player.pos.z) < nl) { enterAsPassenger(rv); return; } } }
@@ -2681,7 +2682,7 @@ function updateCamera(dt) {
   camYaw -= input.lookDX * settings.sens; camPitch = clamp(camPitch + input.lookDY * settings.sens, -0.35, 1.25);
   if (input.lookDX || input.lookDY) state.lastLookInput = state.now;
   input.lookDX = input.lookDY = 0;
-  let dist = state.interior ? 3 : state.passenger ? 8.5 : 4.6;
+  let dist = state.interior ? 3 : (state.passenger || (state.metro && state.metro.phase === 'ride')) ? 9 : 4.6;
   if (c) {
     const sp = carSpeed(c);
     dist = (c.spec.plane ? (c.spec.len > 10 ? 24 : 17) : c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? (c.spec.big ? 22 : c.spec.jet ? 6 : 10) : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
@@ -2872,7 +2873,7 @@ function drawMinimap() {
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
   if (!state.interior) for (const Pm of BIZ.prem) { const o = premOwner(Pm); dot(Pm.d.x, Pm.d.z, o ? (o.me ? '#7dff9a' : o.color) : '#40a0ff', o && o.me ? 8 : 6, !!(o && o.me)); }
   if (!state.interior && PET.shelter) dot(PET.shelter.x, PET.shelter.z, '#40c060', 7, false);
-  m27MapDots(dot);
+  m27MapDots(dot); m28MapDots(dot);
   if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
@@ -3002,7 +3003,7 @@ const AudioSys = {
     this.sg.gain.setTargetAtTime(sv, t, 0.2); this.so.frequency.setTargetAtTime(650 + Math.sin(state.now * 3.5) * 220, t, 0.03);
     this.ag.gain.setTargetAtTime(0.015 + clamp((player.pos.x - BEACH_X0) / 100, 0, 1) * 0.08 + state.rain * 0.16, t, 0.5);
     this.af.frequency.setTargetAtTime(400 + state.rain * 2600, t, 0.5);
-    Radio.update((!!c || state.interior === 'club') && state.soundMode === 0 && !state.dead);
+    Radio.update((!!c || state.interior === 'club' || concertNear()) && state.soundMode === 0 && !state.dead);
   }
 };
 
@@ -3148,7 +3149,7 @@ const freeDoorM = q => q.y0 < 1 && q.blk && !(q.market || q.home || q.jail || q.
 const MG = { on: null };
 function mgOpen(o) {
   MG.on = o; o.t = 0; const el = $('mgPanel');
-  el.innerHTML = `<b>${o.title}</b><small id="mgSub">${o.sub || ''}</small><canvas id="mgCv" width="320" height="54"></canvas><div class="mmBtns"><button id="mgBtn">${o.btn}</button><button id="mgX" class="grey">✕</button></div>`;
+  el.innerHTML = `<b>${o.title}</b><small id="mgSub">${o.sub || ''}</small><canvas id="mgCv" width="320" height="${o.h || 54}" style="height:${o.h || 54}px"></canvas><div class="mmBtns"><button id="mgBtn">${o.btn}</button><button id="mgX" class="grey">✕</button></div>`;
   el.style.display = 'flex';
   const b = $('mgBtn');
   b.addEventListener('pointerdown', e => { e.preventDefault(); if (MG.on === o && o.press) o.press(); });
@@ -3543,6 +3544,455 @@ function m27MapDots(dot) {
 // park block (2,6) hosts the basketball court: clear its trees before they are planted
 function prepCourt() { const b = blocks[2] && blocks[2][6]; if (!b || !b.park) return; const out = p => Math.abs(p[0] - b.cx) > 10.5 || Math.abs(p[2] - b.cz) > 16; for (const A of [TREES, PALMS]) { const k = A.filter(out); A.length = 0; A.push(...k); } }
 
+// ============================================================ METRO · BANK LOANS · CAR RENTAL · FOOTBALL · CINEMA · CONCERT
+const L3 = () => state.life3 || (state.life3 = { loan: null, score: 600, savings: 0, goalBest: 0, goalDay: '', films: 0, concerts: 0 });
+const M28 = { bank: null, rent: null, pitch: null, cine: null, stage: null, hour: -1 };
+
+// ============================================================ 🚇 VISTA METRO
+// elevated loop over the ring roads; the timetable is computed from real time, so every player sees the same trains
+const MET = { A: nodeP(7), r: 26, y: 9.4, v: 21, dwell: 9, nTrain: 3, trains: [], stations: [] };
+MET.side = 2 * MET.A - 2 * MET.r; MET.arc = Math.PI * MET.r / 2; MET.seg = MET.side + MET.arc; MET.L = 4 * MET.seg;
+MET.names = ['Batı Kapı', 'Güney Liman', 'Doğu Sahil', 'Kuzey Park'];
+function metPath(s) {
+  const A = MET.A, r = MET.r, S = MET.side;
+  s = ((s % MET.L) + MET.L) % MET.L;
+  const k = Math.min(3, Math.floor(s / MET.seg)), u = s - k * MET.seg;
+  const dirs = [[0, 1], [1, 0], [0, -1], [-1, 0]], st = [[-A, -A + r], [-A + r, A], [A, A - r], [A - r, -A]];
+  const [dx, dz] = dirs[k], [sx, sz] = st[k];
+  if (u <= S) return { x: sx + dx * u, z: sz + dz * u, dx, dz };
+  const a = (u - S) / r, [ndx, ndz] = dirs[(k + 1) % 4], cx = sx + dx * S + ndx * r, cz = sz + dz * S + ndz * r, ca = Math.cos(a), sa = Math.sin(a);
+  return { x: cx - ndx * r * ca + dx * r * sa, z: cz - ndz * r * ca + dz * r * sa, dx: dx * ca + ndx * sa, dz: dz * ca + ndz * sa };
+}
+const metStationS = i => i * MET.seg + 200;
+function metTimeline() {
+  const run = MET.seg / MET.v * 1.15; MET.run = run; MET.P = 4 * (MET.dwell + run);
+}
+function trainS(k, now = Date.now() / 1000) {
+  const t = ((now + k * MET.P / MET.nTrain) % MET.P + MET.P) % MET.P, cyc = MET.dwell + MET.run, i = Math.floor(t / cyc), lt = t - i * cyc;
+  if (lt < MET.dwell) return { s: metStationS(i), at: i, left: MET.dwell - lt };
+  const f = (lt - MET.dwell) / MET.run, e = f * f * (3 - 2 * f);
+  return { s: metStationS(i) + MET.seg * e, at: -1, next: (i + 1) % 4 };
+}
+function nextTrainAt(i) { const now = Date.now() / 1000; for (let dt = 0; dt < MET.P + 2; dt += 0.5) for (let k = 0; k < MET.nTrain; k++) if (trainS(k, now + dt).at === i) return dt; return 0; }
+function buildMetro() {
+  metTimeline();
+  const beam = [], rails = [], pillars = [], A = MET.A, y = MET.y;
+  for (let s = 0; s < MET.L; s += 3) {
+    const p = metPath(s + 1.5), yaw = Math.atan2(p.dx, p.dz);
+    beam.push(new THREE.BoxGeometry(3.4, 0.9, 3.08).rotateY(yaw).translate(p.x, y - 0.45, p.z));
+    for (const o of [-0.75, 0.75]) rails.push(new THREE.BoxGeometry(0.12, 0.14, 3.08).rotateY(yaw).translate(p.x + p.dz * o, y + 0.07, p.z - p.dx * o));
+    for (const o of [-1.72, 1.72]) rails.push(new THREE.BoxGeometry(0.08, 0.6, 3.08).rotateY(yaw).translate(p.x + p.dz * o, y + 0.25, p.z - p.dx * o));
+  }
+  for (let s = 12; s < MET.L; s += 24) {
+    const u = s % MET.seg; if (u > MET.side - 6) continue;
+    const p = metPath(s), along = Math.abs(p.dx) ? p.x : p.z;
+    if (Math.abs(((along - OFF) % CELL + CELL) % CELL - CELL / 2) > CELL / 2 - 14) continue;   // keep intersections clear
+    pillars.push(new THREE.CylinderGeometry(0.55, 0.7, y - 0.9, 10).translate(p.x, (y - 0.9) / 2, p.z), new THREE.BoxGeometry(3.6, 0.6, 1.4).rotateY(Math.atan2(p.dx, p.dz)).translate(p.x, y - 1.1, p.z));
+  }
+  const conc = new THREE.MeshStandardMaterial({ color: 0xa4a6aa, roughness: 0.85 }), steel = new THREE.MeshStandardMaterial({ color: 0x5a5e66, metalness: 0.6, roughness: 0.4 });
+  const mk = (list, mat) => { const m = new THREE.Mesh(merge(list), mat); m.castShadow = true; m.receiveShadow = true; scene.add(m); return m; };
+  mk(beam, conc); mk(rails, steel); mk(pillars, conc);
+  // stations: platform + canopy on the inner side, stair tower down to the sidewalk, entrance ring
+  const plat = [], canopy = [], glassL = [], signs = [];
+  for (let i = 0; i < 4; i++) {
+    const s = metStationS(i), p = metPath(s), nx = p.dz, nz = -p.dx, yaw = Math.atan2(p.dx, p.dz);
+    const at = (o, a = 0) => [p.x + nx * o + p.dx * a, p.z + nz * o + p.dz * a];
+    let [x, z] = at(3.5); plat.push(new THREE.BoxGeometry(3.2, 0.5, 40).rotateY(yaw).translate(x, y + 0.05, z));
+    canopy.push(new THREE.BoxGeometry(5.6, 0.25, 40).rotateY(yaw).translate(...[at(2.6)].map(([a, b]) => [a, y + 4.2, b])[0]));
+    for (const a of [-18, -6, 6, 18]) { const [px, pz] = at(4.9, a); canopy.push(new THREE.BoxGeometry(0.2, 4, 0.2).translate(px, y + 2.2, pz)); }
+    [x, z] = at(7.2); plat.push(new THREE.BoxGeometry(4.2, 0.4, 3).rotateY(yaw).translate(x, y + 0.05, z));   // bridge to the tower
+    [x, z] = at(10.8); plat.push(new THREE.BoxGeometry(3.4, y + 0.6, 3.4).rotateY(yaw).translate(x, (y + 0.6) / 2, z));
+    glassL.push(new THREE.BoxGeometry(3.5, y - 1.2, 3.5).rotateY(yaw).translate(x, (y - 1.2) / 2 + 0.6, z));
+    const [ex, ez] = at(13.4);
+    const sm = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.2), new THREE.MeshBasicMaterial({ map: signTexM(256, 118, '#0a3a8a', '#ffffff', 'Ⓜ METRO', MET.names[i].toUpperCase()) }));
+    sm.position.set(...(([a, b]) => [a, 3.4, b])(at(12.56))); sm.rotation.y = Math.atan2(nx, nz); scene.add(sm);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x2a7aff, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(ex, groundY(ex, ez) + 0.05, ez); scene.add(ring);
+    MET.stations.push({ i, s, ex, ez, wx: at(3.5)[0], wz: at(3.5)[1], yaw, nx, nz });
+  }
+  mk(plat, conc); mk(canopy, steel);
+  const gm = new THREE.Mesh(merge(glassL), new THREE.MeshStandardMaterial({ color: 0x6a9ac0, roughness: 0.08, metalness: 0.5, transparent: true, opacity: 0.55 })); scene.add(gm);
+  // trains: 3 cars each
+  MET.winMat = new THREE.MeshStandardMaterial({ color: 0x18222c, roughness: 0.1, metalness: 0.6, emissive: 0xffe8b0, emissiveIntensity: 0 });
+  const body = merge([colorize(new RoundedBoxGeometry(2.9, 3.0, 11.4, 3, 0.35).translate(0, 1.6, 0), '#f2f3f5'), colorize(new THREE.BoxGeometry(2.94, 0.28, 11.2).translate(0, 0.95, 0), '#1f5ad8'), colorize(new THREE.BoxGeometry(2.7, 0.35, 10.6).translate(0, 0.1, 0), '#2a2c30')]);
+  const win = merge([new THREE.BoxGeometry(2.96, 0.9, 9.6).translate(0, 2.15, 0), new THREE.BoxGeometry(2.4, 1.0, 0.08).translate(0, 2.15, 5.72)]);
+  const bm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.3 });
+  for (let k = 0; k < MET.nTrain; k++) {
+    const cars3 = [];
+    for (let j = 0; j < 3; j++) { const g = new THREE.Group(); const b = new THREE.Mesh(body, bm); b.castShadow = true; g.add(b, new THREE.Mesh(win, MET.winMat)); scene.add(g); cars3.push(g); }
+    MET.trains.push(cars3);
+  }
+}
+function updateMetroVisual() {
+  if (!MET.trains.length) return;
+  MET.winMat.emissiveIntensity = nightF * 0.9;
+  const far = state.interior || QUALITY === 'low' && camera.position.length() > 2000;
+  for (let k = 0; k < MET.nTrain; k++) {
+    const T = trainS(k);
+    MET.trains[k].forEach((g, j) => {
+      g.visible = !far; if (far) return;
+      const p = metPath(T.s - j * 11.8), q = metPath(T.s - j * 11.8 - 2), yaw = Math.atan2(p.dx + q.dx, p.dz + q.dz);
+      g.position.set(p.x, MET.y + 0.15, p.z); g.rotation.y = yaw;
+    });
+  }
+}
+function metroItems() {
+  const S = state.metroAt; if (!S) return [];
+  const it = [{ sec: `🚇 ${MET.names[S.i]} istasyonu · sıradaki tren ${Math.ceil(nextTrainAt(S.i))} sn` }];
+  for (let j = 0; j < 4; j++) if (j !== S.i) it.push({ name: `🚇 ${MET.names[j]}`, desc: `${(j - S.i + 4) % 4} durak · perona çık ve treni bekle`, price: 8, close: true, buy: () => startMetro(S.i, j) });
+  return it;
+}
+function startMetro(i, j) {
+  const S = MET.stations[i];
+  state.metro = { phase: 'wait', i, j, k: -1, t: 0 };
+  player.pos.set(S.wx, MET.y + 0.3, S.wz); player.yaw = Math.atan2(-S.nx, -S.nz); player.vy = 0;
+  floatText(`🚇 Perondasın · ${MET.names[j]} treni bekleniyor`);
+}
+function endMetro(at) {
+  const S = MET.stations[at]; state.metro = null;
+  player.pos.set(S.ex, groundY(S.ex, S.ez) + 0.05, S.ez); player.vy = 0; player.onGround = true; player.human.g.visible = true;
+}
+function updateMetroPlayer(dt) {
+  const M = state.metro; M.t += dt;
+  if (M.phase === 'wait') {
+    const S = MET.stations[M.i]; player.pos.set(S.wx, MET.y + 0.3, S.wz); player.human.g.visible = true; animHuman(player.human, 0, dt, false);
+    player.human.g.position.copy(player.pos); player.human.g.rotation.set(0, player.yaw, 0);
+    for (let k = 0; k < MET.nTrain; k++) { const T = trainS(k); if (T.at === M.i && T.left > 1.5) { M.phase = 'ride'; M.k = k; AudioSys.tone(660, 0.2, 0.15, 'sine'); AudioSys.tone(520, 0.25, 0.15, 'sine', 1, 0.22); floatText(`🚇 Trene bindin · ${MET.names[M.j]} yönü`); break; } }
+    M.ui = { label: `🚇 Tren ${Math.ceil(nextTrainAt(M.i))} sn · E: perondan in`, fn: () => endMetro(M.i) };
+    return;
+  }
+  const T = trainS(M.k), p = metPath(T.s - 11.8);
+  player.pos.set(p.x, MET.y + 0.8, p.z); player.yaw = Math.atan2(p.dx, p.dz); player.human.g.visible = false;
+  if (T.at === M.j) { endMetro(M.j); showBig(`🚇 ${MET.names[M.j].toUpperCase()}`, '#6ab0ff', 2.5, 'İstasyondan çıktın'); return; }
+  M.ui = { label: T.at >= 0 ? `🚇 ${MET.names[T.at]} · E: burada in` : `🚇 Sıradaki: ${MET.names[T.next]}`, fn: T.at >= 0 ? () => endMetro(T.at) : null };
+}
+
+// ============================================================ 🏦 VISTA BANK · loans & savings
+function buildBank() {
+  const gl = DOORS.filter(q => freeDoorM(q) && !q.bank && q.blk.dist === 'downtown').sort((a, b) => a.id - b.id), d = gl[3] || gl[0]; if (!d) return;
+  d.bank = true; M28.bank = d;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.3), new THREE.MeshBasicMaterial({ map: signTexM(512, 120, '#0a2a5a', '#ffd23a', '🏦 VISTA BANK') }));
+  m.position.set(d.fx + d.nx * 0.15, d.y0 + 3.7, d.fz + d.nz * 0.15); m.rotation.y = Math.atan2(d.nx, d.nz); scene.add(m);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.45, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.85, depthWrite: false })); ring.position.set(d.x, groundY(d.x, d.z) + 0.05, d.z); scene.add(ring);
+}
+const loanMax = () => { const L = L3(); if (L.score < 450) return 0; const ri = Math.max(0, myRank()); return Math.round([6000, 25000, 80000, 200000][Math.min(3, ri)] * clamp(L.score / 700, 0.5, 1.3) / 1000) * 1000; };
+const fmt = v => '$' + Math.round(v).toLocaleString('tr-TR');
+function bankItems() {
+  const L = L3(), it = [], ln = L.loan, max = loanMax();
+  it.push({ sec: `💳 Kredi notu ${L.score}/1000 · 🏦 vadeli hesap ${fmt(L.savings)} (saatlik %0,25 faiz)` });
+  if (ln) {
+    it.push({ sec: `📄 Kredi borcu ${fmt(ln.left)} · taksit ${fmt(ln.inst)} her 2 oyun saatinde · ${ln.missed ? `⚠ ${ln.missed} geciken taksit` : 'düzenli'}${ln.icra ? ' · 🚨 İCRA: kazancının yarısı bankaya' : ''}` });
+    it.push({ name: '💸 Bir taksit öde', desc: 'Erken ödeme kredi notunu artırır', price: Math.min(ln.inst, Math.ceil(ln.left)), buy: () => { payLoan(Math.min(ln.inst, Math.ceil(ln.left)), true); } });
+    it.push({ name: '✅ Krediyi kapat', desc: 'Kalan borcun tamamını öde · not +40', price: Math.ceil(ln.left), buy: () => { payLoan(Math.ceil(ln.left), true); } });
+  } else if (!max) it.push({ sec: '❌ Kredi notun düşük (450 altı) · vadeli hesap kullanarak notunu yükselt' });
+  else {
+    it.push({ sec: `Kredi limitin ${fmt(max)} · faiz %15 · 12 taksit (her 2 oyun saatinde bir)` });
+    for (const f of [0.25, 0.5, 1]) { const a = Math.max(1000, Math.round(max * f / 1000) * 1000); it.push({ name: `🏦 ${fmt(a)} kredi çek`, desc: `Geri ödeme ${fmt(a * 1.15)} · taksit ${fmt(a * 1.15 / 12)}`, price: 0, btn: 'ÇEK', close: true, buy: () => { L.loan = { total: a * 1.15, left: a * 1.15, inst: Math.ceil(a * 1.15 / 12), missed: 0, icra: false, tick: 0 }; earn(a, '🏦 Kredi'); showBig('🏦 KREDİ ONAYLANDI', '#7dff9a', 3.5, `${fmt(a)} hesabına yattı · ilk taksit 2 oyun saati sonra`); } }); }
+  }
+  it.push({ sec: 'Vadeli hesap' });
+  for (const a of [1000, 10000, 50000]) it.push({ name: `📥 ${fmt(a)} yatır`, desc: 'Her oyun saati %0,25 faiz (200.000$\'a kadar) · not +2', price: a, buy: () => { L.savings += a; L.score = Math.min(1000, L.score + 2); } });
+  it.push({ name: '📤 Tümünü çek', desc: fmt(L.savings), price: 0, btn: 'ÇEK', dis: L.savings < 1 ? 'BOŞ' : null, buy: () => { earn(Math.floor(L.savings), '🏦 Vadeli hesap'); L.savings = 0; } });
+  return it;
+}
+function payLoan(a, manual) {
+  const L = L3(), ln = L.loan; if (!ln) return;
+  ln.left -= a; if (manual) L.score = Math.min(1000, L.score + 4);
+  if (ln.left <= 0.5) { L.loan = null; L.score = Math.min(1000, L.score + 40); showBig('✅ KREDİ KAPANDI', '#7dff9a', 3, `Kredi notun ${L.score}`); AudioSys.success(); }
+}
+function bankHour() {
+  const L = state.life3; if (!L) return;
+  if (L.savings > 0) L.savings += Math.min(L.savings, 200000) * 0.0025;
+  const ln = L.loan; if (!ln) return;
+  if (++ln.tick % 2) return;
+  if (state.money >= ln.inst) { state.money -= ln.inst; state.shownMoney = state.money; ledger('🏦 Kredi taksiti', -ln.inst); L.score = Math.min(1000, L.score + 6); payLoan(ln.inst); if (L.loan) floatText(`🏦 Kredi taksiti ödendi −${fmt(ln.inst)} · kalan ${fmt(L.loan.left)}`); if (L.loan && ln.missed) ln.missed = Math.max(0, ln.missed - 1); }
+  else { ln.missed++; ln.left += ln.inst * 0.05; L.score = Math.max(0, L.score - 25); floatText(`⚠ Kredi taksiti ödenemedi · gecikme faizi · not ${L.score}`); AudioSys.fail(); if (ln.missed >= 3 && !ln.icra) { ln.icra = true; showBig('🚨 İCRA TAKİBİ', '#ff5a3a', 4, 'Borç bitene kadar kazancının yarısı bankaya gidecek'); } }
+  saveGame();
+}
+{ const _earn = earn; earn = function (amt, label) { const L = state.life3; if (L && L.loan && L.loan.icra && amt > 0 && !/Kredi|Vadeli/.test(label || '')) { const cut = Math.min(Math.round(amt / 2), Math.ceil(L.loan.left)); amt -= cut; payLoan(cut); if (cut) floatText(`🚨 İcra kesintisi −${fmt(cut)}`); } return _earn(amt, label); }; }
+
+// ============================================================ 🔑 VISTA RENT A CAR
+const RENT = [['sedan', '🚗 Sedan', 120], ['suv', '🚙 SUV', 200], ['van', '🚐 Minibüs', 150], ['bike', '🏍 Motosiklet', 90], ['sport', '🏎 Spor araba', 450], ['super', '🚀 Süper araba', 1200]];
+function buildRental() {
+  const cand = blocks.flat().filter(b => b.dist === 'mixed' || b.dist === 'midtown').sort((a, b) => a.i - b.i || a.j - b.j);
+  for (const b of cand) for (const ox of [-16, 16, 0]) {
+    const x = b.cx + ox, z = b.cz - BLOCK / 2 + 4;
+    if (SHOPS.some(s => Math.hypot(s.x - x, s.z - z) < 40) || DOORS.some(d => Math.hypot(d.x - x, d.z - z) < 8) || M27.fuel.some(s => Math.hypot(s.x - x, s.z - z) < 40)) continue;
+    makeZone('rent', x, z, 'RENT A CAR', '🔑', '#202020', '#ffd23a', 0xffd23a, { glow: true, label: '🔑 ARAÇ KİRALA', ringOff: -1.8 });
+    M28.rent = { x, z: z - 1.8, cx: x, cz: b.cz - BLOCK / 2 - 4.5 }; return;
+  }
+}
+function rentItems() {
+  const R = state.rent, it = [];
+  if (R) {
+    const left = Math.max(0, (R.until - Date.now()) / 1000);
+    it.push({ sec: `🔑 Kiralık ${R.name} · kalan ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}${R.ins ? ' · 🛡 sigortalı' : ''}` });
+    it.push({ name: '↩ Aracı iade et', desc: R.ins ? 'Sigortalı: hasar ücreti yok' : 'Hasar varsa ücret kesilir', price: 0, btn: 'İADE', close: true, buy: () => returnRental('İade edildi') });
+    it.push({ name: '⏱ +10 dakika uzat', desc: 'Süreyi uzat', price: Math.round(R.price * 0.6), buy: () => { R.until += 600000; } });
+    return it;
+  }
+  it.push({ sec: 'Kiralama süresi 10 dakika · yakıt dolu · 🛡 sigorta +%30 (hasar/pert ücreti yok)' });
+  for (const [k, n, p] of RENT) {
+    it.push({ name: `${n}`, desc: `10 dk · hasar sende`, price: p, close: true, buy: () => startRental(k, n, p, false) });
+    it.push({ name: `${n} + 🛡 sigorta`, desc: '10 dk · içi rahat', price: Math.round(p * 1.3), close: true, buy: () => startRental(k, n, p, true) });
+  }
+  return it;
+}
+function startRental(kind, name, price, ins) {
+  const R = M28.rent, c = createCar(kind, pick(['#f2f2f2', '#1a1a1e', '#b8bcc2', '#c02020', '#1f4a9a']), R.cx, R.cz, Math.PI / 2, 'free');
+  c.rental = true; c.fuel = 100; c.driver = false;
+  state.rent = { c, name, price, ins, until: Date.now() + 600000, over: 0 };
+  enterCarDirect(c); showBig('🔑 İYİ YOLCULUKLAR', '#ffd23a', 3, `${name} · 10 dakika · iade için ofise gel ya da süre bitince bırak`);
+}
+function returnRental(why) {
+  const R = state.rent; if (!R) return; state.rent = null; const c = R.c;
+  let fee = 0;
+  if (c.dead) fee = R.ins ? 200 : 2000; else if (!R.ins) fee = Math.round((1 - c.health / (c.maxHealth || 100)) * R.price * 2);
+  if (state.inCar === c) exitCar(true);
+  scene.remove(c.group); const i = cars.indexOf(c); if (i >= 0) cars.splice(i, 1);
+  if (fee > 0) { state.money -= fee; state.shownMoney = state.money; ledger('🔑 Kiralık araç hasarı', -fee); }
+  floatText(`🔑 ${why}${fee ? ` · hasar ücreti −$${fee}` : ' · teşekkürler!'}`); $('rentHud').textContent = '';
+}
+function updateRental(dt) {
+  const R = state.rent, hud = $('rentHud');
+  if (!R) return;
+  const left = (R.until - Date.now()) / 1000;
+  if (left > 0) { hud.textContent = `🔑 ${R.name} · ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`; return; }
+  if (state.inCar === R.c) { R.over += dt; hud.textContent = `🔑 Süre doldu · ek ücret $40/dk · ${Math.floor(R.over / 60)} dk`; if (R.over >= 60) { R.over -= 60; state.money -= 40; state.shownMoney = state.money; ledger('🔑 Kiralama gecikme', -40); floatText('🔑 Gecikme ücreti −$40'); } return; }
+  returnRental('Kiralama süresi doldu, araç teslim alındı');
+}
+
+// ============================================================ ⚽ FOOTBALL PITCH · penalty shoot-out
+function pitchRect() { const b = blocks[6] && blocks[6][5]; return b && b.park ? { b, cx: b.cx, cz: b.cz + 12, L: 34, W: 20 } : null; }
+function buildPitch() {
+  const P = pitchRect(); if (!P) return;
+  const { cx, cz, L, W } = P;
+  const tex = canvasTex(512, 304, g => {
+    for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#3f8a34' : '#4a9a3c'; g.fillRect(i * 512 / 12, 0, 512 / 12 + 1, 304); }
+    g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(10, 10, 492, 284); g.beginPath(); g.moveTo(256, 10); g.lineTo(256, 294); g.stroke(); g.beginPath(); g.arc(256, 152, 40, 0, 7); g.stroke();
+    for (const s of [0, 1]) { const x = s ? 502 : 10, d = s ? -1 : 1; g.strokeRect(Math.min(x, x + d * 70), 72, 70, 160); g.strokeRect(Math.min(x, x + d * 26), 112, 26, 80); g.beginPath(); g.arc(x + d * 136, 152, 3, 0, 7); g.fillStyle = '#fff'; g.fill(); }
+  });
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(L + 2, 0.06, W + 2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 })); slab.position.set(cx, 0.34, cz); slab.receiveShadow = true; scene.add(slab);
+  const white = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.4 }), net = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 });
+  for (const s of [1, -1]) {
+    const gx = cx + s * L / 2, g = new THREE.Group(); g.position.set(gx, 0.37, cz);
+    g.add(new THREE.Mesh(merge([new THREE.CylinderGeometry(0.06, 0.06, 2.2, 8).translate(0, 1.1, -2.5), new THREE.CylinderGeometry(0.06, 0.06, 2.2, 8).translate(0, 1.1, 2.5), new THREE.CylinderGeometry(0.06, 0.06, 5.1, 8).rotateX(Math.PI / 2).translate(0, 2.2, 0)]), white));
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 5, 4, 6, 12).translate(s * 0.7, 1.1, 0), net));
+    scene.add(g);
+  }
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshStandardMaterial({ map: canvasTex(64, 32, g => { g.fillStyle = '#f4f4f4'; g.fillRect(0, 0, 64, 32); g.fillStyle = '#111'; for (let i = 0; i < 9; i++) { g.beginPath(); g.arc((i * 23) % 64, (i * 13) % 32, 4, 0, 7); g.fill(); } }), roughness: 0.6 }));
+  ball.castShadow = true; scene.add(ball);
+  const keeper = makeHuman({ skin: '#c58c60', shirt: '#e8d020', pants: '#1a1a1a', hair: '#111', shoes: '#111', glasses: false });
+  const gx = cx + L / 2 - 0.4; keeper.g.position.set(gx, 0.37, cz); keeper.g.rotation.y = -Math.PI / 2;
+  const spot = [cx + L / 2 - 8, cz];
+  ball.position.set(spot[0] + 0.6, 0.48, spot[1]);
+  M28.pitch = { cx, cz, L, W, ball, keeper, gx, spot, game: null };
+}
+function updatePitch(dt) {
+  const P = M28.pitch; if (!P) return;
+  const G = P.game, k = P.keeper;
+  if (!G) { animHuman(k, 0, dt, false); k.g.position.z = P.cz + Math.sin(state.now * 0.8) * 0.4; }
+  if (G && G.fly) {
+    const f = G.fly; f.t += dt / 0.6; const t = Math.min(1, f.t);
+    P.ball.position.lerpVectors(f.a, f.b, t); P.ball.position.y += Math.sin(t * Math.PI) * 0.4 * (1 - f.b.y / 3); P.ball.rotation.z -= dt * 14;
+    const kd = Math.min(1, f.t * 1.6); k.g.position.z = P.cz + f.kz * 1.6 * kd; k.g.rotation.set(0, -Math.PI / 2, -Math.sign(f.kz) * 1.25 * kd, 'YXZ'); if (!f.kz) k.g.position.y = 0.37 + Math.sin(kd * Math.PI) * 0.5;
+    if (t >= 1 && !f.done) {
+      f.done = true;
+      if (f.res === 'goal') { G.goals++; floatText('⚽ GOOOL!'); AudioSys.success(); } else if (f.res === 'save') { floatText('🧤 Kaleci kurtardı!'); AudioSys.tone(220, 0.25, 0.15, 'square'); } else { floatText(f.res === 'over' ? '⚽ Üstten auta' : '⚽ Direğin yanından dışarı'); AudioSys.fail(); }
+      G.n++; G.res.push(f.res === 'goal' ? '⚽' : '❌'); mgSub(`${G.res.join(' ')} · ${G.goals} gol · ${5 - G.n} penaltı kaldı`);
+      setTimeout(() => { if (P.game !== G) return; G.fly = null; k.g.rotation.set(0, -Math.PI / 2, 0); k.g.position.set(P.gx, 0.37, P.cz); P.ball.position.set(P.spot[0] + 0.6, 0.48, P.spot[1]); if (G.n >= 5 && MG.on && MG.on.pen) mgClose(false); }, 1100);
+    }
+    return;
+  }
+  if (G || state.interact || state.inCar || state.interior || state.dead || MG.on) return;
+  if (Math.hypot(player.pos.x - P.spot[0], player.pos.z - P.spot[1]) < 1.8) state.interact = { label: `⚽ PENALTI ATIŞLARI · 5 atış · rekor ${L3().goalBest}`, fn: startPenalties };
+}
+function startPenalties() {
+  const P = M28.pitch, G = P.game = { n: 0, goals: 0, fly: null, res: [] };
+  player.pos.x = P.spot[0] - 0.4; player.pos.z = P.spot[1]; player.yaw = Math.PI / 2; camYaw = -Math.PI / 2; camPitch = 0.15;
+  mgOpen({
+    pen: true, h: 96, title: '⚽ PENALTI', sub: 'Nişan kaleyi geziyor · <b>VUR</b> (Space / E) · köşeler kurtarılamaz ama auta gidebilir', btn: 'VUR',
+    press() {
+      if (G.fly || G.n >= 5) return;
+      const x = this.ax, y = this.ay, side = Math.random(), kz = side < 0.4 ? -1 : side < 0.8 ? 1 : 0;
+      let res = 'goal';
+      if (Math.abs(x) > 1) res = 'wide'; else if (y > 1) res = 'over'; else if (Math.abs(x - kz * 0.62) < 0.42 && y < 0.82) res = 'save';
+      const b = new THREE.Vector3(P.gx + 0.3, 0.45 + Math.min(y, 1.25) * 2.0, P.cz + x * 2.5);
+      if (res === 'save') b.x -= 0.6;
+      G.fly = { a: P.ball.position.clone(), b, t: 0, kz, res };
+      const h = player.human; if (h) { h.legR.rotation.x = -1.2; setTimeout(() => { h.legR.rotation.x = 0; }, 250); }
+      AudioSys.tone(140, 0.08, 0.3, 'square');
+    },
+    tick() { this.ax = Math.sin(this.t * 1.5) * 1.22; this.ay = 0.55 + Math.sin(this.t * 2.3 + 1) * 0.62; },
+    draw(g, w, h) {
+      const gw = w * 0.6, gx0 = (w - gw) / 2, gh = h - 8;
+      g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.moveTo(gx0, h); g.lineTo(gx0, h - gh); g.lineTo(gx0 + gw, h - gh); g.lineTo(gx0 + gw, h); g.stroke();
+      g.fillStyle = '#ffffff12'; g.fillRect(gx0, h - gh, gw, gh);
+      const mx = w / 2 + this.ax * gw / 2, my = h - Math.max(0, this.ay) * gh;
+      g.strokeStyle = Math.abs(this.ax) > 1 || this.ay > 1 ? '#ff5a3a' : '#ffd23a'; g.lineWidth = 2; g.beginPath(); g.arc(mx, my, 7, 0, 7); g.moveTo(mx - 11, my); g.lineTo(mx + 11, my); g.moveTo(mx, my - 11); g.lineTo(mx, my + 11); g.stroke();
+    },
+    close(cancel) {
+      P.game = null; P.keeper.g.rotation.set(0, -Math.PI / 2, 0); P.keeper.g.position.set(P.gx, 0.37, P.cz); P.ball.position.set(P.spot[0] + 0.6, 0.48, P.spot[1]);
+      if (cancel && G.n < 5) { floatText('⚽ Penaltılar yarıda kaldı'); return; }
+      const L = L3(), rec = G.goals > L.goalBest; if (rec) L.goalBest = G.goals;
+      let pay = 0; if (G.goals >= 4 && L.goalDay !== todayKey()) { L.goalDay = todayKey(); pay = G.goals === 5 ? 400 : 250; earn(pay, '⚽ Penaltı ödülü'); }
+      showBig(`⚽ ${G.goals}/5 GOL`, G.goals >= 4 ? '#7dff9a' : '#ffb020', 4, `${G.res.join(' ')}${rec ? ' · 🏆 rekor' : ''}${pay ? ` · günlük ödül +$${pay}` : G.goals >= 4 ? ' · ödül bugün alındı' : ' · 4+ golle günlük ödül'}`);
+      saveGame();
+    }
+  });
+}
+
+// ============================================================ 🎬 OPEN-AIR CINEMA (shows from real time → same film on every screen)
+const FILMS = [
+  { t: 'GECE YARISI KAÇIŞI', sub: ['Şehir uyurken…', 'Birileri hâlâ gaza basıyor.', '— Bizi takip ediyorlar!', '— Sıkı tutun!', 'Vista Bay asla uyumaz.'] },
+  { t: 'YILDIZ YOLCUSU', sub: ['Yıl 3021.', 'Son keşif gemisi eve dönüyor.', '— Kalkanlar %20!', '— Hiper sürüşü aç!', 'Ve yıldızlar çizgiye dönüştü…'] },
+  { t: 'MAVİ DERİNLİK', sub: ['Okyanusun 300 metre altı.', 'Işığın hiç ulaşmadığı yer.', 'Burada da hayat var.', 'Her biri kendi ışığını taşıyor.', 'Mavi Derinlik · bir Vista belgeseli'] },
+];
+const CINE_CYCLE = 150, CINE_RUN = 100;
+const cineNow = () => { const t = Date.now() / 1000, id = Math.floor(t / CINE_CYCLE); return { id, lt: t - id * CINE_CYCLE, film: FILMS[((id % FILMS.length) + FILMS.length) % FILMS.length] }; };
+function buildCinema() {
+  const b = blocks[1] && blocks[1][2]; if (!b || !b.park) return;
+  const cx = b.cx + 14, sz = b.cz - 26;
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(16, 8), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })); screen.position.set(cx, 6.6, sz + 0.12); scene.add(screen);
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1c20, roughness: 0.6 });
+  scene.add(new THREE.Mesh(merge([new THREE.BoxGeometry(17, 9, 0.2).translate(cx, 6.6, sz), new THREE.BoxGeometry(0.4, 11, 0.4).translate(cx - 8.2, 5.5, sz - 0.4), new THREE.BoxGeometry(0.4, 11, 0.4).translate(cx + 8.2, 5.5, sz - 0.4)]), dark));
+  const seats = []; for (let r = 0; r < 4; r++) for (let s = -2; s <= 2; s++) seats.push(colorize(new THREE.BoxGeometry(2.2, 0.45, 0.6).translate(cx + s * 2.6, 0.55, sz + 9 + r * 2.4), '#8a2a2a'), colorize(new THREE.BoxGeometry(2.2, 0.6, 0.12).translate(cx + s * 2.6, 0.9, sz + 9.3 + r * 2.4), '#8a2a2a'));
+  const sm = new THREE.Mesh(merge(seats), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 })); sm.castShadow = true; scene.add(sm);
+  const booth = new THREE.Mesh(new RoundedBoxGeometry(2.2, 2.4, 1.8, 2, 0.1).translate(cx - 11, 1.5, sz + 14), new THREE.MeshStandardMaterial({ color: 0x8a1a2a })); booth.castShadow = true; scene.add(booth);
+  const bs = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.8), new THREE.MeshBasicMaterial({ map: signTexM(256, 84, '#1a0a0a', '#ffd23a', '🎬 SİNEMA') })); bs.position.set(cx - 11, 3.1, sz + 14.95); scene.add(bs);
+  M28.cine = { cx, sz, cv, g: cv.getContext('2d'), tex, booth: [cx - 11, sz + 15.6], drawT: 0, watch: 0, rewarded: -1 };
+}
+function drawFilm(g, W, H, f, lt, fi) {
+  const p = lt / CINE_RUN, t = lt;
+  if (fi === 0) {
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#0a0c24'); gr.addColorStop(1, '#3a1a3a'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#f4f0d8'; g.beginPath(); g.arc(420, 50, 22, 0, 7); g.fill();
+    for (const [sp, col, hh] of [[20, '#141428', 120], [55, '#0a0a18', 80]]) { g.fillStyle = col; for (let i = -1; i < 9; i++) { const x = ((i * 70 - t * sp) % 630 + 630) % 630 - 60, h = hh + ((i * 37) % 50); g.fillRect(x, H - h - 30, 52, h); } }
+    g.fillStyle = '#222'; g.fillRect(0, H - 30, W, 30);
+    const cx = 200 + Math.sin(t * 0.7) * 40; g.fillStyle = '#c01818'; g.fillRect(cx, H - 52, 90, 20); g.fillRect(cx + 20, H - 66, 50, 16); g.fillStyle = '#000'; g.beginPath(); g.arc(cx + 18, H - 30, 9, 0, 7); g.arc(cx + 72, H - 30, 9, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,240,180,.35)'; g.beginPath(); g.moveTo(cx + 90, H - 44); g.lineTo(cx + 200, H - 60); g.lineTo(cx + 200, H - 25); g.fill();
+    const pc = cx - 150 + Math.sin(t * 1.1) * 30; g.fillStyle = '#e8e8e8'; g.fillRect(pc, H - 50, 80, 18); g.fillStyle = Math.sin(t * 12) > 0 ? '#f22' : '#22f'; g.fillRect(pc + 30, H - 58, 18, 8);
+  } else if (fi === 1) {
+    g.fillStyle = '#02030a'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 120; i++) { const a = i * 2.39996, r0 = ((i * 53) % 100) / 100, r = ((r0 + t * 0.12 * (p > 0.8 ? 6 : 1)) % 1) * 300, x = W / 2 + Math.cos(a) * r, y = H / 2 + Math.sin(a) * r * 0.6; g.fillStyle = '#fff'; g.fillRect(x, y, 1 + r / 150, 1 + r / 150); }
+    g.fillStyle = '#3a6ad8'; g.beginPath(); g.arc(110, 190, 60 + p * 20, 0, 7); g.fill(); g.fillStyle = '#5a8af8'; g.beginPath(); g.arc(95, 175, 50 + p * 18, 0, 7); g.fill();
+    const sx = 300 + Math.sin(t * 0.9) * 60, sy = 110 + Math.cos(t * 1.3) * 30; g.fillStyle = '#d8dce4'; g.beginPath(); g.moveTo(sx + 40, sy); g.lineTo(sx - 20, sy - 16); g.lineTo(sx - 10, sy); g.lineTo(sx - 20, sy + 16); g.fill(); g.fillStyle = '#ff8a2a'; g.fillRect(sx - 30, sy - 3, 12, 6);
+    if (Math.sin(t * 3) > 0.7) { g.strokeStyle = '#ff3a3a'; g.lineWidth = 2; g.beginPath(); g.moveTo(sx + 40, sy); g.lineTo(W, sy - 20); g.stroke(); }
+  } else {
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#0a4a7a'); gr.addColorStop(1, '#020a1a'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(160,220,255,.08)'; for (let i = 0; i < 5; i++) { g.beginPath(); const x = 60 + i * 100 + Math.sin(t * 0.4 + i) * 20; g.moveTo(x, 0); g.lineTo(x + 40, 0); g.lineTo(x - 40 + i * 10, H); g.lineTo(x - 90, H); g.fill(); }
+    for (let i = 0; i < 9; i++) { const y = 40 + (i * 23) % 180, x = ((i * 90 + t * (25 + i * 6)) % 620) - 60, s = 8 + (i % 3) * 6; g.fillStyle = ['#f2a020', '#30d0e0', '#e04080'][i % 3]; g.beginPath(); g.ellipse(x, y, s * 1.6, s, 0, 0, 7); g.fill(); g.beginPath(); g.moveTo(x - s * 1.4, y); g.lineTo(x - s * 2.4, y - s); g.lineTo(x - s * 2.4, y + s); g.fill(); }
+    g.fillStyle = 'rgba(255,255,255,.5)'; for (let i = 0; i < 14; i++) { const y = H - ((t * 30 + i * 41) % (H + 20)), x = (i * 67) % W + Math.sin(t + i) * 6; g.beginPath(); g.arc(x, y, 2 + (i % 3), 0, 7); g.fill(); }
+  }
+  // title card, subtitles, credits
+  g.textAlign = 'center';
+  if (lt < 6) { g.fillStyle = `rgba(0,0,0,${1 - lt / 6 * 0.7})`; g.fillRect(0, 0, W, H); g.fillStyle = '#ffd23a'; g.font = 'bold 36px Arial'; g.fillText(f.t, W / 2, H / 2); g.font = '14px Arial'; g.fillStyle = '#fff'; g.fillText('Vista Stüdyoları sunar', W / 2, H / 2 + 30); }
+  else if (lt > CINE_RUN - 7) { g.fillStyle = '#000'; g.fillRect(0, 0, W, H); g.fillStyle = '#fff'; g.font = 'bold 22px Arial'; g.fillText('SON', W / 2, H / 2 - 10); g.font = '13px Arial'; g.fillText('Yönetmen: Vista Bay · Müzik: VISTA FM', W / 2, H / 2 + 20 - (lt - CINE_RUN + 7) * 6); }
+  else { const line = f.sub[Math.min(f.sub.length - 1, Math.floor((lt - 6) / ((CINE_RUN - 13) / f.sub.length)))]; g.font = 'bold 18px Arial'; g.fillStyle = '#000a'; g.fillRect(W / 2 - g.measureText(line).width / 2 - 8, H - 34, g.measureText(line).width + 16, 26); g.fillStyle = '#fff'; g.fillText(line, W / 2, H - 15); }
+}
+function updateCinema(dt) {
+  const C = M28.cine; if (!C) return;
+  const near = Math.hypot(camera.position.x - C.cx, camera.position.z - C.sz) < 160 && !state.interior;
+  const N = cineNow();
+  if (near) {
+    C.drawT -= dt;
+    if (C.drawT <= 0) {
+      C.drawT = 0.08; const g = C.g;
+      if (N.lt < CINE_RUN) drawFilm(g, 512, 256, N.film, N.lt, ((N.id % FILMS.length) + FILMS.length) % FILMS.length);
+      else { const nf = FILMS[(((N.id + 1) % FILMS.length) + FILMS.length) % FILMS.length]; g.fillStyle = '#100808'; g.fillRect(0, 0, 512, 256); g.textAlign = 'center'; g.fillStyle = '#ffd23a'; g.font = 'bold 20px Arial'; g.fillText('SIRADAKİ FİLM', 256, 100); g.font = 'bold 30px Arial'; g.fillStyle = '#fff'; g.fillText(nf.t, 256, 140); g.font = '16px Arial'; g.fillText(`${Math.ceil(CINE_CYCLE - N.lt)} sn sonra · biletler gişede`, 256, 175); }
+      C.tex.needsUpdate = true;
+    }
+  }
+  // watching: inside the seating area with a ticket for this show
+  const inSeats = !state.inCar && Math.abs(player.pos.x - C.cx) < 8 && player.pos.z > C.sz + 7 && player.pos.z < C.sz + 18;
+  const inCarView = state.inCar && Math.abs(player.pos.x - C.cx) < 14 && player.pos.z > C.sz + 7 && player.pos.z < C.sz + 34;
+  if ((inSeats || inCarView) && state.cineTicket === N.id && N.lt < CINE_RUN && C.rewarded !== N.id) {
+    C.watch += dt;
+    if (C.watch > 60) { C.rewarded = N.id; C.watch = 0; const L = L3(); L.films++; addRep(3, 'sinema'); state.health = Math.min(100, state.health + 25); showBig('🎬 GÜZEL FİLMDİ', '#ffd23a', 3.5, `${N.film.t} · can +25 · itibar +3 · izlenen film ${L.films}`); saveGame(); }
+  }
+  if (!state.interact && !state.inCar && !state.interior && !state.dead && !MG.on && Math.hypot(player.pos.x - C.booth[0], player.pos.z - C.booth[1]) < 1.8) state.interact = { label: '🎬 SİNEMA GİŞESİ · bilet, patlamış mısır', fn: () => openShop('cinema') };
+}
+function cinemaItems() {
+  const N = cineNow(), cur = N.lt < CINE_RUN - 40, id = cur ? N.id : N.id + 1, f = FILMS[((id % FILMS.length) + FILMS.length) % FILMS.length];
+  return [
+    { sec: cur ? `Şimdi gösterimde: ${f.t} · ${Math.ceil(CINE_RUN - N.lt)} sn kaldı` : `Sıradaki: ${f.t} · ${Math.ceil(CINE_CYCLE - N.lt)} sn sonra` },
+    { name: `🎟 Bilet · ${f.t}`, desc: 'Koltuklarda (ya da arabayla arkada) 60 sn izle → can +25, itibar +3', price: 12, dis: state.cineTicket === id ? 'VAR' : null, buy: () => { state.cineTicket = id; } },
+    { name: '🍿 Patlamış mısır', desc: 'Açlık +15', price: 6, buy: () => { state.food = Math.min(100, (state.food ?? 100) + 15); } },
+    { name: '🥤 Kola', desc: 'Susuzluk +20', price: 4, buy: () => { state.water = Math.min(100, (state.water ?? 100) + 20); } },
+  ];
+}
+
+// ============================================================ 🎤 BEACH CONCERT (every game night 20:00–23:30)
+const concertOn = () => state.time >= 20 && state.time < 23.5;
+function buildStage() {
+  const x = BEACH_X0 + 58, rx = r => r.x ?? (r.pos && r.pos.x) ?? (r.group && r.group.position.x) ?? 1e9, rz = r => r.z ?? (r.pos && r.pos.z) ?? (r.group && r.group.position.z) ?? 1e9;
+  const z = [-165, -230, -110, -290, 120].find(zz => !ramps.some(r => Math.hypot(rx(r) - x, rz(r) - zz) < 45) && !HELIPADS.some(h => Math.hypot(h[0] - x, h[2] - zz) < 30)) ?? -165, y = groundY(x, z);
+  const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
+  const dark = new THREE.MeshStandardMaterial({ color: 0x18191c, roughness: 0.6 }), truss = new THREE.MeshStandardMaterial({ color: 0x9a9ca2, metalness: 0.8, roughness: 0.3 });
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 16).translate(2, 0.6, 0), dark));
+  g.add(new THREE.Mesh(merge([[-3, -8], [-3, 8], [7, -8], [7, 8]].map(([a, b]) => new THREE.BoxGeometry(0.35, 9, 0.35).translate(a, 4.5, b)).concat([new THREE.BoxGeometry(10.4, 0.4, 0.4).translate(2, 9, -8), new THREE.BoxGeometry(10.4, 0.4, 0.4).translate(2, 9, 8), new THREE.BoxGeometry(0.4, 0.4, 16.4).translate(-3, 9, 0), new THREE.BoxGeometry(0.4, 0.4, 16.4).translate(7, 9, 0)])), truss));
+  for (const s of [-1, 1]) g.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 4, 1.8).translate(-2.4, 3.2, s * 9.4), dark));
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const led = new THREE.Mesh(new THREE.PlaneGeometry(14, 6.5), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })); led.position.set(6.6, 5.2, 0); led.rotation.y = -Math.PI / 2; g.add(led);
+  const beams = [], bmat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  for (let i = 0; i < 6; i++) { const b = new THREE.Mesh(new THREE.ConeGeometry(2.2, 16, 16, 1, true).translate(0, -8, 0), bmat.clone()); b.position.set(-2.8, 8.8, -7 + i * 2.8); g.add(b); beams.push(b); }
+  const star = makeHuman({ skin: '#8d5a3a', shirt: '#e8e8f0', pants: '#141418', hair: '#101010', shoes: '#f2f2f2', jacket: '#b01a8a', glasses: true }); scene.remove(star.g); star.g.position.set(1.5, 1.2, 0); star.g.rotation.y = -Math.PI / 2; g.add(star.g);
+  const crowd = []; for (let i = 0; i < 14; i++) { const h = makeHuman(randLook()); scene.remove(h.g); h.g.position.set(-6 - (i % 4) * 2.2 - Math.random(), 0.05, -7 + Math.floor(i / 4) * 4.2 + Math.random() * 1.5); h.g.rotation.y = Math.PI / 2; h.g.visible = false; h.ph = Math.random() * 6; g.add(h.g); crowd.push(h); }
+  M28.stage = { x, z, y, g, cv, cg: cv.getContext('2d'), tex, beams, star, crowd, gate: [x - 24, z], announced: -1, rewarded: false, watch: 0 };
+}
+function concertNear() { const S = M28.stage; return !!(S && concertOn() && !state.interior && Math.hypot(player.pos.x - S.x, player.pos.z - S.z) < 75); }
+function updateStage(dt) {
+  const S = M28.stage; if (!S) return;
+  const on = concertOn(), t = state.now, vis = Math.hypot(camera.position.x - S.x, camera.position.z - S.z) < 260;
+  if (state.time >= 19 && state.time < 19.2 && S.announced !== Math.floor(state.now / 300)) { S.announced = Math.floor(state.now / 300); breakingNews('🎤 Bu gece 20:00\'de Sahil Sahnesi\'nde MAVİ DALGA konseri! Biletler gişede.'); }
+  for (const h of S.crowd) { h.g.visible = on && vis; if (h.g.visible) { animHuman(h, 0, dt, false); const b = Math.sin(t * 6 + h.ph); h.armL.rotation.x = -2.6 + b * 0.3; h.armR.rotation.x = -1.2 - b * 0.9; h.g.children[4].position.y = Math.abs(b) * 0.08; } }
+  for (const [i, b] of S.beams.entries()) { b.visible = on && vis; if (b.visible) { b.rotation.z = Math.sin(t * 1.3 + i) * 0.5; b.rotation.x = Math.cos(t * 0.9 + i * 0.7) * 0.35; b.material.color.setHSL((t * 0.1 + i / 6) % 1, 1, 0.55); b.material.opacity = 0.09 * nightF + 0.02; } }
+  if (on && vis) {
+    const st = S.star; animHuman(st, 0, dt, false); st.armR.rotation.x = -2.4 + Math.sin(t * 4) * 0.4; st.armL.rotation.x = -0.6 + Math.sin(t * 4 + 1) * 0.5; st.g.children[4].position.y = Math.abs(Math.sin(t * 4)) * 0.1;
+    const g = S.cg, W = 256, H = 128; g.fillStyle = '#05010a'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 24; i++) { const v = (Math.sin(t * 7 + i * 0.7) * 0.5 + 0.5) * (Math.sin(t * 2.3 + i) * 0.3 + 0.7); g.fillStyle = `hsl(${(i * 12 + t * 40) % 360},90%,55%)`; g.fillRect(8 + i * 10, H - 14 - v * 70, 7, v * 70); }
+    g.fillStyle = '#fff'; g.font = 'bold 24px Arial'; g.textAlign = 'center'; g.fillText('MAVİ DALGA', W / 2, 30); g.font = '12px Arial'; g.fillText('SAHİL KONSERİ · VISTA BAY', W / 2, 48); S.tex.needsUpdate = true;
+  }
+  if (!on) { S.rewarded = false; state.concertTicket = false; }
+  // gate + reward
+  if (!state.interact && !state.inCar && !state.interior && !state.dead && !MG.on && Math.hypot(player.pos.x - S.gate[0], player.pos.z - S.gate[1]) < 2) state.interact = { label: on ? '🎤 KONSER GİŞESİ · bilet $40' : '🎤 Sahil Sahnesi · konser her gece 20:00', fn: on ? () => openShop('concert') : null };
+  if (on && state.concertTicket && !S.rewarded && !state.inCar && player.pos.x > S.x - 18 && player.pos.x < S.x - 3 && Math.abs(player.pos.z - S.z) < 9) {
+    S.watch += dt; if (S.watch > 40) { S.rewarded = true; S.watch = 0; const L = L3(); L.concerts++; addRep(4, 'konser'); state.health = Math.min(100, state.health + 30); showBig('🎤 MUHTEŞEM KONSER!', '#ff7ae0', 4, `MAVİ DALGA · can +30 · itibar +4 · gittiğin konser ${L.concerts}`); saveGame(); }
+  }
+}
+function concertItems() {
+  return [
+    { sec: concertOn() ? '🎤 MAVİ DALGA şu an sahnede! · önde 40 sn dans et → can +30, itibar +4' : 'Konser bitti · her gece 20:00–23:30' },
+    { name: '🎟 Konser bileti', desc: 'Bu geceki konser için', price: 40, dis: state.concertTicket ? 'VAR' : concertOn() ? null : 'KAPALI', buy: () => { state.concertTicket = true; floatText('🎟 Bilet alındı · sahnenin önüne geç!'); } },
+    { name: '🥤 Enerji içeceği', desc: 'Susuzluk +30', price: 6, buy: () => { state.water = Math.min(100, (state.water ?? 100) + 30); } },
+    { name: '🌭 Sosisli', desc: 'Açlık +25', price: 8, buy: () => { state.food = Math.min(100, (state.food ?? 100) + 25); } },
+  ];
+}
+
+// ============================================================ wiring
+function prepM28() {   // clear park trees where the pitch and the cinema go (before trees are planted)
+  const rects = [];
+  const P = pitchRect(); if (P) rects.push([P.cx, P.cz, P.L / 2 + 3, P.W / 2 + 3]);
+  const b = blocks[1] && blocks[1][2]; if (b && b.park) rects.push([b.cx + 14, b.cz - 15, 13, 16]);
+  for (const A of [TREES, PALMS]) { const k = A.filter(p => !rects.some(([x, z, hw, hd]) => Math.abs(p[0] - x) < hw && Math.abs(p[2] - z) < hd)); A.length = 0; A.push(...k); }
+}
+function buildM28() { buildMetro(); buildBank(); buildRental(); buildPitch(); buildCinema(); buildStage(); }
+function m28DoorInteract(d) { if (!d.bank) return false; state.interact = { label: '🏦 VISTA BANK · kredi, vadeli hesap', fn: () => openShop('bank') }; return true; }
+function updateM28(dt) {
+  updateMetroVisual(); if (state.metro && state.metro.ui) state.interact = state.metro.ui; updateRental(dt); updatePitch(dt); updateCinema(dt); updateStage(dt);
+  const hr = Math.floor(state.time); if (hr !== M28.hour) { if (M28.hour >= 0) bankHour(); M28.hour = hr; }
+  if (!state.interact && !state.inCar && !state.interior && !state.dead && !MG.on && !state.metro) for (const S of MET.stations) if (Math.hypot(player.pos.x - S.ex, player.pos.z - S.ez) < 1.6) { state.interact = { label: `🚇 METRO · ${MET.names[S.i]}`, fn: () => { state.metroAt = S; openShop('metro'); } }; break; }
+  if (!state.interact && state.rent && !state.inCar && M28.rent && Math.hypot(player.pos.x - M28.rent.x, player.pos.z - M28.rent.z) < 2.2) state.interact = { label: '🔑 KİRALIK ARACI İADE ET', fn: () => openShop('rent') };
+}
+function m28MapDots(dot) {
+  if (state.interior) return;
+  for (const S of MET.stations) dot(S.ex, S.ez, '#2a7aff', 6, false);
+  if (M28.bank) dot(M28.bank.x, M28.bank.z, '#ffd23a', 6, false);
+  if (M28.pitch) dot(M28.pitch.cx, M28.pitch.cz, '#40d040', 6, false);
+  if (M28.cine) dot(M28.cine.cx, M28.cine.sz + 10, '#ff4a6a', 6, false);
+  if (M28.stage) dot(M28.stage.x, M28.stage.z, concertOn() ? '#ff7ae0' : '#a06090', concertOn() ? 9 : 6, concertOn());
+}
+
 // ============================================================ TREES / STREET FURNITURE / TRAFFIC LIGHTS
 function buildTreesAndStreet() {
   const sh = QUALITY !== 'low', m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -3742,7 +4192,7 @@ function openShop(type, zone = null) {
   state.shopOpen = type; try { document.exitPointerLock && document.exitPointerLock(); } catch (e) { }
   for (const k in keys) keys[k] = false;
   touchState.joyId = null; touchState.jdx = touchState.jdy = 0; $('joy').style.display = 'none';
-  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'fuel' ? '⛽ VISTA PETROL' : type === 'gym' ? '💪 IRON GYM' : type === 'fish' ? '🎣 BALIKÇI' : type === 'loto' ? '🍀 VISTA LOTO' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
+  $('shopTitle').textContent = type === 'prop' ? '🏠 ' + zone.prop.name.toUpperCase() : type === 'clothes' ? '👕 VISTA MODA' : type === 'bm' ? '🕶 GİZLİ KARA BORSA' : type === 'grocery' ? `🛒 ${LIFE.curMkt ? LIFE.curMkt.name : ''} MARKET` : type === 'fridge' ? '🧊 BUZDOLABI' : type === 'bag' ? '🛍 POŞET' : type === 'homebuy' ? '🏠 EMLAK' : type === 'wed' ? '💍 EVLENDİRME DAİRESİ' : type === 'jobs' ? '💼 VİSTA BAY İŞ KURUMU' : type === 'drag' ? '🏁 VISTA DRAG STRIP' : type === 'pets' ? '🐾 HAYVAN BARINAĞI' : type === 'fuel' ? '⛽ VISTA PETROL' : type === 'gym' ? '💪 IRON GYM' : type === 'fish' ? '🎣 BALIKÇI' : type === 'loto' ? '🍀 VISTA LOTO' : type === 'metro' ? '🚇 VISTA METRO' : type === 'bank' ? '🏦 VISTA BANK' : type === 'rent' ? '🔑 VISTA RENT A CAR' : type === 'cinema' ? '🎬 AÇIK HAVA SİNEMASI' : type === 'concert' ? '🎤 SAHİL SAHNESİ' : type === 'biz' ? '🏢 ' + (state.biz ? state.biz.name.toUpperCase() : 'İŞYERİ') : type === 'elev' ? '🛗 ASANSÖR' : type === 'ticket' ? '✈ VISTA BAY AIR · BİLET' : type === 'docs' ? '🏛 NÜFUS MÜDÜRLÜĞÜ' : type === 'school' ? '🎓 VISTA BAY UÇUŞ OKULU' : type === 'station' ? '👮 VISTA BAY KARAKOLU' : { gun: '🔫 SİLAH & EKİPMAN', car: '🚗 VISTA MOTORS', garage: '🔧 GARAJ & BOYA' }[type];
   renderShop(); $('shop').style.display = 'flex';
 }
 function closeShop() { if (state.shopOpen === 'casino') { closeGame(); return; } state.shopOpen = null; $('shop').style.display = 'none'; saveGame(); }
@@ -3767,6 +4217,11 @@ function shopItems(type) {
   if (type === 'gym') return gymItems();
   if (type === 'fish') return fishItems();
   if (type === 'loto') return lotoItems();
+  if (type === 'metro') return metroItems();
+  if (type === 'bank') return bankItems();
+  if (type === 'rent') return rentItems();
+  if (type === 'cinema') return cinemaItems();
+  if (type === 'concert') return concertItems();
   if (type === 'biz') return bizItems();
   const own = i => state.ownedW[i];
   if (type === 'gun') {
@@ -3839,7 +4294,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null, life3: state.life3 || null
     }));
     accountSaved();
   } catch (e) { }
@@ -3854,7 +4309,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null; state.life3 = d.life3 || null;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -11593,7 +12048,7 @@ function updateDoors() {
   const px = player.pos.x, pz = player.pos.z, py = player.pos.y;
   const b = blockAt(px, pz) || (inAirport(px, pz) ? AIRPORT.blk : null); if (!b || !b.doors) return;
   for (const d of b.doors) {
-    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter || d.biz || d.gym) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d) || m27DoorInteract(d) || bizDoorInteract(d))) return;
+    if ((d.market || d.home || d.jobs || d.hospital || d.casino || d.shelter || d.biz || d.gym || d.bank) && py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5 && (lifeDoorInteract(d) || jobDoorInteract(d) || casinoDoorInteract(d) || shelterDoorInteract(d) || m27DoorInteract(d) || m28DoorInteract(d) || bizDoorInteract(d))) return;
     if (py < d.y0 + 2 && Math.hypot(px - d.x, pz - d.z) < 1.5) { state.interact = { label: `🚪 GİR · ${doorTitle(d)}`, fn: () => enterGeneric(d) }; return; }
     if (d.roof && Math.abs(py - d.roof.y) < 1.2 && Math.hypot(px - d.roof.ix, pz - d.roof.iz) < 1.4) { state.interact = { label: `🚪 MERDİVENDEN İN · ${doorTitle(d)}`, fn: () => enterGeneric(d, true) }; return; }
   }
@@ -11713,7 +12168,7 @@ function loop(now) {
   updateSky(dt);
   if (state.dead) { state.deadTimer -= dt; if (state.deadTimer <= 0) respawn(); }
   else {
-    if (state.fly && !state.inCar && isAdmin()) updateFly(dt); else if (state.cabin && !state.cabin.jumped) updateCabin(dt); else if (state.sky) updateSkydive(dt); else if (state.passenger) updatePassenger(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
+    if (state.fly && !state.inCar && isAdmin()) updateFly(dt); else if (state.cabin && !state.cabin.jumped) updateCabin(dt); else if (state.sky) updateSkydive(dt); else if (state.passenger) updatePassenger(dt); else if (state.metro) updateMetroPlayer(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
     if (input.fire) fire();
   }
   if (state.fireCd > 0) state.fireCd -= dt;
@@ -11771,6 +12226,7 @@ function loop(now) {
   updatePets(dt);
   updateBiz(dt);
   updateM27(dt);
+  updateM28(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');
