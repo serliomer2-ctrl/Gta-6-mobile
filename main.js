@@ -10,6 +10,8 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as skelClone } from 'three/addons/utils/SkeletonUtils.js';
 
 // ============================================================ CONSTANTS
 const N = 8, CELL = 90, ROAD = 18, BLOCK = CELL - ROAD, HALF = N * CELL / 2, OFF = -HALF;
@@ -144,7 +146,9 @@ function makeFacade(style) {
       g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + wx + R(0, ww * 0.6), y + wy, R(3, ww * 0.35), wh);
     }
   });
-  return new THREE.MeshStandardMaterial({ map: albedo, roughnessMap: orm, metalnessMap: orm, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0, vertexColors: true, roughness: 1, metalness: 1 });
+  const fm = new THREE.MeshStandardMaterial({ map: albedo, roughnessMap: orm, metalnessMap: orm, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0, vertexColors: true, roughness: 1, metalness: 1 });
+  if (QUALITY !== 'low') { fm.normalMap = facadeNormal(style, WR, has); fm.normalScale.set(1, 1); }
+  return fm;
 }
 function makeTileTex() {
   return canvasTex(256, 256, g => {
@@ -276,6 +280,7 @@ const merge = list => mergeGeometries(list.map(g => g.index ? g.toNonIndexed() :
 
 // ============================================================ INIT
 function init() {
+  loadHumanTemplates(); loadCarTemplates();
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
   const dpr = Math.min(devicePixelRatio, QUALITY === 'high' ? 2 : QUALITY === 'medium' ? 1.25 : 0.8);
   renderer.setPixelRatio(dpr);
@@ -336,6 +341,7 @@ function init() {
   buildDoorMeshes();
   buildOcean();
   buildProps();
+  buildEnvExtras();
   buildTreesAndStreet();
   buildClouds();
   buildWeather();
@@ -515,7 +521,7 @@ function buildCity() {
     C.get(style).box(C.get('roof'), x, y0, z, w, h, d, c, { uo, topCol: rc });
     b.bld.push({ x0: x - w / 2 - 0.3, x1: x + w / 2 + 0.3, z0: z - d / 2 - 0.3, z1: z + d / 2 + 0.3, h: y0 + h });
     aoRect(x, z, w, d, y0); registerDoor(b, x, z, w, d, y0, o.store ? 'shop' : style, undefined, 0, h);
-    let top = y0 + h;
+    let top = y0 + h; ROOFS.push([x, top, z, w, d, style]);
     const floors = Math.floor(h / 4);
     if (o.store) {
       C.get('glass').box(null, x, y0, z, w + 0.4, 3.6, d + 0.4, col('#9aa6b4'), { us: 32, vs: 32 });
@@ -1109,21 +1115,23 @@ function makeHuman(look) {
   parts.push(C(S(0.1, 10, 7).scale(0.95, 0.9, 0.8).translate(0, 1.79, -0.045), H));                     // back of head
   for (const s of [-1, 1]) parts.push(C(new THREE.BoxGeometry(0.012, 0.05, 0.03).translate(s * 0.1, 1.79, 0.035), H));   // sideburns
   if (look.longHair) { parts.push(C(new THREE.CapsuleGeometry(0.1, 0.22, 4, 10).scale(1.25, 1, 0.55).translate(0, 1.66, -0.085), H)); for (const s of [-1, 1]) parts.push(C(new THREE.CapsuleGeometry(0.035, 0.16, 3, 8).translate(s * 0.105, 1.72, 0.0), H)); }
+  const accMark = parts.length, back = [];
   if (look.beard) parts.push(C(S(0.085, 10, 6).scale(1.02, 0.6, 1).translate(0, 1.705, 0.03), shade(H, 0.95)));
   // ---- headwear / accessories
   if (look.hat === 'fedora') parts.push(C(new THREE.CylinderGeometry(0.1, 0.118, 0.12, 16).translate(0, 1.92, -0.005), look.hatColor), C(new THREE.CylinderGeometry(0.2, 0.2, 0.012, 20).translate(0, 1.865, -0.005), look.hatColor), C(new THREE.CylinderGeometry(0.119, 0.119, 0.025, 16).translate(0, 1.875, -0.005), '#0a0a0a'));
   else if (look.hat === 'beanie') parts.push(C(new THREE.SphereGeometry(0.132, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1, 1.15, 1.05).translate(0, 1.8, -0.01), look.hatColor), C(new THREE.CylinderGeometry(0.133, 0.133, 0.045, 16).translate(0, 1.8, -0.01), look.hatColor));
   else if (look.hat === 'crown') parts.push(C(new THREE.CylinderGeometry(0.11, 0.105, 0.07, 16, 1, true).translate(0, 1.89, -0.005), look.hatColor), ...[0, 1, 2, 3, 4, 5].map(k => C(new THREE.ConeGeometry(0.025, 0.07, 6).translate(Math.sin(k * 1.047) * 0.105, 1.955, Math.cos(k * 1.047) * 0.105 - 0.005), look.hatColor)), C(new THREE.SphereGeometry(0.02, 8, 6).translate(0, 1.89, 0.11), '#d01830'));
   if (look.cap && !look.hat) parts.push(C(new THREE.SphereGeometry(0.128, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, 1.83, -0.005), look.cap), C(new THREE.CylinderGeometry(0.11, 0.11, 0.015, 16, 1, false, -Math.PI / 2, Math.PI).scale(1, 1, 1.2).translate(0, 1.835, 0.09), look.cap));
-  if (look.backpack) parts.push(C(new THREE.CapsuleGeometry(0.15, 0.2, 4, 10).scale(1.15, 1, 0.6).translate(0, 1.3, -0.2), look.backpack), ...[1, -1].map(sx => C(new THREE.BoxGeometry(0.04, 0.4, 0.2).translate(sx * 0.11, 1.38, -0.05), '#1a1a1a')));
+  if (look.backpack) back.push(C(new THREE.CapsuleGeometry(0.15, 0.2, 4, 10).scale(1.15, 1, 0.6).translate(0, 1.3, -0.2), look.backpack), ...[1, -1].map(sx => C(new THREE.BoxGeometry(0.04, 0.4, 0.2).translate(sx * 0.11, 1.38, -0.05), '#1a1a1a')));
   if (look.glasses) parts.push(C(new THREE.BoxGeometry(0.19, 0.012, 0.012).translate(0, 1.818, 0.112), '#0a0a0a'), ...[1, -1].map(s => C(new THREE.CylinderGeometry(0.03, 0.028, 0.01, 14).rotateX(Math.PI / 2).translate(s * 0.042, 1.805, 0.116), '#0c1016')), ...[1, -1].map(s => C(new THREE.BoxGeometry(0.008, 0.008, 0.11).translate(s * 0.092, 1.812, 0.06), '#0a0a0a')));
-  const body = new THREE.Mesh(merge(parts), M.human);
+  const headAcc = parts.slice(accMark); parts.push(...back);
+  const body = new THREE.Mesh(merge(parts), M.human), procL = [body];
   // ---- limbs on pivots (same joints as before, so all animations keep working)
   const mkLimb = (px, py, upper, lower, lowerY) => {
     const p = new THREE.Group(); p.position.set(px, py, 0); g.add(p);
-    const um = new THREE.Mesh(upper, M.human); um.castShadow = true; p.add(um);
+    const um = new THREE.Mesh(upper, M.human); um.castShadow = true; p.add(um); procL.push(um);
     const j = new THREE.Group(); j.position.y = lowerY; p.add(j);
-    const lm = new THREE.Mesh(lower, M.human); lm.castShadow = true; j.add(lm);
+    const lm = new THREE.Mesh(lower, M.human); lm.castShadow = true; j.add(lm); procL.push(lm);
     return [p, j];
   };
   const sleeve = look.jacket ? top : look.shirt, longSleeve = !!look.jacket;
@@ -1163,7 +1171,9 @@ function makeHuman(look) {
     const gun = new THREE.Mesh(merge(gp), look.gunSkin ? M.gunSkin : M.trim); elbowR.add(gun);
   }
   scene.add(g);
-  return { g, armL, armR, legL, legR, elbowL, elbowR, kneeL, kneeR, phase: Math.random() * 6 };
+  const h = { g, armL, armR, legL, legR, elbowL, elbowR, kneeL, kneeR, phase: Math.random() * 6, look, proc: procL, acc: { head: headAcc, back } };
+  registerGlbHuman(h);
+  return h;
 }
 function animHuman(h, speed, dt, aiming) {
   h.phase += dt * (2 + speed * 1.9);
@@ -1180,6 +1190,151 @@ const SKIN = ['#f1c7a5', '#c58c60', '#8d5a3a', '#e0ac80', '#5a3a26', '#f6d6bd'];
 const SHIRT = ['#c84a5a', '#4a90a8', '#e0c050', '#ffffff', '#1d1d24', '#4a8a5a', '#6a5a9a', '#d8804a', '#4a6fa5', '#e8e0d0', '#8a8a8a', '#f0d8d0', '#2a3a5a'];
 const PANTS = ['#2b3a55', '#1d1d24', '#c9b48a', '#5a5a60', '#e8e8e8', '#3a2a20', '#6a7a8a'];
 const HAIR = ['#1a1210', '#3a2416', '#8a6a3a', '#d8c088', '#101010', '#6a2a1a'];
+// ============================================================ READY-MADE HUMANS (medium / high quality)
+// CC0 MakeHuman characters (assets/models/human_*.glb). The procedural human stays as the
+// animation rig and the far LOD: its limb pivots are copied onto the GLB skeleton every frame,
+// so every existing animation (walk, aim, sit, dance, swim, surrender, death...) drives the GLB too.
+const GH = {
+  tpl: {}, ready: false, list: [], built: 0,
+  defs: { m: { file: 'human_m', scale: 1.08, split: 0.5, bot: true, sleeveCol: 0.755 }, f: { file: 'human_f', scale: 1.13, split: 0.4, bot: true, sleeves: true }, h: { file: 'human_h', scale: 1.07, split: 2, bot: false } },
+  R: () => QUALITY === 'high' ? 70 : 40, K: () => QUALITY === 'high' ? 16 : 8,
+};
+const glbEnabled = () => QUALITY !== 'low';
+function loadHumanTemplates() {
+  if (!glbEnabled() || GH.loading) return; GH.loading = true;
+  const loader = new GLTFLoader(), keys = QUALITY === 'high' ? ['m', 'f', 'h'] : ['m', 'f'];
+  Promise.all(keys.map(k => loader.loadAsync('assets/models/' + GH.defs[k].file + '.glb').then(g => { GH.tpl[k] = prepTemplate(k, g.scene); }).catch(e => console.warn('human model', k, e))))
+    .then(() => { GH.ready = Object.keys(GH.tpl).length > 0; });
+}
+function prepTemplate(k, root) {
+  const D = GH.defs[k];
+  root.updateMatrixWorld(true);
+  const T = { root, def: D, Wr: {}, mats: {} };
+  const q = new THREE.Quaternion();
+  for (const n of ['pelvis', 'clavicle_l', 'clavicle_r', 'upperarm_l', 'lowerarm_l', 'hand_l', 'upperarm_r', 'lowerarm_r', 'hand_r', 'thigh_l', 'calf_l', 'foot_l', 'thigh_r', 'calf_r', 'foot_r', 'Head', 'spine_03']) {
+    const b = root.getObjectByName(n); b.getWorldQuaternion(q); T.Wr[n] = q.clone();
+  }
+  const P = n => { const v = new THREE.Vector3(); root.getObjectByName(n).getWorldPosition(v); return v; };
+  T.shoulder = P('upperarm_l'); T.upperLen = P('lowerarm_l').distanceTo(T.shoulder); T.hip = P('thigh_l'); T.thighLen = P('calf_l').distanceTo(T.hip);
+  const eyes = root.getObjectByName('eyes'), eb = new THREE.Box3().setFromObject(eyes); T.eye = eb.getCenter(new THREE.Vector3());
+  // hanging-arm neutral: T-pose arms rotated down to the sides
+  const dn = { l: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2 + 0.06), r: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2 - 0.06) };
+  T.N = {};
+  for (const s of ['l', 'r']) for (const b of ['upperarm', 'lowerarm', 'hand']) T.N[b + '_' + s] = dn[s].clone().multiply(T.Wr[b + '_' + s]);
+  for (const s of ['l', 'r']) for (const b of ['thigh', 'calf', 'foot']) T.N[b + '_' + s] = T.Wr[b + '_' + s];
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.geometry.dispose = () => { };                 // shared by every clone: never freed by scene cleanups
+    o.userData.shared = true;
+    const n = o.material.name || '';
+    o.userData.part = n === 'body' ? 'skin' : n === 'hair' ? 'hair' : n.startsWith('garment_shoes') ? 'shoes' : n.startsWith('garment') ? 'cloth' : n === 'brows' || n === 'eyelashes' ? 'brow' : 'other';
+    if (o.material.map) o.material.map.anisotropy = 4;
+  });
+  return T;
+}
+// luminance re-tint: keeps the fabric / hair detail of the texture, swaps its colour (top / bottom split on the UV atlas)
+function tintMat(base, top, bot, split, sleeves) {
+  const m = base.clone();
+  m.userData.tint = { top: new THREE.Color(top), bot: new THREE.Color(bot || top) };
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uTop = { value: m.userData.tint.top }; sh.uniforms.uBot = { value: m.userData.tint.bot };
+    sh.fragmentShader = 'uniform vec3 uTop; uniform vec3 uBot;\n' + sh.fragmentShader.replace('#include <map_fragment>', `
+      vec4 sdc = texture2D( map, vMapUv );
+      float lum = dot( sdc.rgb, vec3( 0.299, 0.587, 0.114 ) );
+      bool isTop = vMapUv.y < ${split.toFixed(3)}${sleeves === true ? ' || (vMapUv.x > 0.72 && vMapUv.y > 0.55 && vMapUv.y < 0.9)' : sleeves ? ' || vMapUv.x > ' + sleeves.toFixed(3) : ''};
+      vec3 tc = isTop ? uTop : uBot;
+      diffuseColor *= vec4( tc * clamp( 0.5 + sqrt( lum ) * 1.5, 0.0, 1.5 ), sdc.a );`);
+  };
+  m.customProgramCacheKey = () => 'tint' + split + String(sleeves);
+  return m;
+}
+const GH_MAT = new Map();
+function glbMat(T, k, o, look) {
+  const part = o.userData.part, D = T.def, base = o.material;
+  let key, make;
+  if (part === 'skin') { key = 'skin' + look.skin; make = () => { const m = base.clone(); m.color.set(look.skin).multiplyScalar(0.92); m.roughness = 0.62; return m; }; }
+  else if (part === 'hair') { key = k + 'hair' + look.hair; make = () => tintMat(base, look.hair, null, 2, false); }
+  else if (part === 'brow') { key = k + base.name + look.hair; make = () => { const m = base.clone(); if (m.map) return tintMat(base, look.hair, null, 2, false); m.color.set(look.hair).multiplyScalar(0.5); return m; }; }
+  else if (part === 'shoes') { key = k + base.name + (look.shoes || '#222'); make = () => tintMat(base, look.shoes || '#222', null, 2, false); }
+  else if (part === 'cloth') { const top = look.jacket || look.shirt, bot = look.pants; key = k + 'cloth' + top + bot; make = () => tintMat(base, top, D.bot ? bot : top, D.split, D.sleeves || D.sleeveCol); }
+  else return base;
+  let m = GH_MAT.get(key); if (!m) { m = make(); GH_MAT.set(key, m); } return m;
+}
+function glbKind(look) {
+  if (look.longHair) return GH.tpl.f ? 'f' : 'm';
+  const hsh = [...(look.shirt + look.pants + look.skin)].reduce((a, c) => a * 31 + c.charCodeAt(0) | 0, 7);
+  return GH.tpl.h && (hsh >>> 0) % 7 === 0 ? 'h' : 'm';
+}
+function buildGlb(h) {
+  const k = glbKind(h.look), T = GH.tpl[k]; if (!T) return null;
+  const root = skelClone(T.root), wrap = new THREE.Group(), sc = T.def.scale;
+  wrap.scale.setScalar(sc); wrap.add(root);
+  const bones = {}; root.traverse(o => { if (o.isBone) bones[o.name] = o; if (o.isMesh) { o.material = glbMat(T, k, o, h.look); o.castShadow = o.userData.part !== 'brow' && o.userData.part !== 'other'; o.receiveShadow = true; o.frustumCulled = false; } });
+  // accessories (hat, cap, glasses, beard, backpack) from the procedural pieces, re-fitted to the model's head
+  if (h.acc && h.acc.head.length) {
+    const kk = 0.9, e = T.eye, geo = merge(h.acc.head.map(g => g.clone().translate(0, -1.803, -0.1).scale(kk, kk, kk).translate(e.x, e.y, e.z - 0.005)));
+    const m = new THREE.Mesh(geo, M.human); m.castShadow = true; root.add(m); root.updateMatrixWorld(true); bones.Head.attach(m);
+  }
+  if (h.acc && h.acc.back.length) {
+    const geo = merge(h.acc.back.map(g => g.clone().translate(0, -1.3, 0).scale(0.92, 0.92, 0.92).translate(0, (T.shoulder.y - 0.17), -0.02)));
+    const m = new THREE.Mesh(geo, M.human); m.castShadow = true; root.add(m); root.updateMatrixWorld(true); bones.spine_03.attach(m);
+  }
+  h.g.add(wrap);
+  h.glb = { wrap, root, bones, T, k };
+  // the limb pivots move onto the model's shoulders / hips so things held in the hand line up
+  const s = T.shoulder, hp = T.hip;
+  h.armL.position.set(s.x * sc, s.y * sc, s.z * sc); h.armR.position.set(-s.x * sc, s.y * sc, s.z * sc);
+  h.elbowL.position.y = h.elbowR.position.y = -T.upperLen * sc;
+  h.legL.position.set(hp.x * sc, hp.y * sc, 0); h.legR.position.set(-hp.x * sc, hp.y * sc, 0);
+  h.kneeL.position.y = h.kneeR.position.y = -T.thighLen * sc;
+  GH.built++;
+  return h.glb;
+}
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qi = new THREE.Quaternion();
+function poseGlb(h) {
+  const G = h.glb, T = G.T, B = G.bones, N = T.N;
+  const chain = (pivot, joint, parentW, names) => {
+    _q1.copy(pivot.quaternion); _q2.copy(_q1).multiply(joint.quaternion);
+    // upper bone
+    _q3.copy(_q1).multiply(N[names[0]]); _qi.copy(parentW).invert(); B[names[0]].quaternion.copy(_qi).multiply(_q3);
+    const wUpper = _q3.clone();
+    _q3.copy(_q2).multiply(N[names[1]]); _qi.copy(wUpper).invert(); B[names[1]].quaternion.copy(_qi).multiply(_q3);
+    const wLower = _q3.clone();
+    _q3.copy(_q2).multiply(N[names[2]]); _qi.copy(wLower).invert(); B[names[2]].quaternion.copy(_qi).multiply(_q3);
+  };
+  chain(h.armL, h.elbowL, T.Wr.clavicle_l, ['upperarm_l', 'lowerarm_l', 'hand_l']);
+  chain(h.armR, h.elbowR, T.Wr.clavicle_r, ['upperarm_r', 'lowerarm_r', 'hand_r']);
+  chain(h.legL, h.kneeL, T.Wr.pelvis, ['thigh_l', 'calf_l', 'foot_l']);
+  chain(h.legR, h.kneeR, T.Wr.pelvis, ['thigh_r', 'calf_r', 'foot_r']);
+  G.wrap.position.y = h.g.children[4].position.y;
+}
+function setGlbMode(h, on) {
+  if (h.glbOn === on) return; h.glbOn = on;
+  if (h.glb) h.glb.wrap.visible = on;
+  for (const m of h.proc) m.visible = !on;
+}
+function inSceneVisible(o) { while (o) { if (!o.visible) return false; if (o === scene) return true; o = o.parent; } return false; }
+const _hv = new THREE.Vector3();
+function updateGlbHumans(dt) {
+  if (!GH.ready || !GH.list.length) return;
+  const R = GH.R(), K = GH.K(), cand = [];
+  for (let i = GH.list.length - 1; i >= 0; i--) {
+    const h = GH.list[i];
+    if (!inSceneVisible(h.g)) { h.away = (h.away || 0) + dt; if (h.away > 30) { setGlbMode(h, false); GH.list.splice(i, 1); h.inGH = false; } continue; }
+    h.away = 0;
+    h.g.getWorldPosition(_hv); const d = _hv.distanceTo(camera.position);
+    if (d < R * Math.max(h.g.scale.x, 0.6) || h === player.human) cand.push([h === player.human ? -1 : d, h]); else setGlbMode(h, false);
+  }
+  cand.sort((a, b) => a[0] - b[0]);
+  let builds = 0;
+  cand.forEach(([d, h], i) => {
+    if (i >= K) { setGlbMode(h, false); return; }
+    if (!h.glb) { if (builds >= 2) { setGlbMode(h, false); return; } builds++; if (!buildGlb(h)) return; h.glbOn = null; }
+    setGlbMode(h, true); poseGlb(h);
+  });
+}
+function registerGlbHuman(h) { if (!glbEnabled()) return; h.inGH = true; GH.list.push(h); }
+
 const randLook = () => ({ skin: pick(SKIN), shirt: pick(SHIRT), pants: pick(PANTS), hair: pick(HAIR), shoes: pick(['#222', '#f2f2f2', '#6a4a30', '#3a3a4a']), shorts: Math.random() < 0.4, longHair: Math.random() < 0.35, cap: Math.random() < 0.18 ? pick(['#c82020', '#1a2a4a', '#f2f2f2', '#2a6a3a']) : null, glasses: Math.random() < 0.3 });
 
 // ============================================================ CARS
@@ -1332,8 +1487,93 @@ function createCar(kind, color, x, z, h, mode) {
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(s.W + 0.7, 5.4).rotateX(-Math.PI / 2), M.blob); blob.position.y = 0.04; group.add(blob);
   group.position.set(x, groundY(x, z), z); group.rotation.y = h; scene.add(group);
   const car = { group, inner, paint, paintM, spinners, fronts, siren, kind, spec: s, h, vx: 0, vz: 0, y: group.position.y, vy: 0, air: false, steer: 0, spin: 0, mode, health: 100, driver: mode !== 'free', active: true, ai: null, stuck: 0, reverseT: 0, smokeT: 0, police: kind === 'police', pathT: 0, path: null, shootT: 2, idleT: 0, dead: false, honk: 0 };
+  if (CAR_MODELS[kind] && glbEnabled()) GC.list.push(car);
   cars.push(initCar(car)); return car;
 }
+// ============================================================ READY-MADE CARS (medium / high quality)
+// CAR_MODELS maps a car kind to a GLB in assets/models/. The model must face +Z with its four wheel
+// groups named as in `wheels` (front-left, front-right, rear-left, rear-right); the front-left wheel is
+// re-used for all four. Paint materials take the car's colour, glass becomes the game's car glass.
+const CAR_MODELS = {
+  super: { file: 'car_concept', len: 4.75, wheels: ['WheelFrontL', 'WheelFrontR', 'WheelRearL', 'WheelRearR'], paint: ['Paint 1'], accent: ['Paint 2'] },
+  sport: { file: 'car_concept', len: 4.6, wheels: ['WheelFrontL', 'WheelFrontR', 'WheelRearL', 'WheelRearR'], paint: ['Paint 1'], accent: ['Paint 2'] },
+};
+const GC = { tpl: {}, list: [], built: 0, R: () => QUALITY === 'high' ? 130 : 75, K: () => QUALITY === 'high' ? 10 : 5 };
+function loadCarTemplates() {
+  if (!glbEnabled() || GC.loading) return; GC.loading = true;
+  const loader = new GLTFLoader(), files = [...new Set(Object.values(CAR_MODELS).map(d => d.file))];
+  for (const f of files) loader.loadAsync('assets/models/' + f + '.glb').then(g => { GC.tpl[f] = prepCarTemplate(g.scene, Object.values(CAR_MODELS).find(d => d.file === f)); }).catch(e => console.warn('car model', f, e));
+}
+function prepCarTemplate(root, D) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root), wp = [];
+  for (const n of D.wheels) { const o = root.getObjectByName(n), v = new THREE.Vector3(); o.getWorldPosition(v); wp.push(v); }
+  // wheel template: the front-left wheel's meshes, centred on its axle
+  const wg = root.getObjectByName(D.wheels[0]), wheel = new THREE.Group();
+  for (const ch of [...wg.children]) { wheel.attach(ch); }
+  wheel.position.set(0, 0, 0); wheel.updateMatrixWorld(true);
+  for (const ch of wheel.children) ch.position.sub(wp[0]);
+  const wb = new THREE.Box3().setFromObject(wheel), wr = (wb.max.y - wb.min.y) / 2;
+  if (!M.glbHead) {
+    M.glbHead = new THREE.MeshBasicMaterial({ color: 0xfff4dd }); M.glbTail = new THREE.MeshBasicMaterial({ color: 0xff1a10 }); M.glbSig = new THREE.MeshBasicMaterial({ color: 0xff9a20 });
+    M.glbAccent = new THREE.MeshPhysicalMaterial({ color: 0x0b0b0d, metalness: 0.3, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.05 });
+  }
+  const fix = o => {
+    if (!o.isMesh) return;
+    o.geometry.dispose = () => { }; o.userData.glb = true;
+    const n = o.material.name || '';
+    o.userData.role = D.paint.some(p => n.startsWith(p)) ? 'paint' : D.accent.some(p => n.startsWith(p)) ? 'accent' : n === 'Glass' ? 'glass' : n === 'Headlight' ? 'head' : n === 'Brakelight' ? 'tail' : n === 'Signallight' ? 'sig' : 'keep';
+    if (o.userData.role === 'glass') o.material = M.carGlass; else if (o.userData.role === 'head') o.material = M.glbHead; else if (o.userData.role === 'tail') o.material = M.glbTail; else if (o.userData.role === 'sig') o.material = M.glbSig; else if (o.userData.role === 'accent') o.material = M.glbAccent;
+    o.castShadow = o.userData.role === 'paint' || o.userData.role === 'accent';
+  };
+  root.traverse(fix); wheel.traverse(fix);
+  return { root, wheel, wp, wr, minY: box.min.y, len: box.max.z - box.min.z, def: D };
+}
+function buildGlbCar(c) {
+  const D = CAR_MODELS[c.kind], T = GC.tpl[D.file]; if (!T) return null;
+  const sc = D.len / T.len, body = T.root.clone(true), wrap = new THREE.Group();
+  wrap.rotation.y = Math.PI / 2; wrap.scale.setScalar(sc); wrap.position.y = -T.minY * sc; wrap.add(body);
+  const paints = []; body.traverse(o => { if (o.isMesh && o.userData.role === 'paint') { o.material = c.paint.material; paints.push(o); } });
+  c.inner.add(wrap);
+  // wheels: GLB wheel inside each spinner, pivots moved to the model's axles
+  const wheels = [], glbPiv = [], procPiv = c.spinners.map(sp => sp.parent.position.clone());
+  c.spinners.forEach((sp, i) => {
+    const pv = procPiv[i], front = pv.x > 0, left = pv.z < 0;
+    const src = T.wp.find(w => (w.z > 0) === front && (w.x > 0) === left) || T.wp[i];
+    glbPiv.push(new THREE.Vector3(src.z * sc, (src.y - T.minY) * sc, -src.x * sc));
+    const w = T.wheel.clone(true); w.rotation.y = Math.PI / 2; w.scale.set(src.x > 0 ? sc : -sc, sc, sc);
+    sp.add(w); wheels.push(w);
+  });
+  c.glb = { wrap, paints, wheels, glbPiv, procPiv, proc: c.inner.children.filter(o => o.isMesh && o.material !== M.beam), procWheels: c.spinners.map(sp => sp.children[0]) };
+  GC.built++;
+  return c.glb;
+}
+function setCarGlb(c, on) {
+  if (c.glbOn === on) return; c.glbOn = on; const G = c.glb; if (!G) return;
+  G.wrap.visible = on; for (const w of G.wheels) w.visible = on;
+  for (const m of G.proc) m.visible = !on; for (const m of G.procWheels) m.visible = !on;
+  c.spinners.forEach((sp, i) => sp.parent.position.copy(on ? G.glbPiv[i] : G.procPiv[i]));
+}
+function updateGlbCars() {
+  if (!GC.list.length || !Object.keys(GC.tpl).length) return;
+  const R = GC.R(), K = GC.K(), cand = [];
+  for (let i = GC.list.length - 1; i >= 0; i--) {
+    const c = GC.list[i];
+    if (!inSceneVisible(c.group)) { c.away = (c.away || 0) + 1; if (c.away > 2000) { setCarGlb(c, false); GC.list.splice(i, 1); } continue; }
+    c.away = 0;
+    const d = c.group.position.distanceTo(camera.position);
+    if (d < R || c === state.inCar) cand.push([c === state.inCar ? -1 : d, c]); else setCarGlb(c, false);
+  }
+  cand.sort((a, b) => a[0] - b[0]);
+  let builds = 0;
+  cand.forEach(([d, c], i) => {
+    if (i >= K) { setCarGlb(c, false); return; }
+    if (!c.glb) { if (builds >= 1 || !GC.tpl[CAR_MODELS[c.kind].file]) { setCarGlb(c, false); return; } builds++; if (!buildGlbCar(c)) return; c.glbOn = null; }
+    setCarGlb(c, true);
+    for (const m of c.glb.paints) if (m.material !== c.paint.material) m.material = c.paint.material;
+  });
+}
+function updateGlbAll(dt) { updateGlbHumans(dt); updateGlbCars(); }
 const carSpeed = c => Math.hypot(c.vx, c.vz);
 const carFwd = c => c.vx * Math.sin(c.h) + c.vz * Math.cos(c.h);
 
@@ -2406,6 +2646,7 @@ function updateSky(dt) {
   M.lampHead.color.setRGB(1, 0.85, 0.55).multiplyScalar(0.3 + night * 3.2);
   M.pool.opacity = night * 0.6;
   M.carLight.color.setScalar(0.9 + night * 2.6);
+  if (M.glbHead) { M.glbHead.color.setRGB(1, 0.96, 0.87).multiplyScalar(0.9 + night * 2.6); M.glbTail.color.setRGB(1, 0.1, 0.06).multiplyScalar(0.7 + night * 2); }
   if (M.beam) { M.beam.opacity = night * 0.075; M.beam.visible = night > 0.08; }
   const cu = clouds.material.uniforms;
   cu.uSunDir.value.copy(y > -0.05 ? sunDir : tmpV2); cu.uCover.value = Math.max(state.cloud, state.rain);
@@ -2762,6 +3003,136 @@ const AudioSys = {
   }
 };
 
+// ============================================================ ENVIRONMENT DETAIL (medium / high quality)
+// Uses its own random generator so the shared world layout (doors, shops, spawn points) is identical on every quality.
+const ROOFS = [], STREET_TREES = [];
+const envRng = (s => () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)(90210);
+const eR = (a, b) => a + envRng() * (b - a);
+// facade normal map from a height field drawn with the same window layout as the albedo
+function facadeNormal(style, WR, has) {
+  const S = 512, T = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, S, S);
+  if (style === 'brick') { g.fillStyle = 'rgb(150,150,150)'; for (let y = 0; y < S; y += 4) for (let x = -8; x < S; x += 9) g.fillRect(x + ((y / 4) % 2) * 4, y, 8, 3); }
+  if (style === 'warehouse') for (let x = 0; x < S; x += 6) { g.fillStyle = (x / 6) % 2 ? 'rgb(160,160,160)' : 'rgb(100,100,100)'; g.fillRect(x, 0, 3, S); }
+  if (style === 'glass') { g.fillStyle = 'rgb(200,200,200)'; for (let ty = 0; ty < 8; ty++) for (let tx = 0; tx < 8; tx++) { g.fillRect(tx * T, ty * T, 64, 2); g.fillRect(tx * T, ty * T, 2, 64); g.fillRect(tx * T, ty * T + 54, 64, 10); } }
+  else for (let ty = 0; ty < 8; ty++) for (let tx = 0; tx < 8; tx++) {
+    if (!has(tx, ty)) continue;
+    const x = tx * T, y = ty * T, [wx, wy, ww, wh] = WR;
+    g.fillStyle = 'rgb(205,205,205)'; g.fillRect(x + wx - 3, y + wy - 3, ww + 6, wh + 6);          // frame / sill stands out
+    g.fillStyle = 'rgb(40,40,40)'; g.fillRect(x + wx, y + wy, ww, wh);                              // recessed glass
+    g.fillStyle = 'rgb(230,230,230)'; g.fillRect(x + wx - 4, y + wy + wh + 1, ww + 8, 3);            // sill
+  }
+  const src = g.getImageData(0, 0, S, S).data, out = g.createImageData(S, S), o = out.data, H = (x, y) => src[(((y + S) % S) * S + ((x + S) % S)) * 4] / 255, k = 3.2;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const nx = -(H(x + 1, y) - H(x - 1, y)) * k, ny = (H(x, y + 1) - H(x, y - 1)) * k, l = Math.hypot(nx, ny, 1), i = (y * S + x) * 4;
+    o[i] = (nx / l * 0.5 + 0.5) * 255; o[i + 1] = (ny / l * 0.5 + 0.5) * 255; o[i + 2] = (1 / l * 0.5 + 0.5) * 255; o[i + 3] = 255;
+  }
+  g.putImageData(out, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; t.anisotropy = maxAniso;
+  return t;
+}
+// leaf cluster texture for card trees
+function leafClusterTex() {
+  return canvasTex(256, 256, g => {
+    g.clearRect(0, 0, 256, 256);
+    for (let i = 0; i < 260; i++) {
+      const a = envRng() * Math.PI * 2, r = Math.pow(envRng(), 0.6) * 112, x = 128 + Math.cos(a) * r, y = 128 + Math.sin(a) * r;
+      const L = eR(32, 62); g.fillStyle = `hsl(${eR(88, 112)},${eR(38, 58)}%,${L}%)`;
+      g.save(); g.translate(x, y); g.rotate(envRng() * 6.3); g.beginPath(); g.ellipse(0, 0, eR(5, 9), eR(2.5, 4.2), 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = `hsl(95,40%,${L - 14}%)`; g.lineWidth = 0.8; g.beginPath(); g.moveTo(-7, 0); g.lineTo(7, 0); g.stroke(); g.restore();
+    }
+  });
+}
+function cardTreeGeos() {
+  const cards = QUALITY === 'high' ? 62 : 40, parts = [], ctr = new THREE.Vector3(0, 6.2, 0), v = new THREE.Vector3(), e = new THREE.Euler();
+  for (let i = 0; i < cards; i++) {
+    const th = envRng() * Math.PI * 2, ph = Math.acos(eR(-0.55, 1)), rr = eR(0.45, 1.05);
+    const p = new THREE.Vector3(Math.sin(ph) * Math.cos(th) * 2.5 * rr, Math.cos(ph) * 1.9 * rr, Math.sin(ph) * Math.sin(th) * 2.5 * rr).add(ctr);
+    const s = eR(1.7, 2.6), q = new THREE.PlaneGeometry(s, s);
+    q.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(e.set(envRng() * 6.3, envRng() * 6.3, envRng() * 6.3))).translate(p.x, p.y, p.z);
+    const pos = q.attributes.position, nrm = q.attributes.normal;
+    for (let k = 0; k < pos.count; k++) { v.set(pos.getX(k), pos.getY(k), pos.getZ(k)).sub(ctr); v.y += 1.2; v.normalize(); nrm.setXYZ(k, v.x, v.y, v.z); }
+    parts.push(q);
+  }
+  const cardsG = mergeGeometries(parts);
+  const core = new THREE.IcosahedronGeometry(1, 2), cp = core.attributes.position;
+  for (let i = 0; i < cp.count; i++) { const x = cp.getX(i), y = cp.getY(i), z = cp.getZ(i), f = 1 + Math.sin(x * 4.1 + z * 2.3) * 0.12; cp.setXYZ(i, x * 1.45 * f, y * 1.15 * f + 6.1, z * 1.45 * f); }
+  core.computeVertexNormals();
+  const br = [new THREE.CylinderGeometry(0.17, 0.3, 4.6, 8).translate(0, 2.3, 0)];
+  for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2 + 0.4, l = eR(1.6, 2.3); br.push(new THREE.CylinderGeometry(0.05, 0.11, l, 5).translate(0, l / 2, 0).rotateZ(eR(0.6, 0.95)).rotateY(a).translate(0, eR(3.6, 4.4), 0)); }
+  br.push(new THREE.CylinderGeometry(0.06, 0.12, 2.2, 5).translate(0, 1.1, 0).translate(0, 4.5, 0));
+  return { cards: cardsG, core, trunk: mergeGeometries(br.map(g => g.index ? g.toNonIndexed() : g)) };
+}
+// extra city detail: sidewalk trees, rooftop machinery, planters
+function buildEnvExtras() {
+  if (QUALITY === 'low') return;
+  const sh = true, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  // ---- sidewalk trees + planters on commercial blocks
+  const planters = [];
+  for (const row of blocks) for (const b of row) {
+    if (b.park || b.dist === 'residential' || b.dist === 'industrial' || b.dist === 'beach' || b.dist === 'dealer') continue;
+    const e = BLOCK / 2 - 1.15;
+    for (let s = 0; s < 4; s++) for (const t of [-15, 15]) {
+      if (envRng() < 0.25) continue;
+      const tt = t + eR(-2, 2), x = s < 2 ? b.cx + tt : b.cx + (s === 2 ? -e : e), z = s < 2 ? b.cz + (s === 0 ? -e : e) : b.cz + tt;
+      STREET_TREES.push([x, 0.25, z]);
+    }
+    for (let s = 0; s < 4; s++) if (envRng() < 0.55) {
+      const t = eR(-8, 8), e2 = BLOCK / 2 - 3.2, r = [0, 0, Math.PI / 2, Math.PI / 2][s];
+      planters.push([s < 2 ? b.cx + t : b.cx + (s === 2 ? -e2 : e2), s < 2 ? b.cz + (s === 0 ? -e2 : e2) : b.cz + t, r]);
+    }
+  }
+  const furnMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+  const planter = merge([colorize(new THREE.BoxGeometry(1.8, 0.55, 0.7).translate(0, 0.275, 0), '#a8a49c'), colorize(new THREE.BoxGeometry(1.66, 0.06, 0.56).translate(0, 0.55, 0), '#3a2a1c'),
+    ...Array.from({ length: 16 }, (_, i) => colorize(new THREE.IcosahedronGeometry(eR(0.12, 0.2), 0).translate(-0.7 + (i % 8) * 0.2, 0.66 + envRng() * 0.1, i < 8 ? -0.12 : 0.12), i % 3 ? '#3e7a2a' : pick(['#e83a5a', '#f2d23a', '#f2f2f2', '#c84ae8'], envRng)))]);
+  const pI = new THREE.InstancedMesh(planter, furnMat, planters.length);
+  planters.forEach(([x, z, r], i) => { pI.setMatrixAt(i, m4.compose(ps.set(x, 0.25, z), q.setFromAxisAngle(up, r), sc.set(1, 1, 1))); });
+  pI.castShadow = sh; pI.receiveShadow = true; scene.add(pI);
+  // tree grates under sidewalk trees
+  const grate = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 0.03, 1.4), new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.6, metalness: 0.5 }), STREET_TREES.length);
+  STREET_TREES.forEach(([x, y, z], i) => grate.setMatrixAt(i, m4.makeTranslation(x, y + 0.015, z))); grate.receiveShadow = true; scene.add(grate);
+  // ---- rooftop machinery: AC units with fans, water tanks on legs, antennas
+  const ac = [], tanks = [], ants = [];
+  for (const [x, y, z, w, d, style] of ROOFS) {
+    if (w < 7 || d < 7) continue;
+    const n = 1 + Math.floor(envRng() * 3);
+    for (let k = 0; k < n; k++) { const sx = envRng() < 0.5 ? -1 : 1; ac.push([x + sx * (w / 2 - 1.3), y, z + eR(-d / 2 + 1.5, d / 2 - 1.5), envRng() < 0.5 ? 0 : Math.PI / 2]); }
+    if ((style === 'brick' || style === 'deco') && envRng() < 0.45) tanks.push([x + (w / 2 - 2.2) * (envRng() < 0.5 ? -1 : 1), y, z + (d / 2 - 2.2) * (envRng() < 0.5 ? -1 : 1)]);
+    if (envRng() < 0.3) ants.push([x + eR(-w / 4, w / 4), y, z + (d / 2 - 1.2) * (envRng() < 0.5 ? -1 : 1)]);
+  }
+  const acG = merge([colorize(new RoundedBoxGeometry(1.6, 1.0, 1.1, 2, 0.06).translate(0, 0.5, 0), '#c8ccd0'), colorize(new THREE.CylinderGeometry(0.4, 0.4, 0.04, 16).translate(-0.3, 1.02, 0), '#2a2c30'),
+    colorize(new THREE.BoxGeometry(0.06, 0.05, 0.8).translate(-0.3, 1.04, 0), '#5a5c60'), colorize(new THREE.BoxGeometry(0.4, 0.5, 1.12).translate(0.55, 0.45, 0), '#9a9ea4'), colorize(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 6).rotateZ(Math.PI / 2).translate(0.9, 0.2, 0.3), '#6a6c70')]);
+  const legs = []; for (const [lx, lz] of [[-0.9, -0.9], [0.9, -0.9], [-0.9, 0.9], [0.9, 0.9]]) legs.push(colorize(new THREE.CylinderGeometry(0.07, 0.07, 1.7, 5).translate(lx, 0.85, lz), '#3a3430'));
+  const tankG = merge([...legs, colorize(new THREE.CylinderGeometry(1.35, 1.35, 2.4, 16).translate(0, 2.9, 0), '#7a5a40'), colorize(new THREE.ConeGeometry(1.45, 0.9, 16).translate(0, 4.55, 0), '#4a3a30'),
+    ...[0.35, 1.2, 2.05].map(h => colorize(new THREE.TorusGeometry(1.37, 0.03, 4, 18).rotateX(Math.PI / 2).translate(0, 1.7 + h, 0), '#2a2420'))]);
+  const antG = merge([colorize(new THREE.CylinderGeometry(0.04, 0.06, 5, 5).translate(0, 2.5, 0), '#9a9a9a'), colorize(new THREE.SphereGeometry(0.5, 10, 6, 0, Math.PI * 2, 0, 0.9).rotateX(-1.1).translate(0.3, 1.6, 0.3), '#e8e8e8'),
+    ...[1.6, 2.6, 3.6].map(h => colorize(new THREE.BoxGeometry(0.9, 0.03, 0.03).translate(0, 1.4 + h * 0.6, 0), '#9a9a9a'))]);
+  for (const [geo, list] of [[acG, ac], [tankG, tanks], [antG, ants]]) {
+    const im = new THREE.InstancedMesh(geo, furnMat, list.length);
+    list.forEach(([x, y, z, r = 0], i) => im.setMatrixAt(i, m4.compose(ps.set(x, y, z), q.setFromAxisAngle(up, r || envRng() * 6.3), sc.set(1, 1, 1))));
+    im.castShadow = sh; scene.add(im);
+  }
+}
+
+// broadleaf trees: leaf cards around a branched trunk (medium / high)
+function upgradeTrees(tI, cI) {
+  const CT = cardTreeGeos(), m4 = new THREE.Matrix4(), col = new THREE.Color();
+  const cardMat = new THREE.MeshStandardMaterial({ map: leafClusterTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
+  const coreMat = new THREE.MeshStandardMaterial({ color: 0x3a5c2c, roughness: 1, flatShading: false });
+  const barkMat = new THREE.MeshStandardMaterial({ map: canvasTex(64, 128, g => { g.fillStyle = '#5a4636'; g.fillRect(0, 0, 64, 128); for (let i = 0; i < 900; i++) { g.fillStyle = ['#4a382a', '#6a5444', '#3e3024'][Math.floor(envRng() * 3)]; g.fillRect(envRng() * 64, envRng() * 128, eR(1, 3), eR(4, 14)); } }), roughness: 1 });
+  const make = (list, mats) => {
+    const t = new THREE.InstancedMesh(CT.trunk, barkMat, list.length), c = new THREE.InstancedMesh(CT.cards, cardMat, list.length), k = new THREE.InstancedMesh(CT.core, coreMat, list.length);
+    list.forEach((p, i) => { mats(i, m4, col, p); t.setMatrixAt(i, m4); c.setMatrixAt(i, m4); k.setMatrixAt(i, m4); c.setColorAt(i, col); k.setColorAt(i, col); });
+    t.castShadow = c.castShadow = k.castShadow = true; c.receiveShadow = k.receiveShadow = true; scene.add(t, c, k);
+  };
+  // park / garden trees keep the placement, rotation, scale and tint already chosen
+  make(TREES, (i, m, c) => { cI.getMatrixAt(i, m); cI.getColorAt(i, c); c.offsetHSL(0, 0, -0.08); c.lerp(new THREE.Color(1, 1, 1), 0.35); });
+  scene.remove(tI, cI); tI.dispose(); cI.dispose();
+  const ps = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  make(STREET_TREES, (i, m, c, [x, y, z]) => { const s = eR(0.62, 0.8); m.compose(ps.set(x, y, z), q.setFromAxisAngle(up, envRng() * 6.3), sc.set(s, s * eR(0.95, 1.1), s)); c.setHSL(eR(0.22, 0.3), eR(0.25, 0.4), eR(0.72, 0.85)); });
+}
+
 // ============================================================ TREES / STREET FURNITURE / TRAFFIC LIGHTS
 function buildTreesAndStreet() {
   const sh = QUALITY !== 'low', m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -2778,6 +3149,7 @@ function buildTreesAndStreet() {
     tI.setMatrixAt(i, m4); cI.setMatrixAt(i, m4); cI.setColorAt(i, new THREE.Color().setHSL(R(0.2, 0.3), R(0.35, 0.55), R(0.5, 0.75)));
   });
   tI.castShadow = cI.castShadow = sh; cI.receiveShadow = sh; scene.add(tI, cI);
+  if (QUALITY !== 'low') upgradeTrees(tI, cI);
 
   // ---- traffic lights (one per approach)
   const pole = merge([new THREE.CylinderGeometry(0.1, 0.13, 6.2, 8).translate(0, 3.1, 0), new THREE.BoxGeometry(5.2, 0.14, 0.14).translate(-2.6, 6.0, 0), new THREE.BoxGeometry(0.45, 1.25, 0.35).translate(-4.8, 5.55, 0), new THREE.BoxGeometry(0.6, 1.4, 0.04).translate(-4.8, 5.55, -0.19)]);
@@ -8106,6 +8478,7 @@ function updatePhoto(dt) {
   const t = state.inCar ? state.inCar.group.position : player.pos, ty = t.y + (state.inCar ? 1.2 : 1.3), cp = Math.cos(ph.pitch);
   camera.position.set(t.x + Math.sin(ph.yaw) * cp * ph.dist, Math.max(groundY(t.x, t.z) + 0.3, ty + Math.sin(ph.pitch) * ph.dist), t.z + Math.cos(ph.yaw) * cp * ph.dist);
   camera.lookAt(t.x, ty, t.z);
+  updateGlbAll(dt);
   if (composer) composer.render(); else renderer.render(scene, camera);
   if (ph.vg) { ph.vg = false; vgShot(); const f = $('fade'); f.style.transition = 'none'; f.style.background = '#fff'; f.style.opacity = 0.7; requestAnimationFrame(() => { f.style.transition = 'opacity .5s'; f.style.opacity = 0; setTimeout(() => f.style.background = '#000', 600); }); }
   if (ph.shot) {
@@ -8593,7 +8966,7 @@ function ensureRemote(id, info) {
   r.tagKey = ''; updateOnlineHUD();
   return r;
 }
-function disposeHuman(h) { h.g.parent && h.g.parent.remove(h.g); h.g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+function disposeHuman(h) { h.g.parent && h.g.parent.remove(h.g); h.g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); if (h.inGH) { const i = GH.list.indexOf(h); if (i >= 0) GH.list.splice(i, 1); h.inGH = false; } }
 function removeRemote(id) {
   const r = MP.remotes.get(id); if (!r) return;
   if (r.human) disposeHuman(r.human);
@@ -10469,7 +10842,7 @@ function applyCarStyle(c, neon, rim) {
     c.neonMesh.material.color.set(neon).multiplyScalar(1.6); c.neonMesh.visible = true;
   } else if (c.neonMesh) c.neonMesh.visible = false;
   if (rim) {
-    if (!c.wheelMat) { c.wheelMat = M.wheel.clone(); for (const sp of c.spinners) sp.traverse(o => { if (o.isMesh) o.material = c.wheelMat; }); }
+    if (!c.wheelMat) { c.wheelMat = M.wheel.clone(); for (const sp of c.spinners) sp.traverse(o => { if (o.isMesh && !o.userData.glb) o.material = c.wheelMat; }); }
     c.wheelMat.color.set(rim);
   } else if (c.wheelMat) c.wheelMat.color.set('#ffffff');
 }
@@ -10918,7 +11291,7 @@ function loop(now) {
   if (state.hidden) return;
   updatePerf(state.realDt);
   mpUpdate(state.realDt);
-  if (state.shopOpen || state.dialog) { if (composer) composer.render(); else renderer.render(scene, camera); return; }
+  if (state.shopOpen || state.dialog) { updateGlbAll(0); if (composer) composer.render(); else renderer.render(scene, camera); return; }
   if (state.photo) { updatePhoto(dt); return; }
   state.now += dt; frame++;
   state.saveT += dt; if (state.saveT > 12) { state.saveT = 0; saveGame(); }
@@ -11037,6 +11410,7 @@ function loop(now) {
   updateRankHud();
   AudioSys.update(dt, pd);
   if (!renderer.shadowMap.autoUpdate && frame % 2 === 0) renderer.shadowMap.needsUpdate = true;
+  updateGlbAll(dt);
   if (composer) composer.render(); else renderer.render(scene, camera);
 }
 

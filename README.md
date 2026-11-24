@@ -147,6 +147,23 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
 - **Rakipler**: her sektörde bir NPC firma (Sarı Kaplan Taksi, Anadolu Lojistik, Lezzet Durağı) ve odadaki diğer oyuncuların aynı sektördeki şirketleri pazar payını paylaşır — puanı ve filosu güçlü olan daha çok müşteri alır. Başka oyuncuların restoranında $25'a yemek yiyebilirsin, para onun şirket kasasına gider; kendi restoranında bedava yersin
 - **Şirketi sat**: değerinin (araçlar, işyeri, büyütmeler, kasa) karşılığını alırsın
 
+## 🎨 Grafik kalitesi ve hazır 3D modeller
+- **Düşük**: tüm insanlar ve arabalar kodla üretilen (procedural) modellerdir; ek dosya indirilmez.
+- **Orta / Yüksek**: yakındaki karakterler **hazır, iskeletli insan modelleriyle** çizilir (erkek, kadın, iri yapılı; MakeHuman tabanlı, CC0). Kıyafet, saç, ayakkabı ve ten rengi her karaktere göre boyanır. Şapka, gözlük, sakal ve sırt çantası modelin başına ve sırtına oturur.
+  - Bütün mevcut animasyonlar (yürüme, koşma, nişan alma, oturma, dans, yüzme, teslim olma, ölüm) aynı iskeleti sürer.
+  - Uzaktaki karakterler performans için kod modeline geçer: Yüksek'te en yakın 16 kişi (70 m), Orta'da en yakın 8 kişi (40 m) hazır modelle çizilir.
+- **Spor ve süper arabalar** Orta/Yüksek'te hazır bir konsept spor araba modeliyle çizilir (CC BY 4.0).
+  - Boya rengi, yanmış araç görünümü ve gece farları çalışır; tekerlekler döner ve direksiyonla yön değiştirir.
+  - En yakın 10 (Yüksek) ya da 5 (Orta) araba hazır modelle çizilir.
+  - Yeni araba modeli eklemek için `assets/models/CREDITS.md` dosyasına bakın.
+- **Bina ve çevre (Orta / Yüksek)**:
+  - Cephelerde pencere girintileri, çerçeveler, denizlikler ve tuğla dokusu için normal map var.
+  - Yaprak kümeli, dallı gerçekçi ağaçlar kullanılıyor.
+  - Ticari bloklarda ızgaralı kaldırım ağaçları ve çiçekli saksılar var.
+  - Çatılarda klima üniteleri, ahşap su tankları, anten ve uydu çanakları var.
+  - Bu eklemeler ayrı bir rastgele üreteç kullanır. Böylece şehir düzeni (kapılar, dükkanlar) her kalitede aynı kalır ve online oyuncular aynı dünyayı görür.
+- Model lisansları ve yapılan değişiklikler: `assets/models/CREDITS.md`.
+
 ## 🌐 Online (Multiplayer)
 Başlangıç ekranında **🌐 ONLINE** → takma ad, renk ve kostüm seç:
 - **🏠 Oda Kur**: 4 haneli kod oluşur, arkadaşların bu kodla katılır (oyun içinde 👥 düğmesinden kopyala)
