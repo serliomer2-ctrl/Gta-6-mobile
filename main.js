@@ -335,7 +335,7 @@ function init() {
   buildMaterials();
   buildGround();
   buildCity();
-  prepCourt(); prepM28(); prepM29();
+  prepCourt(); prepM28(); prepM29(); prepM30();
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0xffe0a0 });
   buildAirport();
   buildIslands();
@@ -401,6 +401,7 @@ function init() {
   buildM27();
   buildM28();
   buildM29();
+  buildM30();
   markWorld();
   initOnlineUI();
   initStage2UI();
@@ -728,6 +729,7 @@ function buildProps() {
   const addPalm = (x, z) => palms.push([x, z, rnd() * Math.PI * 2, R(0.8, 1.25)]);
   for (let z = -HALF - 200; z < HALF + 200; z += R(11, 17)) addPalm(BEACH_X0 + R(6, 10), z), rnd() < 0.5 && addPalm(SHORE_X - R(10, 40), z + R(-4, 4));
   for (const [x, , z] of PALMS) addPalm(x, z);
+  for (let i = palms.length - 1; i >= 0; i--) if (inFerris(palms[i][0], palms[i][1])) palms.splice(i, 1);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b6b4a, roughness: 1, map: noiseTex('#8b6b4a', ['#6f5236', '#a08058'], 64, 400, 1, 6) });
   const leafMat = new THREE.MeshStandardMaterial({ map: makeLeafTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 });
   const tI = new THREE.InstancedMesh(trunk, trunkMat, palms.length), fI = new THREE.InstancedMesh(frondGeo, leafMat, palms.length);
@@ -761,7 +763,7 @@ function buildProps() {
   });
   pI.castShadow = sh; scene.add(pI, hI, gI);
 
-  // ---- beach umbrellas & loungers
+  // ---- beach umbrellas & loungers (the ones under the ferris wheel are hidden, not removed, to keep the world's random sequence)
   const umb = [];
   for (let z = -HALF; z < HALF; z += R(10, 18)) umb.push([R(SHORE_X - 70, SHORE_X - 15), z + R(-3, 3)]);
   const uPole = new THREE.CylinderGeometry(0.05, 0.05, 2.6, 5).translate(0, 1.3, 0);
@@ -769,7 +771,7 @@ function buildProps() {
   const upI = new THREE.InstancedMesh(uPole, new THREE.MeshStandardMaterial({ color: 0xdddddd }), umb.length);
   const utI = new THREE.InstancedMesh(uTop, new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.8 }), umb.length);
   const uCols = ['#ff4f6d', '#2ec4d6', '#ffd23a', '#ffffff', '#8a5cff', '#ff8a3d'];
-  umb.forEach(([x, z], i) => { m4.compose(ps.set(x, 0, z), q.setFromAxisAngle(up, rnd() * 6), sc.set(1, 1, 1)); upI.setMatrixAt(i, m4); utI.setMatrixAt(i, m4); utI.setColorAt(i, new THREE.Color(pick(uCols, rnd))); });
+  umb.forEach(([x, z], i) => { m4.compose(ps.set(x, 0, z), q.setFromAxisAngle(up, rnd() * 6), sc.setScalar(inFerris(x, z) ? 0 : 1)); upI.setMatrixAt(i, m4); utI.setMatrixAt(i, m4); utI.setColorAt(i, new THREE.Color(pick(uCols, rnd))); });
   upI.castShadow = utI.castShadow = sh; scene.add(upI, utI);
 
   // ---- stunt ramps on the beach
@@ -1517,7 +1519,11 @@ function prepCarTemplate(root, D) {
   const box = new THREE.Box3().setFromObject(root), wp = [];
   for (const n of D.wheels) { const o = root.getObjectByName(n), v = new THREE.Vector3(); o.getWorldPosition(v); wp.push(v); }
   // wheel template: the front-left wheel's meshes, centred on its axle
+  // the source file stores the front wheels steered ~30° and the rears with some spin: clear the node's rotation
+  // so the axle lines up with the car's axle (otherwise the wheel wobbles and one side sits up while it turns)
   const wg = root.getObjectByName(D.wheels[0]), wheel = new THREE.Group();
+  const wpar = new THREE.Quaternion(); wg.parent.getWorldQuaternion(wpar);
+  wg.quaternion.copy(wpar.invert()); wg.scale.set(1, 1, 1); root.updateMatrixWorld(true);
   for (const ch of [...wg.children]) { wheel.attach(ch); }
   wheel.position.set(0, 0, 0); wheel.updateMatrixWorld(true);
   for (const ch of wheel.children) ch.position.sub(wp[0]);
@@ -1689,7 +1695,7 @@ function spawnPlayer() {
   createCar('bike', '#00c8e0', nodeP(4) + 10, nodeP(4) + 4, Math.PI * 0.5, 'free');
 }
 function enterCar() {
-  if (state.cabin || state.sky || state.metro) return;
+  if (state.cabin || state.sky || state.metro || state.ferris) return;
   if (state.passenger) { exitPassenger(); return; }
   if (state.inCar) { exitCar(false); return; }
   if (MP.on && !state.interior) { const rv = nearRemoteVehicle(4.5); if (rv) { let nl = 1e9; for (const c of cars) if (c.active && !c.dead) nl = Math.min(nl, Math.hypot(c.group.position.x - player.pos.x, c.group.position.z - player.pos.z)); if (Math.hypot(rv.x - player.pos.x, rv.z - player.pos.z) < nl) { enterAsPassenger(rv); return; } } }
@@ -2687,7 +2693,7 @@ function updateCamera(dt) {
   camYaw -= input.lookDX * settings.sens; camPitch = clamp(camPitch + input.lookDY * settings.sens, -0.35, 1.25);
   if (input.lookDX || input.lookDY) state.lastLookInput = state.now;
   input.lookDX = input.lookDY = 0;
-  let dist = state.interior ? 3 : (state.passenger || (state.metro && state.metro.phase === 'ride')) ? 9 : 4.6;
+  let dist = state.interior ? 3 : (state.passenger || (state.metro && state.metro.phase === 'ride')) ? 9 : (state.ferris && state.ferris.phase === 'ride') ? 11 : 4.6;
   if (c) {
     const sp = carSpeed(c);
     dist = (c.spec.plane ? (c.spec.len > 10 ? 24 : 17) : c.spec.heli ? 15 : c.spec.bus ? 15 : c.spec.boat ? (c.spec.big ? 22 : c.spec.jet ? 6 : 10) : c.spec.bike ? 5.6 : 8.2) + Math.min(sp, 50) * 0.06;
@@ -2878,7 +2884,7 @@ function drawMinimap() {
   if (JOB.wp && !state.interior) dot(JOB.wp.x, JOB.wp.z, '#ffd23a', 10, true);
   if (!state.interior) for (const Pm of BIZ.prem) { const o = premOwner(Pm); dot(Pm.d.x, Pm.d.z, o ? (o.me ? '#7dff9a' : o.color) : '#40a0ff', o && o.me ? 8 : 6, !!(o && o.me)); }
   if (!state.interior && PET.shelter) dot(PET.shelter.x, PET.shelter.z, '#40c060', 7, false);
-  m27MapDots(dot); m28MapDots(dot); m29MapDots(dot);
+  m27MapDots(dot); m28MapDots(dot); m29MapDots(dot); m30MapDots(dot);
   if (!state.interior && DRAG.ring) { dot(DRAG.ring[0], DRAG.ring[1], '#ffd040', 7, false); dot(CLUB.x, CLUB.z, '#ff40c0', 7, false); }
   if (!state.interior && CAS.door) dot(CAS.door.x, CAS.door.z, '#ffd040', 8, false);
   if (!state.interior && JOB.center) { dot(JOB.center.x, JOB.center.z, '#2a8aff', 7, false); if (JOB.hospital) dot(JOB.hospital.x, JOB.hospital.z, '#ff3040', 7, false); }
@@ -4319,6 +4325,231 @@ function m29MapDots(dot) {
   if (M29.arcade) dot(M29.arcade.x, M29.arcade.z, '#ff4ae0', 6, false);
 }
 
+// ============================================================ CAR DIRT + CAR WASH · FERRIS WHEEL · SPEED CAMERAS
+const L5 = () => state.life5 || (state.life5 = { washes: 0, ferris: 0, tickets: 0, fines: 0 });
+const M30 = { ferris: null, radars: [] };
+const FERRIS = { x: BEACH_X0 + 88, z: 165, R: 17, hub: 20, n: 12, period: 100, price: 15 };
+const inFerris = (x, z) => Math.abs(x - FERRIS.x) < 10 && Math.abs(z - FERRIS.z) < 22;
+
+// ============================================================ 🧽 CAR DIRT + CAR WASH (at every gas station)
+const MUD = new THREE.Color(0x6b5a40);
+function dirtLook(c) {
+  if (!c || !c.paintM || !c.paint) return;
+  const d = c.dirt || 0, q = Math.round(d * 20);
+  if (c.paint.material !== c.paintM && c.paint.material !== c.dirtM) return;           // burnt / special material
+  if (q < 1) { if (c.paint.material !== c.paintM) c.paint.material = c.paintM; return; }
+  if (!c.dirtM || c.dirtSrc !== c.paintM) { c.dirtM = c.paintM.clone(); c.dirtSrc = c.paintM; c.dirtQ = -1; }
+  if (c.dirtQ !== q) {
+    c.dirtQ = q; const k = q / 20;
+    c.dirtM.color.copy(c.paintM.color).lerp(MUD, k * 0.55);
+    c.dirtM.roughness = c.paintM.roughness + (0.95 - c.paintM.roughness) * k;
+    c.dirtM.clearcoat = 1 - k * 0.9; c.dirtM.metalness = c.paintM.metalness * (1 - k);
+  }
+  if (c.paint.material !== c.dirtM) c.paint.material = c.dirtM;
+}
+function updateDirt(dt) {
+  const c = state.inCar;
+  if (!fuelable(c)) return;
+  if (c.dirt == null) c.dirt = c.owned ? 0 : Math.random() * 0.4;
+  const before = c.dirt, sp = carSpeed(c), off = !blockAt(c.group.position.x, c.group.position.z) && c.group.position.x > BEACH_X0;   // sand is dusty
+  if (!WASH.c) c.dirt = Math.min(1, c.dirt + sp * dt / 30000 * (1 + state.rain * 2.5 + (off ? 4 : 0)));
+  if (before < 0.5 && c.dirt >= 0.5) floatText('🧽 Araban kirlendi · benzinlikte yıkatabilirsin');
+  dirtLook(c);
+}
+const WASH = { c: null, t: 0 };
+function startWash(c) {
+  WASH.c = c; WASH.t = 0; c.vx = c.vz = 0;
+  floatText('🧽 Yıkama başladı · köpük, fırça, durulama…'); AudioSys.tone(180, 1.2, 0.06, 'sawtooth', 0.5);
+}
+function updateWash(dt) {
+  const c = WASH.c; if (!c) return;
+  if (state.inCar !== c || c.dead) { WASH.c = null; return; }
+  WASH.t += dt; c.vx = c.vz = 0; c.steer = 0;
+  const p = c.group.position, h = c.h, fx = Math.sin(h), fz = Math.cos(h), rx = Math.cos(h), rz = -Math.sin(h);
+  const ph = WASH.t < 1.8 ? 0 : WASH.t < 3.4 ? 1 : 2;                         // foam · rinse · shine
+  for (let k = 0; k < 6; k++) {
+    const a = (Math.random() - 0.5) * 4.6, s = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * 0.4);
+    const x = p.x + fx * a + rx * s, z = p.z + fz * a + rz * s, y = p.y + 0.4 + Math.random() * 1.1;
+    if (ph === 0) FX.norm.spawn(x, y, z, rx * s * 0.2, 0.3, rz * s * 0.2, 1.4, 0.5, 0.6, 1, 1, 1, 0.9, -0.4);
+    else if (ph === 1) FX.norm.spawn(x, y + 1, z, -rx * s * 1.5, -2, -rz * s * 1.5, 0.5, 0.12, 0.1, 0.6, 0.8, 1, 0.6, 9);
+    else if (k < 2) FX.add.spawn(x, y, z, 0, 0.4, 0, 0.5, 0.3, -0.4, 2, 2, 2.2, 1, 0);
+  }
+  c.dirt = Math.max(0, (c.dirt || 0) - dt * 0.4); dirtLook(c);
+  if (WASH.t >= 4.6) {
+    WASH.c = null; c.dirt = 0; dirtLook(c); L5().washes++;
+    showBig('✨ PIRIL PIRIL', '#7de0ff', 2.5, 'Araban yıkandı'); AudioSys.success(); saveGame();
+  }
+}
+{ const _fi = fuelItems; fuelItems = function () {
+  const it = _fi(), c = state.inCar;
+  if (fuelable(c)) {
+    const d = Math.round((c.dirt || 0) * 100);
+    it.splice(1, 0, { name: '🧽 Oto yıkama', desc: `Köpük + fırça + cila · araç kirliliği %${d}`, price: 20, close: true, dis: d < 3 ? 'TEMİZ' : null, buy: () => startWash(c) });
+  }
+  return it;
+}; }
+
+// ============================================================ 🎡 FERRIS WHEEL (beach · turns in real time, so everyone sees the same cabins)
+const ferrisAng = () => ((Date.now() / 1000) % FERRIS.period) / FERRIS.period * Math.PI * 2;
+function buildFerris() {
+  const { x, z, R, hub, n } = FERRIS, y = groundY(x, z);
+  const steel = new THREE.MeshStandardMaterial({ color: 0xeef0f4, metalness: 0.6, roughness: 0.35 }), dark = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.5, roughness: 0.5 });
+  const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
+  // A-frame legs on both sides of the wheel + base + ticket booth
+  const legs = [];
+  for (const sx of [-2.4, 2.4]) for (const sz of [-1, 1]) {
+    const a = new THREE.Vector3(sx, 0, sz * 9), b = new THREE.Vector3(sx * 0.55, hub, 0), d = b.clone().sub(a), L = d.length();
+    legs.push(new THREE.CylinderGeometry(0.28, 0.4, L, 8).translate(0, L / 2, 0).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize())).translate(a.x, a.y, a.z));
+  }
+  legs.push(new THREE.CylinderGeometry(0.55, 0.55, 5.6, 12).rotateZ(Math.PI / 2).translate(0, hub, 0));
+  legs.push(new THREE.BoxGeometry(7, 0.5, 21).translate(0, 0.25, 0));
+  const lg = new THREE.Mesh(merge(legs), steel); lg.castShadow = true; g.add(lg);
+  const booth = new THREE.Mesh(merge([colorize(new THREE.BoxGeometry(2.2, 2.4, 2).translate(-6, 1.2, -6), '#f4f0e6'), colorize(new THREE.BoxGeometry(2.6, 0.25, 2.4).translate(-6, 2.5, -6), '#d02a4a')]), new THREE.MeshStandardMaterial({ vertexColors: true, color: 0xffffff, roughness: 0.6 }));
+  g.add(booth);
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.8), new THREE.MeshBasicMaterial({ map: signTexM(256, 60, '#d02a4a', '#fff2c0', '🎡 DÖNME DOLAP') })); sm.position.set(-7.16, 3.2, -6); sm.rotation.y = -Math.PI / 2; g.add(sm);
+  // rotating wheel: two rims, spokes, cross bars
+  const wheel = new THREE.Group(); wheel.position.y = hub; g.add(wheel);
+  const wp = [];
+  for (const sx of [-1.3, 1.3]) {
+    wp.push(new THREE.TorusGeometry(R, 0.22, 6, 64).rotateY(Math.PI / 2).translate(sx, 0, 0), new THREE.TorusGeometry(R * 0.55, 0.14, 6, 48).rotateY(Math.PI / 2).translate(sx, 0, 0));
+    for (let i = 0; i < n * 2; i++) { const a = i / (n * 2) * Math.PI * 2; wp.push(new THREE.BoxGeometry(0.12, R, 0.12).translate(0, R / 2, 0).rotateX(a).translate(sx, 0, 0)); }
+  }
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; wp.push(new THREE.CylinderGeometry(0.1, 0.1, 3, 6).rotateZ(Math.PI / 2).translate(0, Math.cos(a) * R, Math.sin(a) * R)); }
+  const wm = new THREE.Mesh(merge(wp), steel); wm.castShadow = QUALITY !== 'low'; wheel.add(wm);
+  // light bulbs on the rim (glow at night)
+  const bulbM = new THREE.MeshBasicMaterial({ color: 0x555555 }), bp = [];
+  for (const sx of [-1.45, 1.45]) for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2; bp.push(new THREE.SphereGeometry(0.16, 6, 4).translate(sx, Math.cos(a) * R, Math.sin(a) * R)); }
+  wheel.add(new THREE.Mesh(merge(bp), bulbM));
+  // cabins hang from the rim and stay upright
+  const cols = ['#e83a5a', '#ffb020', '#3aa0ff', '#5ad06a', '#b05aff', '#ff7a2a'], cabins = [];
+  for (let i = 0; i < n; i++) {
+    const cg = new THREE.Group(), col = new THREE.Color(cols[i % cols.length]);
+    cg.add(new THREE.Mesh(merge([new THREE.BoxGeometry(1.8, 0.9, 1.8).translate(0, -2.2, 0), new THREE.BoxGeometry(1.9, 0.18, 1.9).translate(0, -0.9, 0)]), new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.2 })));
+    cg.add(new THREE.Mesh(merge([[-0.85, -0.85], [0.85, -0.85], [-0.85, 0.85], [0.85, 0.85]].map(([a, b]) => new THREE.BoxGeometry(0.07, 1.2, 0.07).translate(a, -1.4, b)).concat([new THREE.CylinderGeometry(0.05, 0.05, 0.9, 4).translate(0, -0.45, 0)])), dark));
+    g.add(cg); cabins.push(cg);
+  }
+  M30.ferris = { g, wheel, cabins, bulbM, y, gate: [x - 6, z - 3.2], ui: null };
+}
+function cabinPos(i, out) {
+  const F = M30.ferris, a = ferrisAng() + i / FERRIS.n * Math.PI * 2;
+  return out.set(FERRIS.x, F.y + FERRIS.hub - Math.cos(a) * FERRIS.R, FERRIS.z + Math.sin(a) * FERRIS.R);
+}
+const _fv = new THREE.Vector3();
+function updateFerris(dt) {
+  const F = M30.ferris; if (!F) return;
+  const far = Math.hypot(camera.position.x - FERRIS.x, camera.position.z - FERRIS.z) > 900;
+  F.g.visible = !far;
+  if (!far) {
+    F.wheel.rotation.x = -ferrisAng();
+    F.cabins.forEach((cg, i) => { cabinPos(i, _fv); cg.position.set(0, _fv.y - F.y, _fv.z - FERRIS.z); });
+    const night = state.time < 6.5 || state.time > 19.3;
+    F.bulbM.color.setHex(night ? (Math.floor(Date.now() / 400) % 2 ? 0xffe8a0 : 0xff80c0) : 0x8a8a8a);
+  }
+  const R = state.ferris;
+  if (R) { if (R.ui) state.interact = R.ui; return; }
+  if (state.interact || state.inCar || state.interior || state.dead || MG.on || state.metro) return;
+  if (Math.hypot(player.pos.x - F.gate[0], player.pos.z - F.gate[1]) < 2.2) state.interact = { label: `🎡 DÖNME DOLAP · tam tur ~${FERRIS.period} sn · $${FERRIS.price}`, fn: boardFerris };
+}
+function boardFerris() {
+  if (state.money < FERRIS.price) { floatText('💸 Paran yetmiyor'); AudioSys.fail(); return; }
+  if (state.wanted > 0) { floatText('🚨 Aranırken dolaba binemezsin'); return; }
+  state.money -= FERRIS.price; state.shownMoney = state.money; S().spent += FERRIS.price; ledger('🎡 Dönme dolap', -FERRIS.price);
+  // the next cabin to reach the bottom
+  const a = ferrisAng(), step = Math.PI * 2 / FERRIS.n; let best = 0, bw = 1e9;
+  for (let i = 0; i < FERRIS.n; i++) { let w = (-(a + i * step)) % (Math.PI * 2); if (w < 0) w += Math.PI * 2; if (w < bw) { bw = w; best = i; } }
+  state.ferris = { i: best, phase: 'wait', wait: bw / (Math.PI * 2) * FERRIS.period, t: 0, top: false };
+  floatText(`🎡 Kabin ${Math.ceil(state.ferris.wait)} sn içinde iniyor`); AudioSys.cash();
+}
+function updateFerrisPlayer(dt) {
+  const R = state.ferris, F = M30.ferris; R.t += dt;
+  if (state.wanted > 0 && R.phase === 'wait') { endFerris(); return; }
+  if (R.phase === 'wait') {
+    player.pos.set(F.gate[0] + 1.4, groundY(F.gate[0] + 1.4, F.gate[1]) + 0.05, F.gate[1] + 1); player.human.g.visible = true;
+    animHuman(player.human, 0, dt, false); player.human.g.position.copy(player.pos); player.human.g.rotation.set(0, player.yaw, 0);
+    R.wait -= dt; R.ui = { label: `🎡 Kabin ${Math.max(0, Math.ceil(R.wait))} sn · E: vazgeç`, fn: () => { endFerris(); state.money += FERRIS.price; state.shownMoney = state.money; ledger('🎡 İade', FERRIS.price); } };
+    if (R.wait <= 0) { R.phase = 'ride'; R.t = 0; R.t0 = Date.now(); L5().ferris++; AudioSys.tone(520, 0.3, 0.12, 'sine'); floatText('🎡 Kabine bindin · manzaranın tadını çıkar · fotoğraf modunu dene'); }
+    return;
+  }
+  cabinPos(R.i, _fv); player.pos.set(_fv.x, _fv.y - 2.6, _fv.z); player.vy = 0; player.human.g.visible = false;
+  R.t = (Date.now() - R.t0) / 1000; const left = FERRIS.period - R.t;   // real time, like the wheel itself
+  if (!R.top && R.t > FERRIS.period / 2) { R.top = true; floatText('🎡 Zirvedesin · 37 metre!'); if (state.time > 19.3 || state.time < 6) addRep(2, 'gece manzarası'); }
+  R.ui = { label: `🎡 ${Math.ceil(Math.max(0, left))} sn · yükseklik ${Math.round(_fv.y - F.y - 2.6)} m`, fn: null };
+  if (R.t >= FERRIS.period) { endFerris(); showBig('🎡 TUR BİTTİ', '#ff80c0', 2.2, 'Vista Bay tepeden çok güzel'); }
+}
+function endFerris() {
+  const F = M30.ferris; state.ferris = null;
+  const x = F.gate[0] + 1.6, z = F.gate[1] + 1.5; player.pos.set(x, groundY(x, z) + 0.05, z); player.vy = 0; player.onGround = true; player.human.g.visible = true;
+}
+
+// ============================================================ 📸 SPEED CAMERAS (90 km/h · the flash and the fine)
+const RADAR_LIMIT = 90;
+function buildRadars() {
+  const cand = blocks.flat().filter(b => !b.park && b.j < N - 1).sort((a, b) => ((a.i * 5 + a.j * 3) % 11) - ((b.i * 5 + b.j * 3) % 11) || a.i - b.i || a.j - b.j);
+  const pole = merge([new THREE.CylinderGeometry(0.1, 0.12, 4.2, 8).translate(0, 2.1, 0), new THREE.BoxGeometry(0.5, 0.5, 0.8).translate(0, 4.4, 0.2), new THREE.CylinderGeometry(0.12, 0.12, 0.05, 12).rotateX(Math.PI / 2).translate(0, 4.4, 0.62)]);
+  const pm = new THREE.MeshStandardMaterial({ color: 0x8a8d92, metalness: 0.6, roughness: 0.4 }), boxM = new THREE.MeshStandardMaterial({ color: 0xf0c020, roughness: 0.5 });
+  const signM = new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, g => { g.fillStyle = '#fff'; g.beginPath(); g.arc(32, 32, 30, 0, 7); g.fill(); g.strokeStyle = '#d01818'; g.lineWidth = 8; g.beginPath(); g.arc(32, 32, 26, 0, 7); g.stroke(); g.fillStyle = '#111'; g.font = 'bold 26px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(RADAR_LIMIT), 32, 34); }), side: THREE.DoubleSide });
+  for (const b of cand) {
+    if (M30.radars.length >= 7) break;
+    const z = b.cz + BLOCK / 2 - 0.7, roadZ = b.cz + BLOCK / 2 + ROAD / 2;
+    for (const dx of [0, 8, -8, 14, -14]) {
+      const x = b.cx + dx;
+      if (M30.radars.some(r => Math.hypot(r.x - x, r.z - z) < 160)) break;
+      if (DOORS.some(d => Math.hypot(d.x - x, d.z - z) < 5) || SHOPS.some(s => Math.hypot(s.x - x, s.z - z) < 8) || M27.fuel.some(s => Math.hypot(s.x - x, s.z - z) < 14)) continue;
+      const g = new THREE.Group(); g.position.set(x, 0.25, z); g.rotation.y = 0;
+      g.add(new THREE.Mesh(pole, pm));
+      const bx = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 0.82).translate(0, 4.4, 0.2), boxM); g.add(bx);
+      const sg = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), signM); sg.position.set(0, 3.3, 0.14); g.add(sg);
+      scene.add(g); M30.radars.push({ x, z, roadZ, g, cd: 0 });
+      break;
+    }
+  }
+}
+let flashEl = null;
+function radarFlash() {
+  if (!flashEl) { flashEl = document.createElement('div'); flashEl.style.cssText = 'position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:40;transition:opacity .45s ease-out'; document.body.appendChild(flashEl); }
+  flashEl.style.transition = 'none'; flashEl.style.opacity = '0.85'; void flashEl.offsetWidth; flashEl.style.transition = 'opacity .5s ease-out'; flashEl.style.opacity = '0';
+  AudioSys.tone(2400, 0.05, 0.12, 'square');
+}
+function updateRadars(dt) {
+  const c = state.inCar;
+  for (const r of M30.radars) r.cd = Math.max(0, r.cd - dt);
+  if (!c || !fuelable(c) || c.remote || c.police || state.cop || JOB.cur === 'fire' || JOB.cur === 'ambulance') return;
+  const p = c.group.position;
+  for (const r of M30.radars) {
+    if (r.cd > 0 || Math.abs(p.x - r.x) > 7 || Math.abs(p.z - r.roadZ) > ROAD / 2 + 1) continue;
+    const kmh = Math.abs(carFwd(c)) * 3.6; if (kmh <= RADAR_LIMIT + 5) continue;
+    r.cd = 20; radarFlash();
+    const over = Math.round(kmh - RADAR_LIMIT), fine = Math.min(1000, 100 + over * 8), L = L5(); L.tickets++;
+    const paid = Math.min(state.money, fine); state.money -= paid; state.shownMoney = state.money; L.fines += paid; ledger('📸 Hız cezası', -paid);
+    if (paid < fine) { addHeat(0.5); showBig('📸 RADARA YAKALANDIN', '#ff5050', 3, `${Math.round(kmh)} km/s · ceza $${fine} · ödeyemedin → polis seni arıyor`); }
+    else showBig('📸 RADARA YAKALANDIN', '#ffd23a', 3, `${Math.round(kmh)} km/s (sınır ${RADAR_LIMIT}) · ceza −$${fine}`);
+    saveGame(); break;
+  }
+}
+
+// ============================================================ 🏆 new achievements for the life features
+function addM30Ach() { ACHIEVEMENTS.push(
+  { id: 'fish10', name: 'Balıkçı Reis', desc: '10 balık tut', reward: 1000, test: () => (L2().fishN || 0) >= 10 },
+  { id: 'gym10', name: 'Demir Pazı', desc: '10 antrenman yap', reward: 1000, test: () => (L2().gymTot || 0) >= 10 },
+  { id: 'metro5', name: 'Banliyö Yolcusu', desc: 'Metroyla 5 yolculuk yap', reward: 600, test: () => (L3().rides || 0) >= 5 },
+  { id: 'goal15', name: 'Golcü', desc: '15 penaltı golü at', reward: 1000, test: () => (L3().goalsTot || 0) >= 15 },
+  { id: 'harv10', name: 'Bahçıvan', desc: 'Bahçede 10 hasat yap', reward: 1200, test: () => (L4().harvests || 0) >= 10 },
+  { id: 'range400', name: 'Keskin Nişancı', desc: 'Poligonda 400 puan yap', reward: 1500, test: () => (L4().rangeBest || 0) >= 400 },
+  { id: 'wash5', name: 'Temizlik Hastası', desc: 'Aracını 5 kez yıkat', reward: 500, test: () => L5().washes >= 5 },
+  { id: 'ferris3', name: 'Manzara Avcısı', desc: 'Dönme dolaba 3 kez bin', reward: 500, test: () => L5().ferris >= 3 },
+  { id: 'radar', name: 'Flaş!', desc: 'Hız radarına yakalan', reward: 100, test: () => L5().tickets >= 1 },
+); }
+
+// ============================================================ wiring
+function prepM30() { for (const A of [TREES, PALMS]) { const k = A.filter(p => !inFerris(p[0], p[2])); A.length = 0; A.push(...k); } }
+function buildM30() { buildFerris(); buildRadars(); addM30Ach(); }
+function updateM30(dt) { updateDirt(dt); updateWash(dt); updateFerris(dt); updateRadars(dt); }
+function m30MapDots(dot) {
+  if (state.interior) return;
+  dot(FERRIS.x, FERRIS.z, '#ff80c0', 6, false);
+  for (const r of M30.radars) if (Math.hypot(r.x - player.pos.x, r.z - player.pos.z) < 260) dot(r.x, r.z, '#ffd23a', 3, false);
+}
+
 // ============================================================ TREES / STREET FURNITURE / TRAFFIC LIGHTS
 function buildTreesAndStreet() {
   const sh = QUALITY !== 'low', m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -4623,7 +4854,7 @@ function saveGame() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       money: Math.round(state.money), ammo: state.ammo.map(a => a === Infinity ? -1 : a), ownedW: state.ownedW,
       owned: cars.filter(c => c.owned && !c.dead && !c.delivery && !c.home).map(c => [c.kind, c.paintM.color.getHexString(THREE.SRGBColorSpace), c.up, c.fav ? 1 : 0]), soundMode: state.soundMode,
-      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null, life3: state.life3 || null, life4: state.life4 || null
+      props: state.props, spawnProp: state.spawnProp, stats: state.stats, ach: state.ach, turf: state.turf, packages: state.packages, stuntsDone: state.stuntsDone, story: state.story, look: state.look, docs: state.docs, chute: state.chute, rep: state.rep || 0, inv: state.inv || {}, bmGold: !!state.bmGold, station: state.station || 0, hoverOwned: !!state.hoverOwned, lastWords: state.lastWords || '', jobs: state.jobs || {}, bestDrift: state.bestDrift || 0, biz: state.biz || null, pet: state.pet || null, petFood: state.petFood || 0, petBall: !!state.petBall, dragBest: state.dragBest || 0, jail: state.jail ? { left: Math.ceil(state.jail.left), bail: state.jail.bail, w: state.jail.w, reason: state.jail.reason } : null, homes: state.homes || {}, spouseHomes: state.spouseHomes || {}, spouse: state.spouse || null, joint: state.joint || null, family: !!state.family, baby: state.baby || null, bag: state.bag || {}, food: Math.round(state.food ?? 100), water: Math.round(state.water ?? 100), life2: state.life2 || null, life3: state.life3 || null, life4: state.life4 || null, life5: state.life5 || null
     }));
     accountSaved();
   } catch (e) { }
@@ -4638,7 +4869,7 @@ function loadGame() {
     state.props = d.props || {}; state.spawnProp = d.spawnProp || null; state.ach = d.ach || {}; Object.assign(state.stats, d.stats || {});
     state.turf = d.turf || {}; state.packages = d.packages || {}; state.stuntsDone = d.stuntsDone || {};
     state.story = d.story || 0; state.look = d.look || null; state.docs = d.docs || {}; state.chute = d.chute || 0;
-    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null; state.life3 = d.life3 || null; state.life4 = d.life4 || null;
+    state.rep = d.rep || 0; state.inv = d.inv || {}; state.bmGold = !!d.bmGold; state.station = d.station || 0; state.hoverOwned = !!d.hoverOwned; state.lastWords = d.lastWords || ''; state.jail = d.jail || null; state.jobs = d.jobs || {}; state.bestDrift = d.bestDrift || 0; state.pet = d.pet && BREEDS[d.pet.breed] ? d.pet : null; state.petFood = d.petFood || 0; state.petBall = !!d.petBall; state.biz = d.biz && BIZ_TYPES[d.biz.type] ? d.biz : null; state.dragBest = d.dragBest || 0; state.life2 = d.life2 || null; state.life3 = d.life3 || null; state.life4 = d.life4 || null; state.life5 = d.life5 || null;
     state.homes = d.homes || {}; state.bag = d.bag || {}; state.spouseHomes = d.spouseHomes || {}; state.spouse = d.spouse || null; state.joint = d.joint || { bal: 0, ts: 0 }; state.family = !!d.family; state.baby = d.baby || null; state.food = d.food ?? 100; state.water = d.water ?? 100;
     return d;
   } catch (e) { return null; }
@@ -12500,7 +12731,7 @@ function loop(now) {
   updateSky(dt);
   if (state.dead) { state.deadTimer -= dt; if (state.deadTimer <= 0) respawn(); }
   else {
-    if (state.fly && !state.inCar && isAdmin()) updateFly(dt); else if (state.cabin && !state.cabin.jumped) updateCabin(dt); else if (state.sky) updateSkydive(dt); else if (state.passenger) updatePassenger(dt); else if (state.metro) updateMetroPlayer(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
+    if (state.fly && !state.inCar && isAdmin()) updateFly(dt); else if (state.cabin && !state.cabin.jumped) updateCabin(dt); else if (state.sky) updateSkydive(dt); else if (state.passenger) updatePassenger(dt); else if (state.ferris) updateFerrisPlayer(dt); else if (state.metro) updateMetroPlayer(dt); else if (state.inCar) updatePlayerCar(dt); else updatePlayerFoot(dt);
     if (input.fire) fire();
   }
   if (state.fireCd > 0) state.fireCd -= dt;
@@ -12559,7 +12790,7 @@ function loop(now) {
   updateBiz(dt);
   updateM27(dt);
   updateM28(dt);
-  updateM29(dt);
+  updateM29(dt); updateM30(dt);
   updateSurrender();
   updatePrisonOutside();
   document.body.classList.toggle('inHome', state.interior === 'home');

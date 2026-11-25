@@ -16,6 +16,7 @@ The game uses these ready-made models on **Medium** and **High** quality. **Low*
   - In the game, clothes, hair and shoes are re-tinted per character, and the skeleton is driven by the game's own animation.
 - **Car:**
   - Removed the interior, engine, axles, brake pads, wiper blades and three of the four wheels (the front-left wheel is reused for all four).
+  - The source file stores the front wheels steered by about 30°. The game clears that angle so the reused wheel lines up with the axle.
   - Dropped tangents and the second UV set.
   - Resized textures to at most 512 px.
   - In the game, the paint takes the car's colour, the glass uses the game's car glass, and the lights use the game's day/night light materials.

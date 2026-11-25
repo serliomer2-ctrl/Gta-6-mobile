@@ -215,6 +215,19 @@ Yaklaşık 10-15 dakikada bir rastgele bir afet başlar (online'da oda sahibi ba
 - **🎆 Havai fişek**: benzinlikten ya da konser gişesinden al (3'lü $45). **J** tuşu ya da 🎆 butonuyla fırlat; online'da odadaki herkes görür.
   - Her oyun gecesi 23:00'te Sahil Sahnesi'nde havai fişek gösterisi olur.
 
+## 🧽 Oto yıkama, 🎡 dönme dolap, 📸 hız radarları, 🏆 yeni başarımlar
+- **🧽 Kirlenme ve oto yıkama**: araç kullandıkça boyası matlaşır ve kirlenir. Yağmurda ve sahil kumunda daha hızlı kirlenir.
+  - Benzinlikte **Oto yıkama** ($20): köpük, durulama ve cila. Araç pırıl pırıl olur.
+- **🎡 Dönme dolap** (sahil, helikopter pistinin güneyi): 37 m yüksekliğinde, 12 renkli kabin. Gece ışıkları yanıp söner.
+  - Bilet $15. Bir tam tur yaklaşık 100 saniye sürer.
+  - Dolap gerçek zamana göre döner; odadaki herkes kabinleri aynı yerde görür.
+  - Gece zirveye çıkarsan itibar +2.
+- **📸 Hız radarları**: şehir yollarında 7 sabit radar var. Direğin üstünde sarı kutu ve **90** levhası bulunur; mini haritada yakındakiler sarı nokta olarak görünür.
+  - 95 km/s üstünde flaş patlar. Ceza $100 + aşılan her km/s için $8 (en fazla $1.000).
+  - Cezayı ödeyemezsen polis seni arar.
+  - Polis aracı, polis görevi, itfaiye ve ambulans mesaisinde radar seni yazmaz.
+- **🏆 Yeni başarımlar**: Balıkçı Reis, Demir Pazı, Banliyö Yolcusu, Golcü, Bahçıvan, Keskin Nişancı, Temizlik Hastası, Manzara Avcısı, Flaş!.
+
 ## 🎨 Grafik kalitesi ve hazır 3D modeller
 - **Düşük**: tüm insanlar ve arabalar kodla üretilen (procedural) modellerdir; ek dosya indirilmez.
 - **Orta / Yüksek**: yakındaki karakterler **hazır, iskeletli insan modelleriyle** çizilir (erkek, kadın, iri yapılı; MakeHuman tabanlı, CC0). Kıyafet, saç, ayakkabı ve ten rengi her karaktere göre boyanır. Şapka, gözlük, sakal ve sırt çantası modelin başına ve sırtına oturur.
